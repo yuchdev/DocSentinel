@@ -1,0 +1,9 @@
+name: Feature request
+description: Suggest a future DocSentinel capability
+body:
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal and use case
+    validations:
+      required: true
