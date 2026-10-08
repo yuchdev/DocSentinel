@@ -1,0 +1,6 @@
+- id: docsentinel-fast
+  name: DocSentinel fast inventory
+  entry: docsentinel scan --profile fast
+  language: python
+  pass_filenames: false
+  always_run: true
