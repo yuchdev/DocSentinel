@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "Deterministic-first documentation inventory and future QA framework"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "flakeforge==1.1.0",
+    "release-saga==1.2.0",
+]
 
 [project.scripts]
 docsentinel = "docsentinel.cli:main"

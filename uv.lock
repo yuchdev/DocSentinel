@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11"
 
 [[package]]
@@ -15,6 +15,10 @@ wheels = [
 name = "docsentinel"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "flakeforge" },
+    { name = "release-saga" },
+]
 
 [package.optional-dependencies]
 test = [
@@ -22,8 +26,21 @@ test = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pytest", marker = "extra == 'test'", specifier = ">=8,<10" }]
+requires-dist = [
+    { name = "flakeforge", specifier = "==1.1.0" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8,<10" },
+    { name = "release-saga", specifier = "==1.2.0" },
+]
 provides-extras = ["test"]
+
+[[package]]
+name = "flakeforge"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4f/69/b1798c0b69892ef5e88788ca9e5053011ce661f2dba76855dd5789c2fe1e/flakeforge-1.1.0.tar.gz", hash = "sha256:9d52f2236551fd745b1422b3f3e284943e7d2bf2c1c61bcae21b2509af0f6b3d", size = 109610, upload-time = "2026-09-30T14:25:23.089Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/38/ef/0e4a7efabed6c8d50b688869d5310ce6edc975652bb29aa4d4f73f67c6a6/flakeforge-1.1.0-py3-none-any.whl", hash = "sha256:f1044cac4a3d23c7e7d400ce7f2ee0f40a029a1f852c06d7d7b487a2b33d4dd7", size = 68346, upload-time = "2026-09-30T14:25:20.787Z" },
+]
 
 [[package]]
 name = "iniconfig"
@@ -75,4 +92,13 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/e4/47/b9efed96c114afcfa3c9d3fe98a76a1d14c74a9e266d397cf6eb64be5e01/pytest-9.1.1.tar.gz", hash = "sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313", size = 1636369, upload-time = "2026-06-19T10:58:32.857Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/24/25/1de2678b631f5a49215c6c96fff41ba892b0a34df68d6d80292b1b48aa7f/pytest-9.1.1-py3-none-any.whl", hash = "sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c", size = 386536, upload-time = "2026-06-19T10:58:31.347Z" },
+]
+
+[[package]]
+name = "release-saga"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/83/9ab9c7fe9f80d488fd8b95ed286be29c5cb42e3b721f6aed68438bb4f909/release_saga-1.2.0.tar.gz", hash = "sha256:41997aa2a8828ae3f38f00898103e9ddfe154477e0256f07b610aa897b333181", size = 49168, upload-time = "2026-09-24T11:08:17.027Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0c/7f/abfa786dd707a7814252eba15acb13d5ab6fcf5d89e2aa229e5e8dbbdaa4/release_saga-1.2.0-py3-none-any.whl", hash = "sha256:56ddd95be6587a20097379b9d32111578057e5ac8f53f46232413f5f989b3e07", size = 33817, upload-time = "2026-09-24T11:08:13.846Z" },
 ]
