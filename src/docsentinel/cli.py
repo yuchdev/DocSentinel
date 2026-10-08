@@ -15,7 +15,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="docsentinel")
     commands = parser.add_subparsers(dest="command", required=True)
     scan_parser = commands.add_parser("scan", help="Inventory Markdown documents")
-    scan_parser.add_argument("root", nargs="?", default=".")
+    scan_parser.add_argument("root", nargs="?", default=".", help="Directory or file to check")
     scan_parser.add_argument("--config", type=Path)
     scan_parser.add_argument("--profile", choices=("fast", "standard", "deep"))
     scan_parser.add_argument("--format", choices=("text", "json"), default="text")
@@ -41,7 +41,8 @@ def main(argv: list[str] | None = None) -> int:
         print("Inventory: available\nDetection rules: not implemented (future)")
         return 0
     try:
-        settings = load_config(Path(args.root).resolve(), args.config)
+        target = Path(args.root).resolve()
+        settings = load_config(target.parent if target.is_file() else target, args.config)
         if args.profile:
             settings = Config(settings.include, settings.exclude, args.profile)
         result = scan(args.root, config=settings)

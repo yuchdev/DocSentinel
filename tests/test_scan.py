@@ -121,3 +121,16 @@ def test_public_config_can_select_only_nested_files(tmp_path: Path) -> None:
     assert [doc.path for doc in scan(tmp_path, config=Config(include=("docs/*.md",))).documents] == [
         "docs/guide.md"
     ]
+
+
+def test_scan_accepts_a_single_selected_file(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text("a", encoding="utf-8")
+    (tmp_path / "b.md").write_text("bb", encoding="utf-8")
+    result = scan(tmp_path / "b.md")
+    assert [(item.path, item.bytes) for item in result.documents] == [("b.md", 2)]
+
+
+def test_cli_scan_selected_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "a.md").write_text("a", encoding="utf-8")
+    assert main(["scan", str(tmp_path / "a.md"), "--format", "json"]) == 0
+    assert json.loads(capsys.readouterr().out)["documents"][0]["path"] == "a.md"

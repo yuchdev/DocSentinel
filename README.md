@@ -16,7 +16,7 @@ uv run docsentinel doctor
 ```
 
 `init` creates `docsentinel.toml` without overwriting an existing file. Scan
-defaults to the current directory, reads its config if present, and accepts
+defaults to the current directory, accepts a directory or a single file path, reads its config if present, and accepts
 `--config PATH`, `--profile fast|standard|deep`, and `--format text|json`.
 Exit status 0 means inventory succeeded (not that detectors passed); 1 is
 reserved for findings, and 2 means configuration or scan failed.
