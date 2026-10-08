@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,40 @@ def test_discovery_is_sorted_filtered_and_does_not_follow_symlinks(tmp_path: Pat
     ]
 
 
+def test_discovery_prunes_excluded_directories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    excluded = tmp_path / ".git"
+    excluded.mkdir()
+    (excluded / "hidden.md").write_text("hidden", encoding="utf-8")
+    original_scandir = os.scandir
+
+    def scandir(path: str | bytes | Path):
+        if Path(path) == excluded:
+            raise AssertionError("excluded directory was traversed")
+        return original_scandir(path)
+
+    monkeypatch.setattr(os, "scandir", scandir)
+    assert scan(tmp_path).documents == ()
+
+
+def test_discovery_propagates_directory_listing_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    unreadable = tmp_path / "unreadable"
+    unreadable.mkdir()
+    original_scandir = os.scandir
+
+    def scandir(path: str | bytes | Path):
+        if Path(path) == unreadable:
+            raise PermissionError("cannot list directory")
+        return original_scandir(path)
+
+    monkeypatch.setattr(os, "scandir", scandir)
+    with pytest.raises(PermissionError, match="cannot list directory"):
+        scan(tmp_path)
+
+
 def test_config_and_pending_profile(tmp_path: Path) -> None:
     (tmp_path / "a.md").write_text("x", encoding="utf-8")
     (tmp_path / "b.markdown").write_text("y", encoding="utf-8")
@@ -54,6 +89,14 @@ def test_bad_config_fails_clearly(tmp_path: Path, contents: str) -> None:
     (tmp_path / "docsentinel.toml").write_text(contents, encoding="utf-8")
     with pytest.raises(ConfigError):
         load_config(tmp_path)
+
+
+def test_invalid_utf8_config_raises_config_error(tmp_path: Path) -> None:
+    (tmp_path / "docsentinel.toml").write_bytes(b"\xff")
+    with pytest.raises(ConfigError):
+        load_config(tmp_path)
+    with pytest.raises(ConfigError):
+        scan(tmp_path)
 
 
 def test_cli_init_scan_and_guard_against_overwrite(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

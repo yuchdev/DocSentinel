@@ -24,7 +24,7 @@ def load_config(root: Path, path: Path | None = None) -> Config:
     try:
         with source.open("rb") as stream:
             data = tomllib.load(stream)
-    except (OSError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         raise ConfigError(f"Cannot read {source}: {exc}") from exc
     if set(data) != {"docsentinel"} or not isinstance(data["docsentinel"], dict):
         raise ConfigError("Config must contain only a [docsentinel] table")
