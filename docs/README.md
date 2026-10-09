@@ -15,13 +15,10 @@
 | `docs/dev/python_coding_standard.md` | Entry point to the Python coding standard, with project-specific overrides that win on conflict. |
 | `docs/dev/python_language_rules.md` | Base Python language dos and don'ts. |
 | `docs/dev/python_style_rules.md` | Base Python style rules (formatting, comments, TODO format, typing). |
-| `docs/roadmap/README.md` | Roadmap conventions: the Milestone → Story → Task hierarchy. |
-| `docs/roadmap/0001-working-implementation/plan.md` | Example milestone plan from the kit scaffolding (targets a `doc_sentinel` package with a hello-world endpoint, which does not match DocSentinel's CLI). |
-| `docs/roadmap/0001-working-implementation/status.md` | Progress tracker for that example milestone. |
-| `docs/roadmap/0001-working-implementation/01.0-hello-world-endpoint/README.md` | Example story README. |
-| `docs/roadmap/0001-working-implementation/01.0-hello-world-endpoint/01-config-model.md` | Example task spec: config model. |
-| `docs/roadmap/0001-working-implementation/01.0-hello-world-endpoint/02-health-endpoint.md` | Example task spec: health endpoint. |
-| `docs/roadmap/0001-working-implementation/01.0-hello-world-endpoint/03-tests.md` | Example task spec: tests. |
+| `docs/roadmap/README.md` | Roadmap conventions and the milestone index: the Milestone → Story → Task hierarchy. Start here to navigate into any milestone's `plan.md`, then its story `README.md`s, then task specs - this registry does not re-list every roadmap leaf file. |
+| `docs/roadmap/0001-generic-implementation/plan.md` | Milestone 0001: rule registry, `pyproject.toml`/`doc_sentinel.toml` config conventions with `select`/`ignore`, and the first `fast`-profile detectors (`DS101`-`DS103`) - the "first limited run." 4 stories, fully task-specced. |
+| `docs/roadmap/0002-standard-profile-detectors/plan.md` | Milestone 0002: `standard`-profile detectors - corpus duplication, low-information content, text complexity, and a `docsig`-based doc-vs-code signature check (`DS201`-`DS204`). 5 stories, fully task-specced. |
+| `docs/roadmap/0003-deep-profile-and-periodic-review/plan.md` | Milestone 0003: the `deep`-profile fact-contradiction candidate detector (`DS301`), its opt-in gating, and the periodic `docs-reviewer` agent/loop. 4 stories, fully task-specced. |
 | `docs/reviews/README.md` | Where `background-reviewer` writes dependency, secret, performance and license reports. |
 | `docs/reviews/example-report.md` | Example review report showing the expected format. |
 | `docs/security/README.md` | Threat models and security reviews owned by `security-auditor`, including the initial DocSentinel threat-model draft. |

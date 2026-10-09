@@ -55,4 +55,6 @@ absolute-from-repo-root Markdown link:
 
 | #    | Milestone                                                             | Spec                                             | Status                                               |
 |------|-----------------------------------------------------------------------|--------------------------------------------------|------------------------------------------------------|
-| 0001 | Generic working implementation (CLI, project structure, backend, ...) | [plan.md](./0001-working-implementation/plan.md) | [status.md](./0001-working-implementation/status.md) |
+| 0001 | Generic implementation: rule registry, config conventions, and the first `fast`-profile detectors | [plan.md](./0001-generic-implementation/plan.md) | [status.md](./0001-generic-implementation/status.md) |
+| 0002 | Standard-profile detectors: corpus duplication, low-information content, text complexity, doc-vs-code signature mismatch | [plan.md](./0002-standard-profile-detectors/plan.md) | [status.md](./0002-standard-profile-detectors/status.md) |
+| 0003 | Deep-profile detector, opt-in gating, and the periodic `docs-reviewer` agent/loop | [plan.md](./0003-deep-profile-and-periodic-review/plan.md) | [status.md](./0003-deep-profile-and-periodic-review/status.md) |
