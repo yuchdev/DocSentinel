@@ -35,9 +35,15 @@ def _render_github(result: ScanResult) -> str:
     return "\n".join(lines)
 
 
+ADVISORY_BANNER: str = "Deep findings are heuristic candidates for review - they do not fail the build."
+
+
 def render(result: ScanResult, format: str = "text") -> str:
     if format == "json":
-        return json.dumps(asdict(result), indent=2)
+        data = asdict(result)
+        if result.profile == "deep" and result.findings:
+            data["advisory"] = ADVISORY_BANNER
+        return json.dumps(data, indent=2)
     if format == "github":
         return _render_github(result)
     if format != "text":
@@ -49,6 +55,8 @@ def render(result: ScanResult, format: str = "text") -> str:
         "Enabled rules: " + json.dumps(result.enabled_rules),
         result.notice,
     ]
+    if result.profile == "deep" and result.findings:
+        lines.append(ADVISORY_BANNER)
     lines.extend(f"  {document.path} ({document.bytes} bytes)" for document in result.documents)
     lines.extend(f"Pending: {reason}" for reason in result.pending)
     lines.extend(f"{finding.severity}: {finding.path}: {finding.message}" for finding in result.findings)

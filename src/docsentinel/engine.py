@@ -1,10 +1,12 @@
 """Single entry point for all scan consumers."""
 
+import os
 from pathlib import Path
 from typing import Callable, Optional
 
 from docsentinel.baseline import filter_baselined, load_baseline
 from docsentinel.config import Config, load_config
+from docsentinel.deep_support import DEEP_EXTRA_HINT, deep_ready
 from docsentinel.discovery import discover
 from docsentinel.models import Document, Finding, ScanResult
 from docsentinel.rules import RULES, effective_rules
@@ -15,6 +17,17 @@ Analyzer = Callable[[Path, tuple[Document, ...]], tuple[Finding, ...]]
 ANALYZERS: dict[str, Analyzer] = {}
 
 from docsentinel import detectors as _detectors  # noqa: E402, F401
+from docsentinel.detectors.loader import ensure_standard_loaded  # noqa: E402
+
+
+def _env_confirms() -> bool:
+    """Return True if DOCSENTINEL_DEEP_CONFIRM is set to a truthy value."""
+    return os.environ.get("DOCSENTINEL_DEEP_CONFIRM", "").lower() in {"1", "true", "yes"}
+
+
+def _resolve_deep_confirm(settings: Config) -> bool:
+    """Return True if deep profile execution is confirmed via settings or env."""
+    return settings.deep_confirm or _env_confirms()
 
 
 def scan(root: Path | str = ".", *, config: Optional[Config] = None) -> ScanResult:
@@ -30,6 +43,36 @@ def scan(root: Path | str = ".", *, config: Optional[Config] = None) -> ScanResu
         documents = (Document(target.name, target.stat().st_size),)
     else:
         documents = discover(directory, settings)
+
+    if settings.profile == "deep":
+        if not _resolve_deep_confirm(settings):
+            pending = (
+                "deep profile requires explicit opt-in: set deep_confirm = true, "
+                "pass --i-understand-deep-is-heuristic, or set DOCSENTINEL_DEEP_CONFIRM=1 "
+                "(deep checks are heuristic and may report false positives)",
+            )
+            return ScanResult(
+                profile=settings.profile,
+                documents=documents,
+                findings=(),
+                enabled_rules=(),
+                pending=pending,
+                notice="Detection rules are not implemented in M0; this is an inventory only.",
+            )
+        if not deep_ready():
+            pending = (f"deep profile confirmed, but its dependencies are unavailable - {DEEP_EXTRA_HINT}",)
+            return ScanResult(
+                profile=settings.profile,
+                documents=documents,
+                findings=(),
+                enabled_rules=(),
+                pending=pending,
+                notice="Detection rules are not implemented in M0; this is an inventory only.",
+            )
+
+    if settings.profile == "standard":
+        ensure_standard_loaded()
+
     profile_codes = tuple(code for code, rule in RULES.items() if rule.profile == settings.profile)
     active_codes = effective_rules(profile_codes, settings.select, settings.ignore)
     findings = tuple(
@@ -45,15 +88,15 @@ def scan(root: Path | str = ".", *, config: Optional[Config] = None) -> ScanResu
         findings = filter_baselined(findings, known)
     if active_codes:
         pending = ()
-        notice = f"{len(active_codes)} {settings.profile} rule(s) evaluated."
+        if settings.profile == "deep":
+            notice = f"{len(active_codes)} deep rule(s) evaluated (heuristic, advisory-only)."
+        else:
+            notice = f"{len(active_codes)} {settings.profile} rule(s) evaluated."
     elif not profile_codes:
-        pending = (
-            ("standard detectors are not implemented in M0",)
-            if settings.profile == "standard"
-            else ("deep detectors are not implemented in M0",)
-            if settings.profile == "deep"
-            else ()
-        )
+        if settings.profile == "deep":
+            pending = ("deep profile confirmed, but no deep rules are registered",)
+        else:
+            pending = ("standard detectors are not implemented in M0",) if settings.profile == "standard" else ()
         notice = "Detection rules are not implemented in M0; this is an inventory only."
     else:
         pending = (f"all {settings.profile} rules were excluded by select/ignore",)

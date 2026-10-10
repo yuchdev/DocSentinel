@@ -15,8 +15,10 @@ def fast_profile_tree(tmp_path: Path) -> tuple[Path, Path]:
 
 def test_importing_engine_registers_all_fast_analyzers() -> None:
     from docsentinel.engine import ANALYZERS
+    from docsentinel.rules import rules_for_profile
 
-    assert tuple(sorted(ANALYZERS)) == ("DS101", "DS102", "DS103")
+    assert tuple(code for code in sorted(ANALYZERS) if code.startswith("DS1")) == ("DS101", "DS102", "DS103")
+    assert tuple(rule.code for rule in rules_for_profile("fast")) == ("DS101", "DS102", "DS103")
 
 
 def test_default_fast_scan_reports_all_three_rule_findings(
@@ -65,21 +67,19 @@ def test_ignore_narrows_the_active_set(fast_profile_tree: tuple[Path, Path]) -> 
     assert result.enabled_rules == ("DS101", "DS103")
 
 
-@pytest.mark.parametrize("profile", ("standard", "deep"))
-def test_standard_and_deep_profiles_still_report_pending(
+def test_deep_profile_still_reports_pending(
     fast_profile_tree: tuple[Path, Path],
-    profile: str,
 ) -> None:
     from docsentinel.config import Config
     from docsentinel.engine import scan
 
     root, _ = fast_profile_tree
 
-    result = scan(root, config=Config(profile=profile))
+    result = scan(root, config=Config(profile="deep"))
 
     assert result.findings == ()
     assert result.enabled_rules == ()
-    assert result.pending == (f"{profile} detectors are not implemented in M0",)
+    assert "deep profile requires explicit opt-in" in result.pending[0]
     assert "not implemented" in result.notice
 
 

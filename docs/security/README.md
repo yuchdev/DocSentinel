@@ -92,3 +92,13 @@ for point-in-time reviews.
 - This task records that open risk; it does not resolve resource bounds.
 - No document content is transmitted to a network or model, and raw document
   content must not be logged unsafely.
+
+## Follow-up - 2026-10-11
+
+- `DS204` reads Python source code file contents under `docsig_paths` in addition
+  to the Markdown contents read by other detectors.
+- The scanned surface for crafted-input DoS now includes Python files, and
+  `docsig` performs third-party parsing over them in-process.
+- `docsig`, like any analyzer in DocSentinel, executes no scanned code, but parses
+  it in-process. Flagged for `security-auditor` to assess (a) the added read surface
+  and (b) in-process parsing behavior.

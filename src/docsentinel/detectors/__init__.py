@@ -1,5 +1,5 @@
 """Importing this package registers every shipped detector's Rule and Analyzer."""
 
-from docsentinel.detectors import comments, links, paths
+from docsentinel.detectors import comments, contradictions, links, paths
 
-__all__ = ["comments", "links", "paths"]
+__all__ = ["comments", "contradictions", "links", "paths"]

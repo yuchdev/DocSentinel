@@ -3,12 +3,14 @@ import os
 import re
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Optional
 
 import pytest
 
 from docsentinel import Config, ConfigError, cli, load_config, scan
 from docsentinel.cli import _exit_code, main
 from docsentinel.engine import ANALYZERS
+from docsentinel.errors import ExtraNotInstalledError
 from docsentinel.models import Document, Finding, ScanResult
 from docsentinel.reporting import render
 from docsentinel.rules import RULES, Rule, register_rule
@@ -16,8 +18,6 @@ from docsentinel.rules import RULES, Rule, register_rule
 
 @pytest.fixture
 def fake_fast_analyzer() -> Iterator[list[tuple[Path, tuple[Document, ...]]]]:
-    saved_rules = RULES.copy()
-    saved_analyzers = ANALYZERS.copy()
     calls: list[tuple[Path, tuple[Document, ...]]] = []
     rule = register_rule(Rule("DS199", "fast", "Fake fast rule", "Exercises selection."))
 
@@ -26,11 +26,11 @@ def fake_fast_analyzer() -> Iterator[list[tuple[Path, tuple[Document, ...]]]]:
         return ()
 
     ANALYZERS[rule.code] = analyzer
-    yield calls
-    RULES.clear()
-    RULES.update(saved_rules)
-    ANALYZERS.clear()
-    ANALYZERS.update(saved_analyzers)
+    try:
+        yield calls
+    finally:
+        RULES.pop(rule.code, None)
+        ANALYZERS.pop(rule.code, None)
 
 
 @pytest.fixture
@@ -52,7 +52,7 @@ def captured_cli_configs(monkeypatch: pytest.MonkeyPatch) -> list[Config]:
 
 
 def test_empty_scan_is_inventory_not_detection(tmp_path: Path) -> None:
-    result = scan(tmp_path, config=Config(profile="standard"))
+    result = scan(tmp_path, config=Config(profile="deep"))
     assert result.documents == ()
     assert result.findings == ()
     assert result.enabled_rules == ()
@@ -108,11 +108,11 @@ def test_scan_notice_distinguishes_unimplemented_profile_from_filtered_out(
     tmp_path: Path,
     fake_fast_analyzer: list[tuple[Path, tuple[Document, ...]]],
 ) -> None:
-    unimplemented = scan(tmp_path, config=Config(profile="standard"))
+    unimplemented = scan(tmp_path, config=Config(profile="deep"))
     filtered = scan(tmp_path, config=Config(profile="fast", ignore=("DS1",)))
 
     assert fake_fast_analyzer == []
-    assert unimplemented.pending == ("standard detectors are not implemented in M0",)
+    assert "deep profile requires explicit opt-in" in unimplemented.pending[0]
     assert filtered.pending == ("all fast rules were excluded by select/ignore",)
     assert "not implemented" not in filtered.notice
     assert "evaluated" not in filtered.notice
@@ -172,7 +172,7 @@ def test_config_and_pending_profile(tmp_path: Path) -> None:
     )
     result = scan(tmp_path)
     assert [doc.path for doc in result.documents] == ["b.markdown"]
-    assert result.pending == ("deep detectors are not implemented in M0",)
+    assert "deep profile requires explicit opt-in" in result.pending[0]
     assert result.enabled_rules == ()
 
 
@@ -241,12 +241,14 @@ def test_cli_ignore_flag_overrides_config_file(
 
 
 @pytest.mark.parametrize(
-    ("arguments", "expected_profile", "expected_select", "expected_ignore"),
+    ("arguments", "expected_profile", "expected_select", "expected_ignore", "expected_baseline"),
     [
-        (("--profile", "standard"), "standard", ("DS10",), ("DS90",)),
-        (("--select", "DS2, DS3"), "deep", ("DS2", "DS3"), ("DS90",)),
+        (("--profile", "standard"), "standard", ("DS10",), ("DS90",), None),
+        (("--select", "DS2, DS3"), "deep", ("DS2", "DS3"), ("DS90",), None),
+        (("--ignore", "DS201"), "deep", ("DS10",), ("DS201",), None),
+        (("--baseline", "custom-baseline.json"), "deep", ("DS10",), ("DS90",), "custom-baseline.json"),
     ],
-    ids=("profile", "select"),
+    ids=("profile", "select", "ignore", "baseline"),
 )
 def test_cli_explicit_override_preserves_other_loaded_settings(
     tmp_path: Path,
@@ -255,9 +257,18 @@ def test_cli_explicit_override_preserves_other_loaded_settings(
     expected_profile: str,
     expected_select: tuple[str, ...],
     expected_ignore: tuple[str, ...],
+    expected_baseline: Optional[str],
 ) -> None:
     (tmp_path / "doc_sentinel.toml").write_text(
-        'profile = "deep"\ninclude = ["*.markdown"]\nexclude = ["build"]\nselect = ["DS10"]\nignore = ["DS90"]\n',
+        'profile = "deep"\n'
+        'include = ["*.markdown"]\n'
+        'exclude = ["build"]\n'
+        'select = ["DS10"]\n'
+        'ignore = ["DS90"]\n'
+        "max_grade_level = 11.5\n"
+        "duplicate_similarity = 0.75\n"
+        "min_information_score = 0.25\n"
+        'docsig_paths = ["lib"]\n',
         encoding="utf-8",
     )
 
@@ -270,43 +281,52 @@ def test_cli_explicit_override_preserves_other_loaded_settings(
             profile=expected_profile,
             select=expected_select,
             ignore=expected_ignore,
+            baseline=expected_baseline,
+            max_grade_level=11.5,
+            duplicate_similarity=0.75,
+            min_information_score=0.25,
+            docsig_paths=("lib",),
         )
     ]
 
 
 def test_rules_command_lists_real_registry(capsys: pytest.CaptureFixture[str]) -> None:
     expected_codes = ("DS101", "DS102", "DS103")
-    assert tuple(sorted(RULES)) == expected_codes
     assert main(["rules"]) == 0
 
     output = capsys.readouterr().out
     profiles = ("fast", "standard", "deep")
     positions = tuple(output.index(profile) for profile in profiles)
     assert positions == tuple(sorted(positions))
-    assert output.count("(none registered)") == 2
     for index, start in enumerate(positions):
         end = positions[index + 1] if index + 1 < len(positions) else len(output)
         profile_output = output[start:end]
         if profiles[index] == "fast":
             assert all(code in profile_output for code in expected_codes)
             assert "(none registered)" not in profile_output
+        elif profiles[index] == "standard":
+            assert "DS201" in profile_output
+            assert "DS202" in profile_output
+            assert "DS203" in profile_output
+            assert "DS204" in profile_output
+            assert "(none registered)" not in profile_output
         else:
-            assert "(none registered)" in profile_output
-    assert tuple(sorted(RULES)) == expected_codes
+            assert "DS301" in profile_output
+            assert "(none registered)" not in profile_output
+    assert tuple(sorted(RULES)) == (*expected_codes, "DS201", "DS202", "DS203", "DS204", "DS301")
 
 
 def test_doctor_command_reports_counts(capsys: pytest.CaptureFixture[str]) -> None:
-    expected_codes = ("DS101", "DS102", "DS103")
-    assert tuple(sorted(RULES)) == expected_codes
+    expected_codes = ("DS101", "DS102", "DS103", "DS201", "DS202", "DS203", "DS204", "DS301")
     assert main(["doctor"]) == 0
 
-    lines = capsys.readouterr().out.splitlines()
-    assert lines == [
-        "Inventory: available",
-        "fast rules: 3 registered",
-        "standard rules: 0 registered",
-        "deep rules: 0 registered",
-    ]
+    output = capsys.readouterr().out
+    assert "Inventory: available" in output
+    assert "standard profile: available" in output
+    assert "deep profile:" in output
+    assert "fast rules: 3 registered" in output
+    assert "standard rules: 4 registered" in output
+    assert "deep rules: 1 registered" in output
     assert tuple(sorted(RULES)) == expected_codes
 
 
@@ -447,3 +467,244 @@ def test_scan_exclude_parent_path_pattern_nested_document(tmp_path: Path) -> Non
 
     result = scan(tmp_path, config=Config(exclude=("sub/doc.md",)))
     assert [doc.path for doc in result.documents] == ["root.md", "sub/preserve.md"]
+
+
+def test_fast_scan_does_not_import_standard_subpackage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[None] = []
+
+    def fake_loader() -> None:
+        calls.append(None)
+
+    monkeypatch.setattr("docsentinel.engine.ensure_standard_loaded", fake_loader)
+    scan(tmp_path, config=Config(profile="fast"))
+
+    assert calls == []
+
+
+def test_standard_scan_calls_loader(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[None] = []
+
+    def fake_loader() -> None:
+        calls.append(None)
+
+    monkeypatch.setattr("docsentinel.engine.ensure_standard_loaded", fake_loader)
+    scan(tmp_path, config=Config(profile="standard"))
+
+    assert len(calls) == 1
+
+
+def test_standard_scan_without_extra_raises_actionable_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cause = ModuleNotFoundError("No module named 'sklearn'", name="sklearn")
+
+    def fake_loader() -> None:
+        raise ExtraNotInstalledError("standard", cause)
+
+    monkeypatch.setattr("docsentinel.engine.ensure_standard_loaded", fake_loader)
+
+    with pytest.raises(ExtraNotInstalledError) as exc_info:
+        scan(tmp_path, config=Config(profile="standard"))
+
+    assert exc_info.value.extra == "standard"
+    assert "docsentinel[standard]" in str(exc_info.value)
+
+
+def test_cli_scan_standard_without_extra_exits_2_with_guidance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cause = ModuleNotFoundError("No module named 'sklearn'", name="sklearn")
+
+    def fake_loader() -> None:
+        raise ExtraNotInstalledError("standard", cause)
+
+    monkeypatch.setattr("docsentinel.engine.ensure_standard_loaded", fake_loader)
+    assert main(["scan", str(tmp_path), "--profile", "standard"]) == 2
+    captured = capsys.readouterr()
+    assert "docsentinel[standard]" in captured.err
+    assert "Scan failed:" in captured.err
+
+
+def test_cli_rules_lists_standard_when_extra_present(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr("docsentinel.cli.ensure_standard_loaded", lambda: None)
+    rule = register_rule(Rule("DS299", "standard", "Fake standard rule", "Tests standard CLI rules listing."))
+    try:
+        assert main(["rules"]) == 0
+        output = capsys.readouterr().out
+        assert "DS299: Fake standard rule" in output
+    finally:
+        RULES.pop(rule.code, None)
+
+
+def test_cli_rules_notes_missing_extra_and_still_exits_0(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cause = ModuleNotFoundError("No module named 'sklearn'", name="sklearn")
+
+    def fake_loader() -> None:
+        raise ExtraNotInstalledError("standard", cause)
+
+    monkeypatch.setattr("docsentinel.cli.ensure_standard_loaded", fake_loader)
+    assert main(["rules"]) == 0
+    output = capsys.readouterr().out
+    assert "standard profile: install docsentinel[standard] to enable (DS2xx)" in output
+
+
+@pytest.mark.parametrize(
+    ("loader_raises", "expected_fragment"),
+    [
+        (False, "standard profile: available"),
+        (True, "standard profile: not installed (pip install docsentinel[standard])"),
+    ],
+    ids=("available", "not_installed"),
+)
+def test_cli_doctor_reports_standard_availability(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    loader_raises: bool,
+    expected_fragment: str,
+) -> None:
+    if loader_raises:
+        cause = ModuleNotFoundError("No module named 'sklearn'", name="sklearn")
+
+        def fake_loader() -> None:
+            raise ExtraNotInstalledError("standard", cause)
+
+        monkeypatch.setattr("docsentinel.cli.ensure_standard_loaded", fake_loader)
+    else:
+        monkeypatch.setattr("docsentinel.cli.ensure_standard_loaded", lambda: None)
+
+    assert main(["doctor"]) == 0
+    output = capsys.readouterr().out
+    assert expected_fragment in output
+
+
+def test_cli_scan_fast_profile_never_loads_standard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[None] = []
+
+    def fake_loader() -> None:
+        calls.append(None)
+
+    monkeypatch.setattr("docsentinel.engine.ensure_standard_loaded", fake_loader)
+    monkeypatch.setattr("docsentinel.cli.ensure_standard_loaded", fake_loader)
+
+    assert main(["scan", str(tmp_path)]) == 0
+    assert calls == []
+
+
+def test_deep_unconfirmed_reports_opt_in_pending(tmp_path: Path) -> None:
+    result = scan(tmp_path, config=Config(profile="deep"))
+    assert result.findings == ()
+    assert result.enabled_rules == ()
+    assert "deep profile requires explicit opt-in" in result.pending[0]
+    assert "not implemented" in result.notice
+
+
+def test_deep_confirmed_via_config_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: True)
+    monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: ())
+    result = scan(tmp_path, config=Config(profile="deep", deep_confirm=True))
+    assert result.findings == ()
+    assert result.enabled_rules == ("DS301",)
+    assert "evaluated" in result.notice
+
+
+def test_deep_confirmed_via_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DOCSENTINEL_DEEP_CONFIRM", "1")
+    monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: True)
+    monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: ())
+    result = scan(tmp_path, config=Config(profile="deep"))
+    assert result.findings == ()
+    assert result.enabled_rules == ("DS301",)
+    assert "evaluated" in result.notice
+
+
+def test_deep_confirmed_via_cli_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: True)
+    monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: ())
+    code = main(["scan", str(tmp_path), "--profile", "deep", "--i-understand-deep-is-heuristic"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "1 deep rule(s) evaluated" in out
+
+
+def test_deep_confirmed_but_deps_missing_reports_pending(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: False)
+    result = scan(tmp_path, config=Config(profile="deep", deep_confirm=True))
+    assert result.findings == ()
+    assert result.enabled_rules == ()
+    assert "deep profile confirmed, but its dependencies are unavailable" in result.pending[0]
+    assert "pip install docsentinel[deep]" in result.pending[0]
+
+
+def test_deep_findings_never_fail_exit_code() -> None:
+    result = ScanResult(
+        profile="deep",
+        documents=(),
+        findings=(Finding(rule="DS301", path="a.md", message="candidate contradiction", severity="warning"),),
+        enabled_rules=("DS301",),
+        pending=(),
+    )
+    assert _exit_code(result, strict=False) == 0
+
+
+def test_deep_findings_exempt_even_under_strict() -> None:
+    result = ScanResult(
+        profile="deep",
+        documents=(),
+        findings=(Finding(rule="DS301", path="a.md", message="candidate contradiction", severity="warning"),),
+        enabled_rules=("DS301",),
+        pending=(),
+    )
+    assert _exit_code(result, strict=True) == 0
+
+
+def test_deep_exemption_holds_even_for_error_severity() -> None:
+    result = ScanResult(
+        profile="deep",
+        documents=(),
+        findings=(Finding(rule="DS301", path="a.md", message="hypothetical error", severity="error"),),
+        enabled_rules=("DS301",),
+        pending=(),
+    )
+    assert _exit_code(result, strict=False) == 0
+    assert _exit_code(result, strict=True) == 0
+
+
+def test_fast_and_standard_exit_codes_unchanged() -> None:
+    fast_err = ScanResult(
+        profile="fast",
+        documents=(),
+        findings=(Finding(rule="DS101", path="a.md", message="error", severity="error"),),
+        enabled_rules=("DS101",),
+        pending=(),
+    )
+    assert _exit_code(fast_err, strict=False) == 1
+
+    std_warn = ScanResult(
+        profile="standard",
+        documents=(),
+        findings=(Finding(rule="DS201", path="a.md", message="warning", severity="warning"),),
+        enabled_rules=("DS201",),
+        pending=(),
+    )
+    assert _exit_code(std_warn, strict=False) == 0
+    assert _exit_code(std_warn, strict=True) == 1
+
+
+def test_deep_evaluated_notice_is_advisory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: True)
+    monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: ())
+    result = scan(tmp_path, config=Config(profile="deep", deep_confirm=True))
+    assert "evaluated" in result.notice
+    assert "advisory" in result.notice
+    assert "not implemented" not in result.notice

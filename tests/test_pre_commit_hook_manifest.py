@@ -43,6 +43,8 @@ def _parse_hooks_manifest(path: Path) -> list[dict[str, object]]:
                 val_obj = False
             elif val.isdigit():
                 val_obj = int(val)
+            elif val.startswith("[") and val.endswith("]"):
+                val_obj = [item.strip().strip("'\"") for item in val[1:-1].split(",") if item.strip()]
             else:
                 val_obj = val
             current[key] = val_obj
@@ -121,3 +123,52 @@ def test_hook_entry_command_exits_zero_on_planted_stray_comment(tmp_path: Path) 
 
     proc = _run_entry_command(entry_cmd, cwd=tmp_path)
     assert proc.returncode == 0
+
+
+def test_standard_hook_present_and_opt_in() -> None:
+    """Validate that docsentinel-standard exists and is opt-in via manual stage."""
+    assert MANIFEST_PATH.is_file(), f"{MANIFEST_PATH} does not exist"
+    hooks = _parse_hooks_manifest(MANIFEST_PATH)
+    standard_hook = next((h for h in hooks if h.get("id") == "docsentinel-standard"), None)
+    assert standard_hook is not None, "docsentinel-standard hook not found in manifest"
+
+    assert standard_hook["id"] == "docsentinel-standard"
+    assert standard_hook["entry"] == "docsentinel scan --profile standard"
+    assert standard_hook["language"] == "python"
+    assert standard_hook["pass_filenames"] is False
+    assert standard_hook["always_run"] is True
+    assert standard_hook.get("stages") == ["manual"]
+    deps = standard_hook.get("additional_dependencies")
+    assert isinstance(deps, list)
+    assert any("docsentinel[standard]" in dep for dep in deps)
+
+
+def test_fast_hook_is_still_default_and_unchanged() -> None:
+    """Validate that docsentinel-fast has no stages restriction and remains default."""
+    assert MANIFEST_PATH.is_file(), f"{MANIFEST_PATH} does not exist"
+    hooks = _parse_hooks_manifest(MANIFEST_PATH)
+    fast_hook = next((h for h in hooks if h.get("id") == "docsentinel-fast"), None)
+    assert fast_hook is not None, "docsentinel-fast hook not found in manifest"
+
+    assert "stages" not in fast_hook
+    assert fast_hook["always_run"] is True
+    assert fast_hook["pass_filenames"] is False
+    assert fast_hook["entry"] == "docsentinel scan --profile fast"
+
+
+def test_standard_and_fast_use_separate_baseline_files() -> None:
+    """Assert that standard profile and fast profile use distinct baseline files."""
+    ci_workflow_path = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+    assert ci_workflow_path.is_file(), f"{ci_workflow_path} does not exist"
+    ci_content = ci_workflow_path.read_text(encoding="utf-8")
+
+    fast_baseline_path = REPO_ROOT / ".docsentinel-baseline.json"
+    standard_baseline_path = REPO_ROOT / ".docsentinel-standard-baseline.json"
+
+    assert fast_baseline_path.name != standard_baseline_path.name
+    assert standard_baseline_path.is_file(), f"{standard_baseline_path} does not exist"
+    assert fast_baseline_path.is_file(), f"{fast_baseline_path} does not exist"
+
+    # CI standard lane must explicitly reference the standard baseline file
+    assert ".docsentinel-standard-baseline.json" in ci_content
+    assert "--profile standard" in ci_content
