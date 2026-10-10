@@ -28,6 +28,7 @@ plugin) detect a shape change instead of guessing from field presence.
 | Symbol | Change |
 |--------|--------|
 | `ScanResult` | Add `schema_version: int = 1` as the **first** field (before `profile`) - field order affects `dataclasses.astuple`/positional construction call sites; grep the codebase for any positional `ScanResult(...)` construction (there is exactly one, in `engine.scan`) and update it to keyword arguments if not already done by Milestone 0001 Story 01.0 Task 03 (which already changed this constructor call - verify, don't assume, since that task may have landed with positional args that this one would silently break). |
+| `Finding` | Add `line: Optional[int] = None`, representing a one-based source line when known. Existing callers remain valid; dataclass JSON serialization emits an integer or `null`. |
 
 **Versioning policy** (document this verbatim in `docs/architecture/README.md`, not just in this
 task spec): `schema_version` increments by exactly 1 whenever a field is removed, renamed, or has
@@ -43,6 +44,8 @@ This mirrors semantic-versioning-for-data, not semantic-versioning-for-code.
 - `test_schema_version_defaults_to_one_for_direct_construction` - `ScanResult(profile="fast",
   documents=(), findings=(), enabled_rules=(), pending=())` (keyword-only, no `schema_version`
   given) defaults to `1`.
+- `test_json_output_includes_finding_line` - a finding with a known line serializes that integer;
+  an unknown line serializes as `null`.
 
 ## Success criteria
 
