@@ -255,3 +255,56 @@ def test_json_output_includes_finding_line() -> None:
     )
     payload_without_line = json.loads(render(result_without_line, "json"))
     assert payload_without_line["findings"][0]["line"] is None
+
+
+def test_deep_run_with_findings_shows_advisory_banner_text() -> None:
+    result = ScanResult(
+        profile="deep",
+        documents=(),
+        findings=(Finding(rule="DS301", path="a.md", message="candidate contradiction", severity="warning"),),
+        enabled_rules=("DS301",),
+        pending=(),
+        notice="1 deep rule(s) evaluated (heuristic, advisory-only).",
+    )
+    rendered = render(result, "text")
+    assert "Deep findings are heuristic candidates for review - they do not fail the build." in rendered
+
+
+def test_deep_run_with_findings_advisory_in_json() -> None:
+    result = ScanResult(
+        profile="deep",
+        documents=(),
+        findings=(Finding(rule="DS301", path="a.md", message="candidate contradiction", severity="warning"),),
+        enabled_rules=("DS301",),
+        pending=(),
+        notice="1 deep rule(s) evaluated (heuristic, advisory-only).",
+    )
+    payload = json.loads(render(result, "json"))
+    assert payload["advisory"] == "Deep findings are heuristic candidates for review - they do not fail the build."
+
+
+def test_fast_run_has_no_advisory_banner() -> None:
+    result = ScanResult(
+        profile="fast",
+        documents=(),
+        findings=(Finding(rule="DS101", path="a.md", message="Broken link", severity="error"),),
+        enabled_rules=("DS101",),
+        pending=(),
+    )
+    assert "Deep findings are heuristic candidates" not in render(result, "text")
+    payload = json.loads(render(result, "json"))
+    assert "advisory" not in payload
+
+
+def test_deep_run_without_findings_no_banner() -> None:
+    result = ScanResult(
+        profile="deep",
+        documents=(),
+        findings=(),
+        enabled_rules=("DS301",),
+        pending=(),
+        notice="1 deep rule(s) evaluated (heuristic, advisory-only).",
+    )
+    assert "Deep findings are heuristic candidates" not in render(result, "text")
+    payload = json.loads(render(result, "json"))
+    assert "advisory" not in payload

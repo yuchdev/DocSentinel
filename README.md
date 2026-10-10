@@ -45,5 +45,16 @@ For an opt-in pytest fixture, install the test extra and invoke
 returns a `ScanResult` for the working directory. It does not assert that
 documentation is error-free.
 
+### Deep profile (optional)
+
+Deep-profile checks are heuristic and require explicit opt-in confirmation:
+
+```sh
+pip install 'docsentinel[deep]'    # or: uv sync --extra deep
+python -m spacy download en_core_web_sm
+```
+
+Enable with `deep_confirm = true` in configuration, `--i-understand-deep-is-heuristic` via CLI, or `DOCSENTINEL_DEEP_CONFIRM=1`.
+
 See [architecture](docs/architecture/README.md) and
 [contributing](CONTRIBUTING.md) for design boundaries and validation commands.
