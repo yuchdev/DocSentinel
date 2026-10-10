@@ -9,7 +9,7 @@ Tracks progress against [plan.md](plan.md). Updated as each story lands.
 | 01.0  | Rule Registry & Config Conventions  | ✅ Complete    | 4/4      | 50 full |
 | 02.0  | Fast-Profile Structural Detectors   | ✅ Complete    | 4/4      | 136 full |
 | 03.0  | CLI & Reporting Completion          | ✅ Complete    | 3/3      | 159 full |
-| 04.0  | Pre-commit, CI & Self-Scan Baseline | 🔶 Partial     | 3/3      | 209 full; remote CI trial pending |
+| 04.0  | Pre-commit, CI & Self-Scan Baseline | ✅ Complete    | 3/3      | 209 full; remote CI trial passed |
 
 ## Task status
 
@@ -28,7 +28,7 @@ Tracks progress against [plan.md](plan.md). Updated as each story lands.
 | 03.0-03 | JSON schema versioning | ✅ Complete | Schema v1 JSON/text contract, keyword-safe construction, documented compatibility policy |
 | 04.0-01 | Pre-commit fast hook wiring | ✅ Complete | Existing manifest verified; clean/warning/error subprocess behavior and bounded execution tested |
 | 04.0-02 | Baseline file mechanism | ✅ Complete | Strict `fingerprints` schema, deterministic hash-only saves, pre-exit filtering, CLI capture; 35 focused tests passed |
-| 04.0-03 | Self-scan baseline capture | 🔶 Partial | ADR links fixed; 711-fingerprint baseline, clean local self-scan, CI gate wired; remote throwaway-branch trial prohibited without authorization |
+| 04.0-03 | Self-scan baseline capture | ✅ Complete | ADR links fixed; 711-fingerprint baseline, clean local self-scan, CI gate wired; remote CI trial passed (yuchdev/DocSentinel, branch trial/milestone-0001-github-actions, commit 6b2906cedb5d27803a5e9a06b0c3947ebd7605fa, run 38073201647) across Python 3.11/3.12/3.13 |
 
 ## Decisions and gap dispositions
 
@@ -64,13 +64,16 @@ Tracks progress against [plan.md](plan.md). Updated as each story lands.
   documented compatibility policy. Story-close gates: 159 plugin-loaded tests passed; Ruff check
   and format passed over `src/` and `tests/`; architecture, security-review, and documentation-index
   links passed; security review found no workflow-command injection blocker.
-- **04.0 Pre-commit, CI & Self-Scan Baseline:** implemented all three tasks locally: verified the
-  existing non-strict hook, added the strict `fingerprints` baseline mechanism, removed three stale
-  illustrative ADR links, captured 711 deferred findings, and wired an exit-code-checked CI scan.
-  Local self-scan exits 0 with zero findings and all three fast rules evaluated. The task-spec manual
-  throwaway-branch push through GitHub Actions was not performed because the standing instructions
-  prohibit pushes and remote mutations without explicit authorization; Story 04 therefore remains
-  partial rather than claiming that external criterion passed.
+- **04.0 Pre-commit, CI & Self-Scan Baseline:** implemented all three tasks: verified the existing
+  non-strict hook, added the strict `fingerprints` baseline mechanism, removed three stale illustrative
+  ADR links, captured 711 deferred findings, and wired an exit-code-checked CI scan. Local self-scan
+  exits 0 with zero findings and all three fast rules evaluated. Authorized remote CI trial passed on
+  GitHub Actions ([yuchdev/DocSentinel](https://github.com/yuchdev/DocSentinel), branch [trial/milestone-0001-github-actions](https://github.com/yuchdev/DocSentinel/tree/trial/milestone-0001-github-actions), commit
+  `6b2906cedb5d27803a5e9a06b0c3947ebd7605fa`, run `38073201647`, URL
+  https://github.com/yuchdev/DocSentinel/actions/runs/38073201647, push event, conclusion success)
+  across Python 3.11, 3.12, and 3.13 matrix jobs (locked sync, plugin-loaded pytest, JSON and text
+  self-scans, and build all passed). Nonblocking platform notices: Node.js 20 and ubuntu-latest runner
+  migration annotations noted without failures.
 
 ## Milestone exit-gate evidence
 
@@ -86,8 +89,12 @@ Tracks progress against [plan.md](plan.md). Updated as each story lands.
   zero implementation defects; unified feature/security review returned APPROVE with no blocker or
   security severity; repository secret scan found no credential matches.
 - **Documentation:** all 75 documentation files passed relative-link and heading-anchor validation.
-- **Close blocker:** these local gates passed, but milestone completion and roadmap-index updates are
-  withheld until the Task 04.0-03 remote throwaway-branch GitHub Actions trial is either explicitly
-  authorized and passes or the user waives that criterion.
+- **Remote CI trial and milestone completion:** authorized remote GitHub Actions CI trial completed
+  successfully (repository [yuchdev/DocSentinel](https://github.com/yuchdev/DocSentinel), branch [trial/milestone-0001-github-actions](https://github.com/yuchdev/DocSentinel/tree/trial/milestone-0001-github-actions), commit
+  `6b2906cedb5d27803a5e9a06b0c3947ebd7605fa`, run `38073201647`, URL
+  https://github.com/yuchdev/DocSentinel/actions/runs/38073201647, push event, conclusion success).
+  Matrix jobs for Python 3.11, 3.12, and 3.13 all passed locked sync, plugin-loaded pytest (209 tests),
+  JSON and text self-scans, and build. Nonblocking platform notices: Node.js 20 and ubuntu-latest runner
+  migration annotations noted without failures. Milestone 0001 is complete.
 
 **Legend:** ✅ Complete · 🔶 In progress / partial · ⬜ Not started
