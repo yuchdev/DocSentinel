@@ -3,7 +3,9 @@
 | Path | Purpose |
 |------|---------|
 | `docs/README.md` | This registry of documents under `docs/`. |
-| `docs/architecture/README.md` | DocSentinel's own design boundaries: the config → discovery → `engine.scan` → reporting flow, and which checks the `fast`/`standard`/`deep` profiles may add in later milestones (none exist in M0). |
+| `doc_sentinel.toml` | Root DocSentinel configuration specifying scan exclusions and baseline path. |
+| `.docsentinel-baseline.json` | Captured finding fingerprints for repository self-scan baseline suppression. |
+| `docs/architecture/README.md` | DocSentinel's design boundaries: config discovery and rule selection, the discovery → `engine.scan` → reporting flow, and the future `fast`/`standard`/`deep` rule namespaces (no detectors exist before Story 02.0). |
 | `docs/adr/README.md` | ADR conventions: MADR template, `000N-slug.md` naming, Mermaid assets. |
 | `docs/adr/template.md` | MADR skeleton used by `app-architect` and `/adr-write`. |
 | `docs/adr/0001-config-loading-via-layered-settings.md` | Illustrative example ADR (layered pydantic-settings). Not a real DocSentinel decision; DocSentinel loads config with `tomllib` in `config.py`. |
@@ -22,4 +24,6 @@
 | `docs/reviews/README.md` | Where `background-reviewer` writes dependency, secret, performance and license reports. |
 | `docs/reviews/example-report.md` | Example review report showing the expected format. |
 | `docs/security/README.md` | Threat models and security reviews owned by `security-auditor`, including the initial DocSentinel threat-model draft. |
+| `docs/security/review-github-actions-annotations-2026-10-10.md` | Security review of GitHub Actions annotation escaping, severity mapping, and CI output exposure. |
+| `docs/security/review-pre-commit-fast-hook-wiring-2026-10-10.md` | Security review of the fast pre-commit hook manifest, subprocess invocation, and exit-code policy. |
 | `docs/test/code_test_coverage.md` | Coverage requirements checklist and workflow. |

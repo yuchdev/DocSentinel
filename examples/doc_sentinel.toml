@@ -1,0 +1,5 @@
+profile = "fast"
+include = ["docs/*.md"]
+exclude = []
+select = ["DS1"]
+ignore = ["DS103"]

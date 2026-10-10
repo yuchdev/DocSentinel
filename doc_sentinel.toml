@@ -1,0 +1,2 @@
+baseline = ".docsentinel-baseline.json"
+exclude = [".git", ".venv", "node_modules", "dist", ".junie"]

@@ -82,3 +82,13 @@ for point-in-time reviews.
 >   - Future content-reading analyzers need their own review of parsing and memory limits.
 >
 > **Verdict**: LOW for M0, since it only inventories files and makes no network calls. Re-assess when the first `ANALYZERS` entry or any `deep` integration lands.
+
+## Follow-up - 2026-10-10
+
+- Fast detectors now read full document contents. Malicious extremely long
+  single lines that cause regex backtracking and deeply nested fence structures
+  are an in-scope untrusted-content denial-of-service surface for security
+  review.
+- This task records that open risk; it does not resolve resource bounds.
+- No document content is transmitted to a network or model, and raw document
+  content must not be logged unsafely.

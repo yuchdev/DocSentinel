@@ -19,4 +19,5 @@ jobs:
       - run: uv sync --locked --extra test
       - run: uv run --locked pytest -p docsentinel.pytest_plugin
       - run: uv run --locked docsentinel scan . --format json
+      - run: uv run --locked docsentinel scan .
       - run: uv build
