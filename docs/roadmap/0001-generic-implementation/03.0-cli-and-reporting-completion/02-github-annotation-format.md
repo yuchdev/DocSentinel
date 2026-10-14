@@ -29,26 +29,25 @@ finding show up where a reviewer is already looking, instead of only in a log ta
 | Symbol | Change |
 |--------|--------|
 | `render(result: ScanResult, format: str = "text") -> str` | Add a third branch: `if format == "github": return _render_github(result)`. |
-| `_render_github(result: ScanResult) -> str` | New. One line per `Finding`: `` f"::{_gha_level(f.severity)} file={f.path}::{f.rule}: {f.message}" `` (no line/column - `models.Finding` has no line number field today; omit those workflow-command parameters rather than fabricate `line=1`). Findings only - no profile/enabled-rules/pending/notice preamble (GitHub's annotation UI has no use for that framing; keep this format purely machine-consumed). |
+| `_render_github(result: ScanResult) -> str` | New. One line per `Finding`: include `file=...` and, when `Finding.line` is not `None`, `line=N`. Omit the line parameter rather than fabricating `line=1` when no source location is known. Findings only - no profile/enabled-rules/pending/notice preamble (GitHub's annotation UI has no use for that framing; keep this format purely machine-consumed). |
 | `_gha_level(severity: str) -> str` | New. `"error"` → `"error"`; anything else → `"warning"` - GitHub's workflow-command vocabulary only has `error`/`warning`/`notice`; map unknown/future severities to `"warning"` rather than erroring, so a new severity string introduced later doesn't crash report rendering. |
 
 `src/docsentinel/cli.py`: `scan_parser.add_argument("--format", choices=("text", "json", "github"), default="text")` (add the one new choice to the existing line).
 
-## Note for a future task
+## Structured location contract
 
-`DS101`'s `Finding.message` already contains line-relevant information in prose
-(`"dangling link -> ..."`) but `Finding` has no structured `line` field, so this format cannot
-emit `line=N` yet. Adding a `line: int | None = None` field to `Finding` is explicitly **out of
-scope** for this task (it would ripple into every detector written in Story 02.0 and the JSON
-schema versioning in Task 03) - note it here as a candidate for a later milestone once enough
-detectors exist to justify the model change, rather than doing it piecemeal now.
+This milestone adds `Finding.line: Optional[int] = None` as a one-based public source location.
+Story 02.0 detectors populate it when they can identify the relevant source line. Dataclass JSON
+serialization includes the field as an integer or `null`; this task uses it for GitHub's
+`line=N` workflow-command parameter without changing findings that have no known location.
 
 ## Tests
 
 - `test_github_format_renders_error_and_warning_levels` - one `error` and one `warning` finding
   render as `::error ...` and `::warning ...` respectively.
-- `test_github_format_omits_line_column_params` - the rendered string contains no `,line=` or
-  `,col=` segment (documents the current `Finding` limitation rather than faking a value).
+- `test_github_format_includes_known_line` - a finding with `line=7` renders a `line=7` parameter.
+- `test_github_format_omits_unknown_line_and_column` - a finding with `line=None` has no line or
+  column parameter rather than a fabricated location.
 - `test_github_format_with_no_findings_is_empty_string` - a clean `ScanResult` renders to `""`
   (no preamble noise in a format meant purely for CI annotation consumption).
 - `test_unknown_severity_maps_to_warning_level` - a `Finding` with an invented severity string

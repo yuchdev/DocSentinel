@@ -213,6 +213,7 @@ def iter_markdown(paths: list[Path]) -> list[Path]:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    """Validate Markdown links and anchors across the specified files or directories."""
     parser = argparse.ArgumentParser(description="Validate Markdown links and anchors.")
     parser.add_argument(
         "paths",

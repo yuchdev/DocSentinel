@@ -48,6 +48,22 @@ background reviewer) are real, already-scoped future milestones - see
   `CLAUDE.md`'s "must not describe an empty findings list as a validated audit."
 - **Full type annotations, `Optional[T]` style, no bare `except:`** - see
   [`docs/dev/python_coding_standard.md`](/docs/dev/python_coding_standard.md).
+- **Stable location reporting.** `Finding.line` is an optional, structured, one-based source line.
+  Detectors provide it when they can identify a source location; JSON includes it and GitHub
+  annotations emit `line=N` when present without fabricating a value when absent.
+
+## Milestone exit gates
+
+Run these gates once after every story is complete, and record the exact evidence in
+[`status.md`](status.md):
+
+1. Synchronize the locked dependency environment without changing the lock unexpectedly.
+2. Run the full pytest suite, loading the DocSentinel pytest plugin when the repository requires it.
+3. Run DocSentinel's self-scan with the committed baseline and confirm profile/result honesty.
+4. Build the source distribution and wheel from the locked environment.
+5. Review profile notices, enabled rules, pending rules, JSON output, and CLI exit behavior for
+   honesty; an empty findings list must not imply that unimplemented detection ran.
+6. Run the roadmap documentation link check over this milestone and affected roadmap indexes.
 
 ## Rule code namespace
 

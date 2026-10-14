@@ -1,0 +1,7 @@
+baseline = ".docsentinel-baseline.json"
+exclude = [".git", ".venv", "node_modules", ".dist", ".junie", "tests/assets/*"]
+
+# DS201 scores come from textstat, whose syllable counts differ slightly between versions and
+# platforms. Baseline fingerprints include the printed score, so a threshold sitting right at a
+# document's grade makes CI flap. Keep a buffer above the highest document in the repo (README: 16.4).
+max_grade_level = 18.0

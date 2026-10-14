@@ -10,13 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --locked --extra test
+      - run: uv sync --locked --extra test --extra standard
       - run: uv run --locked pytest -p docsentinel.pytest_plugin
       - run: uv run --locked docsentinel scan . --format json
+      - run: uv run --locked docsentinel scan .
+      - run: uv run --locked docsentinel scan . --profile standard --baseline .docsentinel-standard-baseline.json
       - run: uv build

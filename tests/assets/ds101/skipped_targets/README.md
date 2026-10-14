@@ -1,0 +1,8 @@
+[web](http://example.invalid/missing.md)
+[mail](mailto:nobody@example.invalid)
+[custom](example:missing)
+[template]({NN}-{slug}.md)
+[glob](*.md)
+[question](docs/?.md)
+[empty]()
+[space]( )

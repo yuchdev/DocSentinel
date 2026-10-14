@@ -1,0 +1,1 @@
+DocSentinel provides deterministic documentation quality assurance with unique content.

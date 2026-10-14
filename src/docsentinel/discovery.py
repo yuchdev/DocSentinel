@@ -1,7 +1,7 @@
 """Discover Markdown files without following directory symlinks."""
 
-from fnmatch import fnmatchcase
 import os
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 from docsentinel.config import Config
@@ -14,12 +14,11 @@ def discover(root: Path, config: Config) -> tuple[Document, ...]:
         raise ValueError(f"Not a directory: {root}")
     documents: list[Document] = []
 
-    def raise_walk_error(error: OSError) -> None:
+    def raise_walk_error(error: OSError):
+        """Re-raise directory walk errors encountered during os.walk."""
         raise error
 
-    for current, directories, filenames in os.walk(
-        root, topdown=True, onerror=raise_walk_error
-    ):
+    for current, directories, filenames in os.walk(root, topdown=True, onerror=raise_walk_error):
         current_path = Path(current)
         directories[:] = [
             name
@@ -34,8 +33,9 @@ def discover(root: Path, config: Config) -> tuple[Document, ...]:
             relative = path.relative_to(root).as_posix()
             if any(fnmatchcase(relative, pattern) for pattern in config.exclude):
                 continue
-            if any(fnmatchcase(part, pattern) for part in path.relative_to(root).parts[:-1]
-                   for pattern in config.exclude):
+            if any(
+                fnmatchcase(part, pattern) for part in path.relative_to(root).parts[:-1] for pattern in config.exclude
+            ):
                 continue
             if not any(fnmatchcase(relative, pattern) for pattern in config.include):
                 continue

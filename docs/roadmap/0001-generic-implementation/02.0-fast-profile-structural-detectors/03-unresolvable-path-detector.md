@@ -40,7 +40,7 @@ skip it) - **do not** flag code spans that are themselves inside a link's visibl
 | `_LINK_RE` | module-level compiled regex | Same shape as `detectors.links._LINK_RE` (duplicated per module, per this project's established no-shared-helpers-across-detectors convention from Task 02) - used only to find spans of text that are a link's visible label, so code spans inside them can be excluded. |
 | `_looks_path_like(candidate: str) -> bool` | function | True if `candidate` contains `/` **or** matches `re.search(r"\.[A-Za-z0-9]{1,5}$", candidate)` (a file-extension-shaped suffix) - **and** none of the exclusion rules below apply. |
 | `_is_excluded(candidate: str) -> bool` | function | True (skip, not a path) when `candidate`: contains whitespace; starts with `-` or `--` (a CLI flag, e.g. `` `--format` ``); starts with `$` or `>` (a shell prompt/variable, e.g. `` `$HOME/.env` ``'s leading `$HOME` segment - full string starting with `$`); matches `re.fullmatch(r"v?\d+(\.\d+){1,3}", candidate)` (a bare version number like `1.2.3` or `v2.0`); or is a bare file extension with no path segment and no base name longer than 4 characters (`` `.md` `` alone, `` `.py` `` alone) - these read as "the *kind* of file," not a *specific* file. |
-| `detect(root: Path, documents: tuple[Document, ...]) -> tuple[Finding, ...]` | function, the `Analyzer` | For each `.md` document: strip fenced blocks (reuse the same blank-not-delete approach as `DS102`, written locally in this module per the no-shared-helpers convention); find all `_CODE_SPAN_RE` matches whose span does **not** fall inside any `_LINK_RE` match's label portion; for each remaining candidate passing `_looks_path_like` and not `_is_excluded`, resolve it the same way `DS101` resolves link targets (leading `/` → repo-root-relative to `root`; else relative to the document's own directory) and emit a `Finding(rule="DS103", ...)` if it does not exist on disk. |
+| `detect(root: Path, documents: tuple[Document, ...]) -> tuple[Finding, ...]` | function, the `Analyzer` | For each `.md` document: strip fenced blocks (reuse the same blank-not-delete approach as `DS102`, written locally in this module per the no-shared-helpers convention); find all `_CODE_SPAN_RE` matches whose span does **not** fall inside any `_LINK_RE` match's label portion; for each remaining candidate passing `_looks_path_like` and not `_is_excluded`, resolve it the same way `DS101` resolves link targets (leading `/` → repo-root-relative to `root`; else relative to the document's own directory) and emit a `Finding(rule="DS103", ..., line=...)` with the one-based match line if it does not exist on disk. |
 
 ## Tests (`tests/test_detectors_paths.py`)
 
@@ -56,6 +56,8 @@ skip it) - **do not** flag code spans that are themselves inside a link's visibl
   **zero** `DS103` findings for the same span.
 - `test_code_span_inside_fenced_block_is_ignored` - same fence-skip guarantee as `DS102`.
 - `test_non_markdown_documents_are_not_scanned`.
+- `test_finding_reports_one_based_source_line` - a missing path-like span after preceding content
+  reports the line containing that span through `Finding.line`.
 
 ## Success criteria
 

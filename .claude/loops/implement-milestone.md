@@ -188,7 +188,7 @@ Build `story_queue` (dependency-ordered), `research_digest`, and `decisions`; wr
 the cursor; set `phase: "execute"`; proceed to Step M1 in the same iteration if
 budget allows, else reschedule.
 
-**DocSentinel milestone exit gates.** These mirror `.github/workflows/ci.yml`, which runs on Python 3.11, 3.12 and 3.13:
+**DocSentinel milestone exit gates.** These mirror `.github/workflows/ci.yml`, which runs on Python 3.12 and 3.13:
 
 1. `uv sync --locked --extra test`
 2. `uv run --locked pytest -p docsentinel.pytest_plugin` must be green. The plugin flag is required, or `tests/test_pytest_plugin.py` cannot resolve its fixture.
@@ -350,7 +350,7 @@ DocSentinel's "story complete" bar adds three requirements to the implement-stor
 - The self-scan `uv run docsentinel scan . --format json` must exit `0`.
 - Any new detector must have result tests before it is registered in `ANALYZERS`.
 
-"Milestone complete" additionally requires the CI-equivalent gates listed under R5 (`--locked` sync, `uv build`, Python 3.11-3.13). There is no coverage percentage, integration suite or staging deployment.
+"Milestone complete" additionally requires the CI-equivalent gates listed under R5 (`--locked` sync, `uv build`, Python 3.12-3.13). There is no coverage percentage, integration suite or staging deployment.
 
 ---
 

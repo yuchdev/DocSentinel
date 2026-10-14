@@ -19,8 +19,9 @@ backlog.
 
 ## Decision
 
-- Baseline format: a JSON object mapping a **stable finding fingerprint** to `true` (presence is
-  the only signal needed; no metadata stored per entry - keep it minimal, unlike a full report).
+- Baseline format: a JSON object with a `fingerprints` key whose value is a sorted list of stable
+  finding fingerprint strings: `{"fingerprints": [...]}`. Presence is the only signal needed;
+  no metadata is stored per entry, keeping it minimal unlike a full report.
 - Fingerprint: `f"{finding.rule}:{finding.path}:{hashlib.sha256(finding.message.encode()).hexdigest()[:12]}"`.
   Hashing the *message* (not storing it verbatim) means a baseline file doesn't need updating
   just because a message's wording improves in a later version - but a message hash is **not**
@@ -61,7 +62,7 @@ backlog.
 | Symbol | Kind | Notes |
 |--------|------|-------|
 | `fingerprint(finding: Finding) -> str` | function | Per the Decision's exact format. |
-| `load_baseline(path: Path) -> frozenset[str]` | function | Empty `frozenset()` if the file does not exist (a configured-but-not-yet-created baseline is not an error - `docsentinel baseline` creates it). Raises `ConfigError` (reuse the existing exception type, imported from `config.py`) on malformed JSON or a non-list/non-dict shape. |
+| `load_baseline(path: Path) -> frozenset[str]` | function | Empty `frozenset()` if the file does not exist (a configured-but-not-yet-created baseline is not an error - `docsentinel baseline` creates it). Requires exactly the object contract `{"fingerprints": [...]}` with string list members. Raises `ConfigError` (reuse the existing exception type, imported from `config.py`) on malformed JSON or an invalid shape. |
 | `save_baseline(path: Path, findings: tuple[Finding, ...]) -> None` | function | Writes `{"fingerprints": sorted(fingerprint(f) for f in findings)}`, `indent=2`, creating parent directories as needed (mirror `doc_registry.py`'s `--cursor` flag's `parent.mkdir(parents=True, exist_ok=True)` precedent from the Canonix Engine tooling this project's scaffold drew on, applied here to this project's own code for the first time). |
 | `filter_baselined(findings: tuple[Finding, ...], known: frozenset[str]) -> tuple[Finding, ...]` | function | `tuple(f for f in findings if fingerprint(f) not in known)`. |
 
