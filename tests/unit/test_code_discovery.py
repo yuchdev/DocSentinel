@@ -356,3 +356,10 @@ def test_docsig_path_as_symlink_is_skipped(tmp_path: Path):
 
     result = discover_python(tmp_path, Config())
     assert result == ()
+
+
+@pytest.mark.parametrize("entry", ("/tmp", "../outside"))
+def test_docsig_path_outside_root_is_rejected(tmp_path: Path, entry: str):
+    """Configured docsig paths cannot escape the scan root."""
+    with pytest.raises(ValueError, match="must remain under scan root"):
+        discover_python(tmp_path, Config(docsig_paths=(entry,)))

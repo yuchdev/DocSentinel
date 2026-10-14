@@ -7,7 +7,7 @@
 
 - id: docsentinel-standard
   name: DocSentinel standard profile (requires docsentinel[standard])
-  entry: docsentinel scan --profile standard
+  entry: docsentinel scan --profile standard --baseline .docsentinel-standard-baseline.json
   language: python
   additional_dependencies: ["docsentinel[standard]"]
   pass_filenames: false

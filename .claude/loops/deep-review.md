@@ -36,16 +36,18 @@ If exit code is non-zero (dependencies or model missing), print setup guidance a
 ### 2. Capture candidates
 Run the confirmed deep scan and save JSON output to `.claude/state/deep-review-candidates.json`:
 ```bash
+mkdir -p .claude/state
 docsentinel scan --profile deep --i-understand-deep-is-heuristic --format json > .claude/state/deep-review-candidates.json
 ```
 
 ### 3. Select review slice
-Read the cursor in `.claude/state/deep-review-candidates.json` to select the current rotating doc/source pair and advance the slice index for the next cycle.
+Read the `slice_index` from `.claude/state/deep-review-state.json` (defaulting to `0` when absent), and use it modulo the four slices above to select the current doc/source pair. The candidates report remains scan output only and is never used as state.
 
 ### 4. Drive `docs-reviewer`
 Spawn the `docs-reviewer` agent, passing the file paths for the captured candidates JSON and the selected doc/source review slice. Instruct the agent to generate `docs/reviews/YYYY-MM-DD-deep-review.md`.
 
 ### 5. Record & reschedule
+- After the report is successfully written, atomically update `.claude/state/deep-review-state.json` with `{"slice_index": <selected index + 1>}`. Do not advance the cursor if candidate capture or report generation fails.
 - **On-demand mode**: Print summary of findings and report location, then terminate.
 - **Periodic mode (`--weekly`)**: Self-reschedule via `ScheduleWakeup`:
   - `prompt`: `/loop deep-review --weekly`

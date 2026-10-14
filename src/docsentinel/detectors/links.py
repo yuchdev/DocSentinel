@@ -71,6 +71,8 @@ def _is_skippable(target: str) -> bool:
     """Return whether a target should not be resolved as a local file."""
     if not target:
         return True
+    if target.startswith("//"):
+        return True
     if "{" in target or "}" in target:
         return True
     if "*" in target or "?" in target:

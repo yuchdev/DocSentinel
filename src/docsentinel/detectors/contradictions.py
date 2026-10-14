@@ -13,7 +13,7 @@ Known limitations:
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from docsentinel import deep_support, models, rules
 from docsentinel.detectors._triples import Claim, extract_claims
@@ -113,14 +113,8 @@ def detect(
         if not doc.path.endswith(".md"):
             continue
         target = root / doc.path
-        text: Optional[str] = None
-        try:
-            with target.open("r", encoding="utf-8", errors="replace") as stream:
-                text = stream.read()
-        except OSError:
-            text = None
-        if text is None:
-            continue
+        with target.open("r", encoding="utf-8") as stream:
+            text = stream.read()
         claims = extract_claims(pipeline, text, doc.path)
         all_claims.extend(claims)
 

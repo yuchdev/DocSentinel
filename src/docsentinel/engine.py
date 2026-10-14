@@ -12,7 +12,7 @@ from docsentinel.discovery import discover
 from docsentinel.models import Document, Finding, ScanResult
 from docsentinel.rules import ANALYZERS, RULES, effective_rules
 
-Analyzer = Callable[[Path, tuple[Document, ...]], tuple[Finding, ...]]
+Analyzer = Callable[..., tuple[Finding, ...]]
 
 
 def _env_confirms() -> bool:
@@ -52,7 +52,7 @@ def scan(root: Union[Path, str] = ".", *, config: Optional[Config] = None) -> Sc
                 findings=(),
                 enabled_rules=(),
                 pending=pending,
-                notice="Detection rules are not implemented in M0; this is an inventory only.",
+                notice="Deep profile detection skipped until explicit opt-in is provided.",
             )
         if not deep_ready():
             pending = (f"deep profile confirmed, but its dependencies are unavailable - {DEEP_EXTRA_HINT}",)
@@ -62,16 +62,26 @@ def scan(root: Union[Path, str] = ".", *, config: Optional[Config] = None) -> Sc
                 findings=(),
                 enabled_rules=(),
                 pending=pending,
-                notice="Detection rules are not implemented in M0; this is an inventory only.",
+                notice="Deep profile detection skipped because dependencies are unavailable.",
             )
 
     if settings.profile == "standard":
         ensure_standard_loaded()
+        from docsentinel.detectors.standard.corpus import clear_corpus_cache
+
+        clear_corpus_cache()
 
     profile_codes = tuple(code for code, rule in RULES.items() if rule.profile == settings.profile)
     active_codes = effective_rules(profile_codes, settings.select, settings.ignore)
     findings = tuple(
-        finding for code in active_codes if code in ANALYZERS for finding in ANALYZERS[code](directory, documents)
+        finding
+        for code in active_codes
+        if code in ANALYZERS
+        for finding in (
+            ANALYZERS[code](directory, documents, settings)
+            if settings.profile == "standard"
+            else ANALYZERS[code](directory, documents)
+        )
     )
     if settings.baseline is not None:
         baseline_path = (

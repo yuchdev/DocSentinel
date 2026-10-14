@@ -78,7 +78,7 @@ def test_empty_scan_is_inventory_not_detection(tmp_path: Path):
     assert result.documents == ()
     assert result.findings == ()
     assert result.enabled_rules == ()
-    assert "not implemented" in result.notice
+    assert "explicit opt-in" in result.notice
     assert json.loads(render(result, "json"))["enabled_rules"] == []
 
 
@@ -110,6 +110,26 @@ def test_scan_runs_analyzer_for_active_profile(
     fake_fast_analyzer.clear()
     scan(tmp_path, config=Config(profile="standard"))
     assert fake_fast_analyzer == []
+
+
+def test_standard_scan_passes_resolved_config_to_analyzers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Standard analyzers receive the same resolved configuration as discovery."""
+    from docsentinel.detectors.loader import ensure_standard_loaded
+
+    ensure_standard_loaded()
+    received: list[Config] = []
+
+    def analyzer(root: Path, documents: tuple[Document, ...], config: Config) -> tuple[Finding, ...]:
+        received.append(config)
+        return ()
+
+    for code in ("DS201", "DS202", "DS203", "DS204"):
+        monkeypatch.setitem(ANALYZERS, code, analyzer)
+
+    settings = Config(profile="standard", max_grade_level=9.0, duplicate_similarity=0.7)
+    scan(tmp_path, config=settings)
+
+    assert received == [settings] * 4
 
 
 def test_scan_respects_select(
@@ -1333,7 +1353,7 @@ def test_deep_unconfirmed_reports_opt_in_pending(tmp_path: Path):
     assert result.findings == ()
     assert result.enabled_rules == ()
     assert "deep profile requires explicit opt-in" in result.pending[0]
-    assert "not implemented" in result.notice
+    assert "explicit opt-in" in result.notice
 
 
 def test_deep_confirmed_via_config_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

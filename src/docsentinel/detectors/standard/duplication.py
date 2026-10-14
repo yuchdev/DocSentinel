@@ -13,7 +13,7 @@ from typing import Optional
 from sklearn.metrics.pairwise import cosine_similarity
 
 from docsentinel import models, rules
-from docsentinel.config import load_config
+from docsentinel.config import Config, load_config
 from docsentinel.detectors.standard.corpus import CorpusModel, build_corpus_model
 
 DS202 = rules.register_rule(
@@ -59,9 +59,10 @@ def duplicate_pairs(
 def detect(
     root: Path,
     documents: tuple[models.Document, ...],
+    config: Config | None = None,
 ) -> tuple[models.Finding, ...]:
     """Return DS202 findings for near-duplicate paragraph chunks across documents."""
-    config = load_config(root)
+    config = config or load_config(root)
     model = build_corpus_model(root, documents)
     pairs = duplicate_pairs(model, config.duplicate_similarity)
     findings: list[models.Finding] = []

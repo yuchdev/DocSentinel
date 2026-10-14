@@ -298,7 +298,8 @@ def test_corpus_model_built_once_per_scan(asset_case: Callable[[str, str], Asset
         corpus.TfidfVectorizer, "fit_transform", autospec=True, side_effect=corpus.TfidfVectorizer.fit_transform
     ) as mock_fit:
         result = scan(case.root, config=Config(profile="standard"))
-        assert mock_fit.call_count == 1
+        scan(case.root, config=Config(profile="standard"))
+        assert mock_fit.call_count == 2
         assert "DS202" in result.enabled_rules
         assert "DS203" in result.enabled_rules
         assert "DS204" in result.enabled_rules
