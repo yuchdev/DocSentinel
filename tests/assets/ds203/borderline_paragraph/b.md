@@ -1,0 +1,1 @@
+Python packaging uses pyproject configuration tables to manage project metadata and build dependencies. Standardized tool sections allow linters and formatters to share configuration parameters cleanly. Virtual environments isolate installation artifacts to prevent dependency conflicts across projects.

@@ -1,6 +1,6 @@
 # Contributing
 
-Install Python 3.11+ and uv, then run:
+Install Python 3.12+ and uv, then run:
 
 ```sh
 uv sync --extra test

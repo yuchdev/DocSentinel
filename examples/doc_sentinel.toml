@@ -1,0 +1,50 @@
+# Example DocSentinel configuration.
+#
+# Run it from the repository root with: docsentinel scan examples
+# Command-line flags (--profile, --select, --ignore, --baseline) override the values below.
+# The walkthrough for this file is in docs/guide.md.
+
+# Which detector set to run. Profiles are exact, not cumulative:
+#   "fast" - structural checks (DS101-DS103), standard library only
+#   "standard" corpus and signature checks (DS201-DS204), needs docsentinel[standard]
+#   "deep" - heuristic semantic checks (DS301), needs docsentinel[deep] and an explicit opt-in
+profile = "fast"
+
+# Which files to inventory. Patterns are matched against paths relative to the scanned
+# directory. Default: ["*.md", "**/*.md"]. Here only Markdown directly inside docs/ is scanned.
+include = ["docs/*.md"]
+
+# Files or directories to skip, matched against relative paths and directory names.
+# Default: `[".git", ".venv", "node_modules"]`. Setting this list REPLACES the default, so an
+# empty list here means nothing is skipped, not even those three.
+exclude = []
+
+# Keep only these rules. Entries are exact codes ("DS101") or prefixes ("DS1" = every fast rule).
+# Default: empty, which means every rule of the active profile.
+select = ["DS1"]
+
+# Drop these rules after select is applied. Ignore wins over select, so with the lists in this
+# file DS101 and DS102 run, and DS103 (path-like code spans) is switched off.
+ignore = ["DS103"]
+
+# --- The options below are not set in this example; the commented values are the defaults. ---
+
+# Path to a baseline file written by "docsentinel baseline". Findings recorded in it are
+# suppressed, so a project can adopt DocSentinel without fixing old issues first.
+# baseline = ".docsentinel-baseline.json"
+
+# DS201: flag a document whose Flesch-Kincaid grade level is above this number.
+# max_grade_level = 14.0
+
+# DS202: flag paragraph pairs whose TF-IDF cosine similarity is at or above this value (0 to 1).
+# duplicate_similarity = 0.85
+
+# DS203: flag a paragraph whose information score is below this value (0 to 1).
+# min_information_score = 0.15
+
+# DS204: Python files or directories, relative to the scan root, whose docstrings are checked.
+# docsig_paths = ["src"]
+
+# Deep profile only: acknowledge that DS301 is heuristic and advisory. The same opt-in can be
+# given with `--i-understand-deep-is-heuristic` or the `DOCSENTINEL_DEEP_CONFIRM=1` variable.
+# deep_confirm = false

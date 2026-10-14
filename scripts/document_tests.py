@@ -52,10 +52,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _display_path(file_path: Path) -> str:
+    """Return a relative path string when inside the repo, else absolute."""
     try:
         return str(file_path.relative_to(REPO_ROOT))
     except ValueError:
-        return str(file_path)
+        path_str = str(file_path)
+        return path_str
 
 
 DEFAULT_TARGET = "tests"
@@ -90,16 +92,19 @@ class TestCase:
 
 
 def _humanize(identifier: str) -> str:
+    """Convert an underscore-separated identifier into a human-readable title."""
     return identifier.replace("_", " ").strip()
 
 
 def _humanize_class(class_name: str) -> str:
+    """Convert a CamelCase Test class name into space-separated lowercase words."""
     name = re.sub(r"^Test", "", class_name)
     words = re.findall(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+", name)
     return " ".join(w.lower() for w in words) if words else class_name.lower()
 
 
 def _humanize_filename(file_path: Path) -> str:
+    """Convert a test filename stem into space-separated lowercase words."""
     stem = file_path.stem
     stem = re.sub(r"^test_", "", stem)
     stem = re.sub(r"_test$", "", stem)
@@ -107,12 +112,14 @@ def _humanize_filename(file_path: Path) -> str:
 
 
 def _context_label(file_path: Path, class_name: Optional[str]) -> str:
+    """Derive context label from enclosing class name or filename."""
     if class_name:
         return _humanize_class(class_name)
     return _humanize_filename(file_path)
 
 
 def _fixtures_line(node: TestFunc) -> str:
+    """Format fixtures and parameterization details for a test function."""
     names = [a.arg for a in node.args.args if a.arg not in ("self", "cls")]
     names += [a.arg for a in node.args.kwonlyargs]
     line = ", ".join(names) if names else "none"
@@ -133,22 +140,32 @@ def _fixtures_line(node: TestFunc) -> str:
 
 
 def _source_segment(source_lines: list[str], node: TestFunc) -> str:
+    """Return the source text segment for a test AST node."""
     start = node.lineno - 1
     end = node.end_lineno or node.lineno
     return "\n".join(source_lines[start:end]).lower()
 
 
 def _classify(file_path: Path, body_text: str) -> tuple[str, bool]:
+    """Classify a test into Unit, Mock, Integration, or E2E category."""
     rel_parts = {p.lower() for p in file_path.parts}
     stem = file_path.stem.lower()
 
     if "e2e" in rel_parts or "e2e" in stem:
         return "E2E", False
 
-    if "integration" in rel_parts:
+    if "end_to_end" in rel_parts or "end_to_end" in stem:
         if any(marker in body_text for marker in _E2E_BODY_MARKERS):
             return "E2E", False
         return "Integration", False
+
+    if "integration" in rel_parts or "integration" in stem:
+        if any(marker in body_text for marker in _E2E_BODY_MARKERS):
+            return "E2E", False
+        return "Integration", False
+
+    if "mock" in rel_parts:
+        return "Mock", False
 
     if "unit" in rel_parts:
         if any(marker in body_text for marker in _MOCK_BODY_MARKERS):
@@ -164,6 +181,7 @@ def _classify(file_path: Path, body_text: str) -> tuple[str, bool]:
 
 
 def _existing_docstring_range(node: TestFunc) -> tuple[Optional[int], Optional[int], Optional[str]]:
+    """Return line range and content of an existing docstring if present."""
     if not node.body:
         return None, None, None
     first = node.body[0]
@@ -173,6 +191,7 @@ def _existing_docstring_range(node: TestFunc) -> tuple[Optional[int], Optional[i
 
 
 def _render_docstring(indent: str, classification: str, context_label: str, test_name: str) -> str:
+    """Render standardized docstring lines for a test case."""
     subject = _humanize(re.sub(r"^test_", "", test_name))
     inner = indent + _INDENT_UNIT
 
@@ -200,9 +219,11 @@ def _render_docstring(indent: str, classification: str, context_label: str, test
 
 
 def _collect_file(file_path: Path, tree: ast.Module, source_lines: list[str]) -> list[TestCase]:
+    """Collect test case definitions and generated docstrings from a parsed module."""
     cases: list[TestCase] = []
 
-    def visit_function(node: ast.AST, class_name: Optional[str]) -> None:
+    def visit_function(node: ast.AST, class_name: Optional[str]):
+        """Process a single function node and generate TestCase if it is a test."""
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             return
         if not node.name.startswith("test_"):
@@ -252,6 +273,7 @@ def _collect_file(file_path: Path, tree: ast.Module, source_lines: list[str]) ->
 
 
 def _apply_edits(source_lines: list[str], cases: list[TestCase], force: bool) -> tuple[list[str], list[TestCase]]:
+    """Apply generated docstring edits to the source lines."""
     lines = list(source_lines)
     applied: list[TestCase] = []
     # Apply bottom-to-top so earlier line numbers stay valid as we edit.
@@ -270,6 +292,7 @@ def _apply_edits(source_lines: list[str], cases: list[TestCase], force: bool) ->
 
 
 def _discover_files(target: Path) -> list[Path]:
+    """Discover test files under the target directory or return the file itself."""
     if target.is_file():
         return [target] if target.name not in EXCLUDED_FILENAMES else []
     files: list[Path] = []
@@ -279,6 +302,7 @@ def _discover_files(target: Path) -> list[Path]:
 
 
 def main() -> int:
+    """CLI entry point for the test docstring generator."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", nargs="?", default=DEFAULT_TARGET, help="Test file or directory")
     parser.add_argument("--check", action="store_true", help="Report only; exit 1 if changes are pending")
@@ -316,7 +340,7 @@ def main() -> int:
                 skipped_custom.append(rel)
 
         new_lines, applied = _apply_edits(source_lines, cases, args.force)
-        if not applied:
+        if not applied or new_lines == source_lines:
             continue
 
         changed_files += 1

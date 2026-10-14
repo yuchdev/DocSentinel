@@ -15,6 +15,7 @@ implementation. Read that script first; this task is a structured port, not a fr
 
 | Path | Action |
 |------|--------|
+| `src/docsentinel/models.py` | Modify - add the authorized optional, one-based `Finding.line` field |
 | `src/docsentinel/detectors/__init__.py` | Create (empty for now - Task 04 populates it) |
 | `src/docsentinel/detectors/links.py` | Create |
 | `tests/test_detectors_links.py` | Create |
@@ -28,7 +29,7 @@ implementation. Read that script first; this task is a structured port, not a fr
 | `DS101` | module-level `Rule`, via `register_rule(Rule(code="DS101", profile="fast", title="Dangling link or anchor", description="A Markdown link or #anchor target does not resolve.", severity="error"))` | `error` severity - a dangling link is unambiguously wrong, not a style nit. |
 | `slugify(heading_text: str) -> str` | function | Port of `check_doc_links.slugify` unchanged (GitHub-slugger behavior: lowercase, strip non-word/space/hyphen chars, spaces to hyphens). |
 | `heading_anchors(path: Path) -> set[str]` | function | Port of `check_doc_links.heading_anchors` unchanged, including the duplicate-slug `-1`/`-2` suffixing and `<a id=/name=>` HTML-anchor handling. |
-| `check_document(root: Path, document: Document) -> tuple[Finding, ...]` | function | New - adapts `check_doc_links.check_file` to this package's `Document`/`Finding` models instead of printing strings. One `Finding(rule="DS101", path=document.path, message=..., severity="error")` per dangling link/anchor, message format `"dangling link -> {target}"` / `"missing anchor '#{anchor}' in {file_part}"` (reuse the source script's exact wording so a user who has seen `check_doc_links.py` output recognizes it). |
+| `check_document(root: Path, document: Document) -> tuple[Finding, ...]` | function | New - adapts `check_doc_links.check_file` to this package's `Document`/`Finding` models instead of printing strings. One `Finding(rule="DS101", path=document.path, message=..., severity="error", line=...)` per dangling link/anchor, with the one-based source line from the matched Markdown link. Message format is `"dangling link -> {target}"` / `"missing anchor '#{anchor}' in {file_part}"` (reuse the source script's exact wording so a user who has seen `check_doc_links.py` output recognizes it). |
 | `detect(root: Path, documents: tuple[Document, ...]) -> tuple[Finding, ...]` | function, the `Analyzer` | Filters `documents` to `path.endswith(".md")`, calls `check_document` on each, concatenates results. This is the function registered into `ANALYZERS["DS101"]` (Task 04 wires the registration call). |
 
 ## Behavior ported unchanged from `scripts/check_doc_links.py`
@@ -79,6 +80,8 @@ implementation. Read that script first; this task is a structured port, not a fr
 - `test_non_markdown_documents_are_not_scanned` - a `Document` for a `.txt` file (reachable only
   via a custom `include` pattern) produces no findings even if its content contains a
   link-looking string - `DS101` only reads `.md`.
+- `test_finding_reports_one_based_source_line` - a dangling link after preceding content reports
+  the line containing that link through the structured `Finding.line` field.
 
 ## Success criteria
 

@@ -1,19 +1,31 @@
 """Single entry point for all scan consumers."""
 
+import os
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional, Union
 
+from docsentinel.baseline import filter_baselined, load_baseline
 from docsentinel.config import Config, load_config
+from docsentinel.deep_support import DEEP_EXTRA_HINT, deep_ready
+from docsentinel.detectors.loader import clear_standard_caches, ensure_standard_loaded
 from docsentinel.discovery import discover
 from docsentinel.models import Document, Finding, ScanResult
+from docsentinel.rules import ANALYZERS, RULES, effective_rules
 
-Analyzer = Callable[[Path, tuple[Document, ...]], tuple[Finding, ...]]
-
-# Detection analyzers will be registered here in later milestones.
-ANALYZERS: dict[str, Analyzer] = {}
+Analyzer = Callable[..., tuple[Finding, ...]]
 
 
-def scan(root: Path | str = ".", *, config: Config | None = None) -> ScanResult:
+def _env_confirms() -> bool:
+    """Return True if DOCSENTINEL_DEEP_CONFIRM is set to a truthy value."""
+    return os.environ.get("DOCSENTINEL_DEEP_CONFIRM", "").lower() in {"1", "true", "yes"}
+
+
+def _resolve_deep_confirm(settings: Config) -> bool:
+    """Return True if deep profile execution is confirmed via settings or env."""
+    return settings.deep_confirm or _env_confirms()
+
+
+def scan(root: Union[Path, str] = ".", *, config: Optional[Config] = None) -> ScanResult:
     """Inventory documents and run registered analyzers, without implicit deep checks."""
     target = Path(root).resolve()
     selected_file = target.is_file()
@@ -26,16 +38,77 @@ def scan(root: Path | str = ".", *, config: Config | None = None) -> ScanResult:
         documents = (Document(target.name, target.stat().st_size),)
     else:
         documents = discover(directory, settings)
+
+    if settings.profile == "deep":
+        if not _resolve_deep_confirm(settings):
+            pending = (
+                "deep profile requires explicit opt-in: set deep_confirm = true, "
+                "pass --i-understand-deep-is-heuristic, or set DOCSENTINEL_DEEP_CONFIRM=1 "
+                "(deep checks are heuristic and may report false positives)",
+            )
+            return ScanResult(
+                profile=settings.profile,
+                documents=documents,
+                findings=(),
+                enabled_rules=(),
+                pending=pending,
+                notice="Deep profile detection skipped until explicit opt-in is provided.",
+            )
+        if not deep_ready():
+            pending = (f"deep profile confirmed, but its dependencies are unavailable - {DEEP_EXTRA_HINT}",)
+            return ScanResult(
+                profile=settings.profile,
+                documents=documents,
+                findings=(),
+                enabled_rules=(),
+                pending=pending,
+                notice="Deep profile detection skipped because dependencies are unavailable.",
+            )
+
+    if settings.profile == "standard":
+        ensure_standard_loaded()
+        clear_standard_caches()
+
+    profile_codes = tuple(code for code, rule in RULES.items() if rule.profile == settings.profile)
+    active_codes = effective_rules(profile_codes, settings.select, settings.ignore)
     findings = tuple(
         finding
-        for analyzer in ANALYZERS.values()
-        for finding in analyzer(directory, documents)
+        for code in active_codes
+        if code in ANALYZERS
+        for finding in (
+            ANALYZERS[code](directory, documents, settings)
+            if settings.profile == "standard"
+            else ANALYZERS[code](directory, documents)
+        )
     )
-    pending = (
-        ("standard detectors are not implemented in M0",)
-        if settings.profile == "standard"
-        else ("deep detectors are not implemented in M0",)
-        if settings.profile == "deep"
-        else ()
+    if settings.baseline is not None:
+        baseline_path = (
+            Path(settings.baseline)
+            if Path(settings.baseline).is_absolute()
+            else (directory / settings.baseline).resolve()
+        )
+        known = load_baseline(baseline_path)
+        findings = filter_baselined(findings, known)
+    if active_codes:
+        pending = ()
+        if settings.profile == "deep":
+            notice = f"{len(active_codes)} deep rule(s) evaluated (heuristic, advisory-only)."
+        else:
+            notice = f"{len(active_codes)} {settings.profile} rule(s) evaluated."
+    elif not profile_codes:
+        if settings.profile == "deep":
+            pending = ("deep profile confirmed, but no deep rules are registered",)
+        else:
+            pending = ("standard detectors are not implemented in M0",) if settings.profile == "standard" else ()
+        notice = "Detection rules are not implemented in M0; this is an inventory only."
+    else:
+        pending = (f"all {settings.profile} rules were excluded by select/ignore",)
+        notice = f"All {settings.profile} rules were excluded by select/ignore."
+    return ScanResult(
+        profile=settings.profile,
+        documents=documents,
+        findings=findings,
+        enabled_rules=active_codes,
+        pending=pending,
+        notice=notice,
     )
-    return ScanResult(settings.profile, documents, findings, tuple(ANALYZERS), pending)

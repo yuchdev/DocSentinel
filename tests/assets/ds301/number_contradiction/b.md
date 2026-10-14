@@ -1,0 +1,1 @@
+The cache holds 256 entries.
