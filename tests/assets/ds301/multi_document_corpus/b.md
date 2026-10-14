@@ -1,0 +1,1 @@
+The database holds 50 tables.

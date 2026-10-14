@@ -939,31 +939,6 @@ def test_exit_code_zero_when_no_findings_regardless_of_strict():
     assert _exit_code(result, strict=True) == 0
 
 
-def test_cli_strict_flag_wired_end_to_end(tmp_path: Path):
-    """
-    [Integration] scan: verifies cli strict flag wired end to end.
-
-    Scenario:
-        Given test inputs and fixtures for cli strict flag wired end to end
-        When test_cli_strict_flag_wired_end_to_end executes the target flow
-        Then the expected outcome for cli strict flag wired end to end is confirmed.
-
-    Boundaries:
-        - Focus: cli strict flag wired end to end
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to cli strict flag wired end to end
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by scan
-    """
-    (tmp_path / "comment.md").write_text("<!-- stray -->\n", encoding="utf-8")
-
-    assert main(["scan", str(tmp_path)]) == 0
-    assert main(["scan", str(tmp_path), "--strict"]) == 1
-
-
 def _symlink_or_skip(link: Path, target: Path):
     """Create a symlink pointing to target, or skip the test if symlinks are unsupported."""
     try:

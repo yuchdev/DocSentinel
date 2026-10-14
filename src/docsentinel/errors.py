@@ -4,7 +4,8 @@
 class ExtraNotInstalledError(ValueError):
     """Raised when a profile requires an optional dependency group that is not installed."""
 
-    def __init__(self, extra: str, cause: ImportError) -> None:
+    def __init__(self, extra: str, cause: ImportError):
+        """Initialise ExtraNotInstalledError with missing extra name and root cause."""
         self.extra: str = extra
         self.cause: ImportError = cause
         message = (

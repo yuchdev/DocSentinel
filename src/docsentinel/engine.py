@@ -2,22 +2,17 @@
 
 import os
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 from docsentinel.baseline import filter_baselined, load_baseline
 from docsentinel.config import Config, load_config
 from docsentinel.deep_support import DEEP_EXTRA_HINT, deep_ready
+from docsentinel.detectors.loader import ensure_standard_loaded
 from docsentinel.discovery import discover
 from docsentinel.models import Document, Finding, ScanResult
-from docsentinel.rules import RULES, effective_rules
+from docsentinel.rules import ANALYZERS, RULES, effective_rules
 
 Analyzer = Callable[[Path, tuple[Document, ...]], tuple[Finding, ...]]
-
-# Detection analyzers are keyed by their stable rule codes.
-ANALYZERS: dict[str, Analyzer] = {}
-
-from docsentinel import detectors as _detectors  # noqa: E402, F401
-from docsentinel.detectors.loader import ensure_standard_loaded  # noqa: E402
 
 
 def _env_confirms() -> bool:
@@ -30,7 +25,7 @@ def _resolve_deep_confirm(settings: Config) -> bool:
     return settings.deep_confirm or _env_confirms()
 
 
-def scan(root: Path | str = ".", *, config: Optional[Config] = None) -> ScanResult:
+def scan(root: Union[Path, str] = ".", *, config: Optional[Config] = None) -> ScanResult:
     """Inventory documents and run registered analyzers, without implicit deep checks."""
     target = Path(root).resolve()
     selected_file = target.is_file()

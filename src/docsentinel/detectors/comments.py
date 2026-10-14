@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from docsentinel import engine, models, rules
+from docsentinel import models, rules
 
 DS102 = rules.register_rule(
     rules.Rule(
@@ -87,4 +87,4 @@ def detect(root: Path, documents: tuple[models.Document, ...]) -> tuple[models.F
     return tuple(findings)
 
 
-engine.ANALYZERS[DS102.code] = detect
+rules.ANALYZERS[DS102.code] = detect

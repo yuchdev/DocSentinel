@@ -20,7 +20,7 @@ from typing import Optional
 import numpy as np
 import scipy.sparse as sp
 
-from docsentinel import engine, models, rules
+from docsentinel import models, rules
 from docsentinel.config import load_config
 from docsentinel.detectors.standard.corpus import CorpusModel, build_corpus_model
 
@@ -130,4 +130,4 @@ def detect(
     return tuple(findings)
 
 
-engine.ANALYZERS[DS203.code] = detect
+rules.ANALYZERS[DS203.code] = detect

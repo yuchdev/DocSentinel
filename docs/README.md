@@ -27,3 +27,6 @@
 | `docs/security/review-github-actions-annotations-2026-10-10.md` | Security review of GitHub Actions annotation escaping, severity mapping, and CI output exposure. |
 | `docs/security/review-pre-commit-fast-hook-wiring-2026-10-10.md` | Security review of the fast pre-commit hook manifest, subprocess invocation, and exit-code policy. |
 | `docs/test/code_test_coverage.md` | Coverage requirements checklist and workflow. |
+| `docs/user/tutorial/README.md` | Comprehensive user tutorial for DocSentinel CLI and Python library usage. |
+| `docs/user/tutorial/cli.md` | Detailed guide and reference for using DocSentinel as a command-line executable. |
+| `docs/user/tutorial/library.md` | In-depth guide for embedding DocSentinel as a Python library and test fixture. |

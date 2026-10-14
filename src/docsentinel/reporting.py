@@ -39,6 +39,7 @@ ADVISORY_BANNER: str = "Deep findings are heuristic candidates for review - they
 
 
 def render(result: ScanResult, format: str = "text") -> str:
+    """Render a scan result into text, JSON, or GitHub annotation output format."""
     if format == "json":
         data = asdict(result)
         if result.profile == "deep" and result.findings:

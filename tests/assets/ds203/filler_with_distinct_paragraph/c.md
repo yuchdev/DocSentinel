@@ -1,0 +1,1 @@
+There are many birds in the garden that sing songs every morning. The blue birds fly from tree to tree looking for small seeds to eat. In the afternoon they rest on the green branches.

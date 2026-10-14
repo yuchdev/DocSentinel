@@ -1,0 +1,4 @@
+<!-- first
+continued -->
+text
+<!-- second -->

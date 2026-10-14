@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import inspect
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+
+from tests.asset_helpers import AssetCase, load_asset_case
 
 _DOCSTRING_TAG_RE = re.compile(r"^\s*\[(Unit|Mock|Integration|E2E)\]", re.IGNORECASE)
 
@@ -76,3 +79,14 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(getattr(pytest.mark, category))
 
     items.sort(key=lambda item: _ORDER.get(_classify_item(item), 99))
+
+
+@pytest.fixture
+def asset_case(tmp_path: Path) -> Callable[[str, str], AssetCase]:
+    """Return a loader that copies ``tests/assets/<rule>/<case>`` into this test's ``tmp_path``."""
+
+    def load(rule: str, case: str) -> AssetCase:
+        """Materialize one asset case under ``tmp_path`` and return it."""
+        return load_asset_case(rule, case, tmp_path)
+
+    return load

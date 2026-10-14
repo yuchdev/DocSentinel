@@ -12,7 +12,7 @@ from typing import Optional
 
 from sklearn.metrics.pairwise import cosine_similarity
 
-from docsentinel import engine, models, rules
+from docsentinel import models, rules
 from docsentinel.config import load_config
 from docsentinel.detectors.standard.corpus import CorpusModel, build_corpus_model
 
@@ -86,4 +86,4 @@ def detect(
     return tuple(findings)
 
 
-engine.ANALYZERS[DS202.code] = detect
+rules.ANALYZERS[DS202.code] = detect

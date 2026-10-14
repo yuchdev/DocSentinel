@@ -30,7 +30,8 @@ def _standard_rule_lines() -> list[str]:
     try:
         ensure_standard_loaded()
     except ExtraNotInstalledError:
-        return ["standard profile: install docsentinel[standard] to enable (DS2xx)"]
+        missing_msg = ["standard profile: install docsentinel[standard] to enable (DS2xx)"]
+        return missing_msg
     registered = rules_for_profile("standard")
     if registered:
         return [f"  {rule.code}: {rule.title}" for rule in registered]
@@ -82,6 +83,7 @@ def _exit_code(result: ScanResult, *, strict: bool = False) -> int:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    """Run the DocSentinel command line interface."""
     parser = argparse.ArgumentParser(prog="docsentinel")
     commands = parser.add_subparsers(dest="command", required=True)
     scan_parser = commands.add_parser("scan", help="Inventory Markdown documents")

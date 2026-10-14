@@ -20,13 +20,14 @@ Fragility and version notes:
 from __future__ import annotations
 
 import contextlib
+import importlib
 import io
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from docsentinel import engine, models, rules
+from docsentinel import models, rules
 from docsentinel.code_discovery import discover_python
 from docsentinel.config import load_config
 
@@ -46,6 +47,8 @@ _VIOLATION_RE = re.compile(r"^\s*(?P<code>SIG\d+):\s*(?P<msg>.+)$")
 
 @dataclass(frozen=True)
 class _Violation:
+    """Record representing a docsig signature violation."""
+
     file: str
     lineno: int
     function: str
@@ -55,11 +58,11 @@ class _Violation:
 
 def _get_known_sig_codes() -> frozenset[str]:
     """Return all known SIG error codes from docsig.messages schema."""
-    import docsig.messages
+    docsig_messages = importlib.import_module("docsig.messages")
 
     codes: set[str] = set()
-    if hasattr(docsig.messages, "E"):
-        for msg in docsig.messages.E.values():
+    if hasattr(docsig_messages, "E"):
+        for msg in docsig_messages.E.values():
             if hasattr(msg, "ref"):
                 codes.add(msg.ref)
     return frozenset(codes)
@@ -67,7 +70,7 @@ def _get_known_sig_codes() -> frozenset[str]:
 
 def _run_docsig(path: Path) -> str:
     """Run docsig on a Python file path in-process and return captured stdout."""
-    import docsig
+    docsig = importlib.import_module("docsig")
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -168,4 +171,4 @@ def detect(
     return tuple(findings)
 
 
-engine.ANALYZERS[DS204.code] = detect
+rules.ANALYZERS[DS204.code] = detect

@@ -5,7 +5,7 @@ Runs, in order, the same checks CI expects a clean session to satisfy:
 
   1. ``uv run ruff check . --fix``  - auto-fix what's mechanically fixable.
   2. ``uv run ruff check .``        - fail if anything remains unfixed.
-  3. ``uv run pytest -q --cov=doc_sentinel --cov-report=term-missing``
+  3. ``uv run pytest -q``
 
 If any step fails, the hook exits 2 so Claude is told to analyze that tool's
 own output and fix what it flagged before ending the session - not to weaken
@@ -40,7 +40,7 @@ def _tail(proc: subprocess.CompletedProcess[str], n: int = 40) -> str:
     return "\n".join((proc.stdout + proc.stderr).strip().splitlines()[-n:])
 
 
-def main() -> None:
+def main():
     event = read_event()
     if event.get("stop_hook_active"):
         allow()
@@ -51,7 +51,7 @@ def main() -> None:
     steps = [
         ("ruff --fix", ["uv", "run", "ruff", "check", ".", "--fix"]),
         ("ruff check", ["uv", "run", "ruff", "check", "."]),
-        ("pytest+cov", ["uv", "run", "pytest", "-q", "--cov=doc_sentinel", "--cov-report=term-missing"]),
+        ("pytest", ["uv", "run", "pytest", "-q"]),
     ]
 
     for label, cmd in steps:

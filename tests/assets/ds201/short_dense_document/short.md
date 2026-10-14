@@ -1,0 +1,1 @@
+The epistemological ramifications of post-structuralist hermeneutics necessitate a comprehensive re-evaluation of ontologically indeterminate socio-historical contextualizations.

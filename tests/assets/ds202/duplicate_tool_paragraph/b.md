@@ -1,0 +1,1 @@
+We can use this tool to check our notes and find any problems. It will look through all files in the project to make sure the words are clear and easy to read for everyone. You can run the test anytime to see the report.

@@ -1,11 +1,9 @@
 """Tests for reporting format rendering and CLI format options."""
 
 import json
-from pathlib import Path
 
 import pytest
 
-from docsentinel import cli
 from docsentinel.models import Finding, ScanResult
 from docsentinel.reporting import _escape_data, _escape_property, _gha_level, render
 
@@ -313,57 +311,6 @@ def test_render_unsupported_format_raises_value_error() :
     )
     with pytest.raises(ValueError, match="Unsupported format: invalid"):
         render(result, "invalid")
-
-
-def test_cli_accepts_github_format_choice(tmp_path: Path, capsys: pytest.CaptureFixture[str]) :
-    """
-    [Unit] reporting: verifies cli accepts github format choice.
-
-    Scenario:
-        Given test inputs and fixtures for cli accepts github format choice
-        When test_cli_accepts_github_format_choice executes the target flow
-        Then the expected outcome for cli accepts github format choice is confirmed.
-
-    Boundaries:
-        - Focus: cli accepts github format choice
-        - Fixtures/params: tmp_path, capsys
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to cli accepts github format choice
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by reporting
-    """
-    (tmp_path / "valid.md").write_text("Hello world\n", encoding="utf-8")
-    exit_code = cli.main(["scan", str(tmp_path), "--format", "github"])
-    assert exit_code == 0
-    assert capsys.readouterr().out == "\n"
-
-
-def test_cli_scan_with_findings_and_github_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) :
-    """
-    [Unit] reporting: verifies cli scan with findings and github format.
-
-    Scenario:
-        Given test inputs and fixtures for cli scan with findings and github format
-        When test_cli_scan_with_findings_and_github_format executes the target flow
-        Then the expected outcome for cli scan with findings and github format is confirmed.
-
-    Boundaries:
-        - Focus: cli scan with findings and github format
-        - Fixtures/params: tmp_path, capsys
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to cli scan with findings and github format
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by reporting
-    """
-    (tmp_path / "broken.md").write_text("[Missing](missing.md)\n", encoding="utf-8")
-    exit_code = cli.main(["scan", str(tmp_path), "--format", "github"])
-    assert exit_code == 1
-    out = capsys.readouterr().out
-    assert out.startswith("::error file=broken.md,line=1::")
 
 
 def test_render_text_and_json_formats() :

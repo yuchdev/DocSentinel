@@ -4,6 +4,8 @@ target-version = "py312"
 
 extend-exclude = [
     "tests/flake8_lint/samples",
+    # Text assets are test input data (deliberately broken docs and Python sources), not code.
+    "tests/assets",
     # Canon data submodules are separate repositories with their own lint setup.
     "canons"
 ]
