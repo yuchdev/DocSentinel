@@ -83,7 +83,18 @@ def _exit_code(result: ScanResult, *, strict: bool = False) -> int:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    """Run the DocSentinel command line interface."""
+    """Run the DocSentinel command line interface.
+
+    Parameters
+    ----------
+    argv : Optional[list[str]]
+        Command-line arguments; defaults to ``sys.argv[1:]`` when omitted.
+
+    Returns
+    -------
+    int
+        Process exit code: 0 on success, 1 for blocking findings, 2 on failure.
+    """
     parser = argparse.ArgumentParser(prog="docsentinel")
     commands = parser.add_subparsers(dest="command", required=True)
     scan_parser = commands.add_parser("scan", help="Inventory Markdown documents")
