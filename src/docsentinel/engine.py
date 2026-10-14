@@ -7,7 +7,7 @@ from typing import Callable, Optional, Union
 from docsentinel.baseline import filter_baselined, load_baseline
 from docsentinel.config import Config, load_config
 from docsentinel.deep_support import DEEP_EXTRA_HINT, deep_ready
-from docsentinel.detectors.loader import ensure_standard_loaded
+from docsentinel.detectors.loader import clear_standard_caches, ensure_standard_loaded
 from docsentinel.discovery import discover
 from docsentinel.models import Document, Finding, ScanResult
 from docsentinel.rules import ANALYZERS, RULES, effective_rules
@@ -67,9 +67,7 @@ def scan(root: Union[Path, str] = ".", *, config: Optional[Config] = None) -> Sc
 
     if settings.profile == "standard":
         ensure_standard_loaded()
-        from docsentinel.detectors.standard.corpus import clear_corpus_cache
-
-        clear_corpus_cache()
+        clear_standard_caches()
 
     profile_codes = tuple(code for code, rule in RULES.items() if rule.profile == settings.profile)
     active_codes = effective_rules(profile_codes, settings.select, settings.ignore)

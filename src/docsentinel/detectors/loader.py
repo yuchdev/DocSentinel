@@ -1,6 +1,7 @@
 """Lazy loader for standard profile detectors and dependencies."""
 
 import builtins
+import importlib
 
 from docsentinel.errors import ExtraNotInstalledError
 
@@ -20,3 +21,9 @@ def ensure_standard_loaded():
             raise ExtraNotInstalledError("standard", exc) from exc
         raise
     _standard_loaded = True
+
+
+def clear_standard_caches():
+    """Reset per-scan corpus caches; the corpus module imports scikit-learn, so load it lazily."""
+    ensure_standard_loaded()
+    importlib.import_module("docsentinel.detectors.standard.corpus").clear_corpus_cache()

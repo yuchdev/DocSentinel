@@ -166,7 +166,7 @@ def test_deep_profile_still_reports_pending(
     assert result.findings == ()
     assert result.enabled_rules == ()
     assert "deep profile requires explicit opt-in" in result.pending[0]
-    assert "not implemented" in result.notice
+    assert "explicit opt-in" in result.notice
 
 
 def test_cli_scan_exit_code_reflects_real_findings(

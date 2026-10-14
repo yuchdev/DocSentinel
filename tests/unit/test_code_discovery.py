@@ -358,8 +358,27 @@ def test_docsig_path_as_symlink_is_skipped(tmp_path: Path):
     assert result == ()
 
 
-@pytest.mark.parametrize("entry", ("/tmp", "../outside"))
+@pytest.mark.parametrize("entry", ("<parent>", "../outside"))
 def test_docsig_path_outside_root_is_rejected(tmp_path: Path, entry: str):
-    """Configured docsig paths cannot escape the scan root."""
+    """
+    [Unit] code discovery: verifies docsig path outside root is rejected.
+
+    Scenario:
+        Given test inputs and fixtures for docsig path outside root is rejected
+        When test_docsig_path_outside_root_is_rejected executes the target flow
+        Then the expected outcome for docsig path outside root is rejected is confirmed.
+
+    Boundaries:
+        - Focus: docsig path outside root is rejected
+        - Fixtures/params: tmp_path, entry
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - Assertion details tied to docsig path outside root is rejected
+        - Fixture or parameter values used by this test
+        - Recent changes in code paths exercised by code discovery
+    """
+    if entry == "<parent>":
+        entry = tmp_path.parent.as_posix()
     with pytest.raises(ValueError, match="must remain under scan root"):
         discover_python(tmp_path, Config(docsig_paths=(entry,)))

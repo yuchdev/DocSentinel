@@ -104,7 +104,7 @@ def low_information_chunks(
 def detect(
     root: Path,
     documents: tuple[models.Document, ...],
-    config: Config | None = None,
+    config: Optional[Config] = None,
 ) -> tuple[models.Finding, ...]:
     """Return DS203 findings for low-information paragraphs across documents."""
     config = config or load_config(root)

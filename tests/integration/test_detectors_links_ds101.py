@@ -65,7 +65,24 @@ def test_dangling_file_link_is_flagged(asset_case: Callable[[str, str], AssetCas
 
 
 def test_protocol_relative_link_is_skipped(tmp_path: Path):
-    """Protocol-relative links are external and do not produce DS101 findings."""
+    """
+    [Integration] detectors links ds101: verifies protocol relative link is skipped.
+
+    Scenario:
+        Given test inputs and fixtures for protocol relative link is skipped
+        When test_protocol_relative_link_is_skipped executes the target flow
+        Then the expected outcome for protocol relative link is skipped is confirmed.
+
+    Boundaries:
+        - Focus: protocol relative link is skipped
+        - Fixtures/params: tmp_path
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - Assertion details tied to protocol relative link is skipped
+        - Fixture or parameter values used by this test
+        - Recent changes in code paths exercised by detectors links ds101
+    """
     source = tmp_path / "README.md"
     source.write_text("[Example](//example.com/docs)\n", encoding="utf-8")
 
