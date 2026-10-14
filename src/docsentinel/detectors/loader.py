@@ -23,7 +23,7 @@ def ensure_standard_loaded():
     _standard_loaded = True
 
 
-def clear_standard_caches():
+def clear_standard_caches() -> None:
     """Reset per-scan corpus caches; the corpus module imports scikit-learn, so load it lazily."""
     ensure_standard_loaded()
     importlib.import_module("docsentinel.detectors.standard.corpus").clear_corpus_cache()
