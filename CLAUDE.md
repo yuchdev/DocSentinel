@@ -12,7 +12,7 @@ DocSentinel is a deterministic-first documentation QA framework and Python libra
 
 ## Commands
 
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). Optional dependency extras are `test` (`pytest`), `standard` (`scikit-learn`, `textstat`, `docsig`), and `deep` (`spacy`, `textacy`).
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/). Optional dependency extras are `test` (`pytest`), `standard` (`scikit-learn`, `textstat`, `docsig`), and `deep` (`spacy`, `textacy`).
 
 ```sh
 uv sync --extra test --extra standard --extra deep
