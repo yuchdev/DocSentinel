@@ -29,7 +29,7 @@ from typing import Optional
 
 from docsentinel import models, rules
 from docsentinel.code_discovery import discover_python
-from docsentinel.config import load_config
+from docsentinel.config import Config, load_config
 
 DS204 = rules.register_rule(
     rules.Rule(
@@ -156,6 +156,7 @@ def check_file(root: Path, path: Path) -> tuple[models.Finding, ...]:
 def detect(
     root: Path,
     documents: tuple[models.Document, ...],
+    config: Config | None = None,
 ) -> tuple[models.Finding, ...]:
     """Return DS204 findings for Python source files discovered under root.
 
@@ -163,7 +164,7 @@ def detect(
     unused. DS204 scans Python source files discovered via `discover_python(root, config)`
     rather than Markdown documentation.
     """
-    config = load_config(root)
+    config = config or load_config(root)
     python_files = discover_python(root, config)
     findings: list[models.Finding] = []
     for py_file in python_files:

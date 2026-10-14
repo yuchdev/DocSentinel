@@ -11,6 +11,7 @@ def discover_python(root: Path, config: Config) -> tuple[Path, ...]:
     """Return a reproducible inventory of matching Python source files."""
     if not root.is_dir():
         raise ValueError(f"Not a directory: {root}")
+    root = root.resolve()
 
     def raise_walk_error(error: OSError):
         """Re-raise directory walk errors encountered during os.walk."""
@@ -19,8 +20,13 @@ def discover_python(root: Path, config: Config) -> tuple[Path, ...]:
     discovered: list[Path] = []
 
     for entry in config.docsig_paths:
-        target = root / entry
-        if target.is_symlink() or not target.exists():
+        configured_target = root / entry
+        if configured_target.is_symlink():
+            continue
+        target = configured_target.resolve()
+        if not target.is_relative_to(root):
+            raise ValueError(f"docsig path must remain under scan root: {entry}")
+        if not target.exists():
             continue
 
         if target.is_file():

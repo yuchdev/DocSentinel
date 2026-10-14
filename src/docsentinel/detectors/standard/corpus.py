@@ -160,7 +160,7 @@ def _read_doc_text(
     if isinstance(doc_text, str):
         return doc_text
     target = Path(root) / doc.path if root is not None else Path(doc.path)
-    with target.open(encoding="utf-8", errors="replace") as stream:
+    with target.open(encoding="utf-8") as stream:
         return stream.read()
 
 

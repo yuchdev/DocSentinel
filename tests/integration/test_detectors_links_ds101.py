@@ -64,6 +64,14 @@ def test_dangling_file_link_is_flagged(asset_case: Callable[[str, str], AssetCas
     )
 
 
+def test_protocol_relative_link_is_skipped(tmp_path: Path):
+    """Protocol-relative links are external and do not produce DS101 findings."""
+    source = tmp_path / "README.md"
+    source.write_text("[Example](//example.com/docs)\n", encoding="utf-8")
+
+    assert links.detect(tmp_path, (models.Document("README.md", source.stat().st_size),)) == ()
+
+
 def test_missing_file_with_anchor_reports_only_dangling_link(asset_case: Callable[[str, str], AssetCase]):
     """
     [Integration] detectors links ds101: verifies missing file with anchor reports only dangling link.

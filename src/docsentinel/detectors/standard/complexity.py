@@ -13,7 +13,7 @@ from pathlib import Path
 import textstat
 
 from docsentinel import models, rules
-from docsentinel.config import load_config
+from docsentinel.config import Config, load_config
 
 DS201 = rules.register_rule(
     rules.Rule(
@@ -52,7 +52,7 @@ def _strip_markdown(text: str) -> str:
 
 def _read_text(path: Path) -> str:
     """Read UTF-8 text from a path."""
-    with path.open(encoding="utf-8", errors="replace") as stream:
+    with path.open(encoding="utf-8") as stream:
         return stream.read()
 
 
@@ -90,9 +90,10 @@ def check_document(
 def detect(
     root: Path,
     documents: tuple[models.Document, ...],
+    config: Config | None = None,
 ) -> tuple[models.Finding, ...]:
     """Return DS201 findings for Markdown documents in their supplied order."""
-    config = load_config(root)
+    config = config or load_config(root)
     findings: list[models.Finding] = []
     for doc in documents:
         if not doc.path.endswith(".md"):

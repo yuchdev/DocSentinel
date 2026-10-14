@@ -21,7 +21,7 @@ import numpy as np
 import scipy.sparse as sp
 
 from docsentinel import models, rules
-from docsentinel.config import load_config
+from docsentinel.config import Config, load_config
 from docsentinel.detectors.standard.corpus import CorpusModel, build_corpus_model
 
 DS203 = rules.register_rule(
@@ -104,9 +104,10 @@ def low_information_chunks(
 def detect(
     root: Path,
     documents: tuple[models.Document, ...],
+    config: Config | None = None,
 ) -> tuple[models.Finding, ...]:
     """Return DS203 findings for low-information paragraphs across documents."""
-    config = load_config(root)
+    config = config or load_config(root)
     model = build_corpus_model(root, documents)
     flagged = low_information_chunks(model, config.min_information_score)
     findings: list[models.Finding] = []
