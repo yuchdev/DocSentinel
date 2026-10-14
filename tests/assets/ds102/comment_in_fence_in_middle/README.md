@@ -1,0 +1,5 @@
+before
+```html
+<!-- example -->
+```
+after

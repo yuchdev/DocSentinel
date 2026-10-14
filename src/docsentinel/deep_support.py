@@ -5,6 +5,7 @@ TODO(milestone-0002-dedup): consider unifying optional-dependency probes across 
 
 from __future__ import annotations
 
+import importlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -19,20 +20,22 @@ MODEL_NAME: str = "en_core_web_sm"
 def libraries_available() -> bool:
     """Return True if both spacy and textacy can be imported without error."""
     try:
-        import spacy  # noqa: F401
-        import textacy  # noqa: F401
+        importlib.import_module("spacy")
+        importlib.import_module("textacy")
     except ImportError:
-        return False
+        status = False
+        return status
     return True
 
 
 def model_available() -> bool:
     """Return True if the pinned spaCy model package is installed, without fully loading it."""
     try:
-        import spacy.util
+        spacy_util = importlib.import_module("spacy.util")
     except ImportError:
-        return False
-    return bool(spacy.util.is_package(MODEL_NAME))
+        status = False
+        return status
+    return bool(spacy_util.is_package(MODEL_NAME))
 
 
 def deep_ready() -> bool:
@@ -46,7 +49,7 @@ def load_pipeline() -> spacy.language.Language:
     Raises RuntimeError with install guidance if libraries or model are missing.
     """
     try:
-        import spacy
+        spacy = importlib.import_module("spacy")
     except ImportError as exc:
         raise RuntimeError(f"deep profile needs the model '{MODEL_NAME}': {DEEP_EXTRA_HINT}") from exc
 

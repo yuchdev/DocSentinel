@@ -1,0 +1,1 @@
+The cat sat on the mat. The sun was hot and bright today. We had fun playing outside in the yard with our friends all day long. The dog ran after the red ball across the green grass. We ate lunch and drank cool water under the shade. It was a good day for everyone in the park. Tomorrow we will go to the park again.

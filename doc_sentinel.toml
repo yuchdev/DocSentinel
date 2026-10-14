@@ -1,2 +1,2 @@
 baseline = ".docsentinel-baseline.json"
-exclude = [".git", ".venv", "node_modules", "dist", ".junie"]
+exclude = [".git", ".venv", "node_modules", ".dist", ".junie", "tests/assets/*"]

@@ -1,6 +1,7 @@
 """Tests for deep_support lazy loaders, probes, and readiness checks."""
 
 import builtins
+import importlib
 import sys
 from typing import Any
 
@@ -101,15 +102,19 @@ def test_libraries_available_false_when_missing(monkeypatch: pytest.MonkeyPatch)
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by deep support
     """
-    orig_import = builtins.__import__
+    orig_import_module = importlib.import_module
 
-    def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
-        """Simulate missing libraries by failing on target imports."""
+    def fake_import_module(name: str, *args: Any, **kwargs: Any) -> Any:
+        """Simulate missing libraries by failing on target imports.
+
+        ``libraries_available`` probes with ``importlib.import_module``, which does not go through
+        ``builtins.__import__``; patching that hook would only work while the libraries are uninstalled.
+        """
         if name in ("spacy", "textacy"):
             raise ImportError(f"No module named '{name}'")
-        return orig_import(name, *args, **kwargs)
+        return orig_import_module(name, *args, **kwargs)
 
-    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
     assert deep_support.libraries_available() is False
 
 

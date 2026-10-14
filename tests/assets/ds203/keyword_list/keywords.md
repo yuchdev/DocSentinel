@@ -1,0 +1,1 @@
+Kubernetes Terraform OpenTelemetry Elasticsearch Kubernetes Terraform OpenTelemetry Elasticsearch Kubernetes Terraform OpenTelemetry Elasticsearch.

@@ -1,9 +1,9 @@
-"""Tests for triple extraction and normalization."""
+"""Unit tests for triple key and number normalization (no NLP model required).
 
-import pytest
+Claim extraction over documents is covered by ``tests/integration/test_triples_ds301.py``.
+"""
 
-from docsentinel import deep_support
-from docsentinel.detectors._triples import _normalize_key, _object_numbers, extract_claims
+from docsentinel.detectors._triples import _normalize_key, _object_numbers
 
 
 def test_subject_key_ignores_articles_and_case():
@@ -62,91 +62,3 @@ def test_number_normalization():
     assert _object_numbers([DummyToken("1,024")]) == ("1024",)
     assert _object_numbers([DummyToken("ten")]) == ("10",)
     assert _object_numbers([DummyToken("42")]) == ("42",)
-
-
-@pytest.mark.skipif(not deep_support.deep_ready(), reason="deep dependencies and model not installed")
-def test_extract_claims_simple_svo():
-    """
-    [Unit] detectors triples: verifies extract claims simple svo.
-
-    Scenario:
-        Given test inputs and fixtures for extract claims simple svo
-        When test_extract_claims_simple_svo executes the target flow
-        Then the expected outcome for extract claims simple svo is confirmed.
-
-    Boundaries:
-        - Focus: extract claims simple svo
-        - Fixtures/params: none
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to extract claims simple svo
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors triples
-    """
-    pipeline = deep_support.load_pipeline()
-    text = "The cache holds 100 entries."
-    claims = extract_claims(pipeline, text, "doc.md")
-
-    assert len(claims) >= 1
-    claim = claims[0]
-    assert claim.subject_key == "cache"
-    assert "100" in claim.object_numbers
-    assert claim.path == "doc.md"
-    assert claim.paragraph_index == 0
-
-
-@pytest.mark.skipif(not deep_support.deep_ready(), reason="deep dependencies and model not installed")
-def test_paragraph_index_assigned():
-    """
-    [Unit] detectors triples: verifies paragraph index assigned.
-
-    Scenario:
-        Given test inputs and fixtures for paragraph index assigned
-        When test_paragraph_index_assigned executes the target flow
-        Then the expected outcome for paragraph index assigned is confirmed.
-
-    Boundaries:
-        - Focus: paragraph index assigned
-        - Fixtures/params: none
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to paragraph index assigned
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors triples
-    """
-    pipeline = deep_support.load_pipeline()
-    text = "The server handles 50 requests.\n\n\nThe client sends 20 messages."
-    claims = extract_claims(pipeline, text, "multi.md")
-
-    assert len(claims) >= 2
-    indices = [c.paragraph_index for c in claims]
-    assert 0 in indices
-    assert 1 in indices
-
-
-@pytest.mark.skipif(not deep_support.deep_ready(), reason="deep dependencies and model not installed")
-def test_no_triples_yields_empty():
-    """
-    [Unit] detectors triples: verifies no triples yields empty.
-
-    Scenario:
-        Given test inputs and fixtures for no triples yields empty
-        When test_no_triples_yields_empty executes the target flow
-        Then the expected outcome for no triples yields empty is confirmed.
-
-    Boundaries:
-        - Focus: no triples yields empty
-        - Fixtures/params: none
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to no triples yields empty
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors triples
-    """
-    pipeline = deep_support.load_pipeline()
-    text = "Hello world."
-    claims = extract_claims(pipeline, text, "empty.md")
-    assert isinstance(claims, tuple)

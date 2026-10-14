@@ -1,0 +1,1 @@
+DocSentinel verifies documentation quality deterministically using TF-IDF statistics.

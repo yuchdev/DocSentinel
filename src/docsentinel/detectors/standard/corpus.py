@@ -126,6 +126,7 @@ def _strip_comments(text: str) -> str:
     """Return text with HTML comments blanked while preserving line offsets."""
 
     def _blank_match(match: re.Match[str]) -> str:
+        """Replace non-newline characters in matched comments with spaces."""
         s = match.group(0)
         return "".join(c if c in "\r\n" else " " for c in s)
 
@@ -303,6 +304,6 @@ def build_corpus_model(
     )
 
 
-def clear_corpus_cache() -> None:
+def clear_corpus_cache():
     """Clear memoized corpus models."""
     build_corpus_model.cache_clear()

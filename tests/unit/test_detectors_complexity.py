@@ -1,37 +1,16 @@
-"""Tests for DS201 text complexity detector."""
+"""Unit tests for DS201 function logic: rule metadata, grade-level scoring, and markdown stripping.
 
-from pathlib import Path
+Detection over documents is covered by ``tests/integration/test_detectors_complexity_ds201.py``.
+"""
 
 import pytest
 
 pytest.importorskip("textstat")
 
-from docsentinel import models
 from docsentinel.detectors.standard import complexity
 
-_SIMPLE_TEXT = (
-    "The cat sat on the mat. The sun was hot and bright today. "
-    "We had fun playing outside in the yard with our friends all day long. "
-    "The dog ran after the red ball across the green grass. "
-    "We ate lunch and drank cool water under the shade. "
-    "It was a good day for everyone in the park. "
-    "Tomorrow we will go to the park again."
-)
 
-_DENSE_TEXT = (
-    "The epistemological ramifications of post-structuralist hermeneutics "
-    "necessitate a comprehensive re-evaluation of ontologically indeterminate "
-    "socio-historical contextualizations within modern institutional paradigms. "
-    "Consequently, idiosyncratic methodological approaches deliberately obfuscate "
-    "the phenomenological dialectic inherent in multidisciplinary theoretical syntaxes. "
-    "Furthermore, the institutionalized hegemony of predetermined conceptual frameworks "
-    "systematically perpetuates epistemological disenfranchisement across heterogeneous "
-    "linguistic subcultures, thereby precluding equitable academic discourse and "
-    "collaborative interdisciplinary synthesis."
-)
-
-
-def test_rule_metadata() :
+def test_rule_metadata():
     """
     [Unit] detectors complexity: verifies rule metadata.
 
@@ -56,53 +35,57 @@ def test_rule_metadata() :
     assert complexity.DS201.severity == "warning"
 
 
-def test_compute_grade_level_simple_text_below_threshold() :
+def test_compute_grade_level_simple_sentence_is_low():
     """
-    [Unit] detectors complexity: verifies compute grade level simple text below threshold.
+    [Unit] detectors complexity: verifies compute grade level simple sentence is low.
 
     Scenario:
-        Given test inputs and fixtures for compute grade level simple text below threshold
-        When test_compute_grade_level_simple_text_below_threshold executes the target flow
-        Then the expected outcome for compute grade level simple text below threshold is confirmed.
+        Given test inputs and fixtures for compute grade level simple sentence is low
+        When test_compute_grade_level_simple_sentence_is_low executes the target flow
+        Then the expected outcome for compute grade level simple sentence is low is confirmed.
 
     Boundaries:
-        - Focus: compute grade level simple text below threshold
+        - Focus: compute grade level simple sentence is low
         - Fixtures/params: none
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
-        - Assertion details tied to compute grade level simple text below threshold
+        - Assertion details tied to compute grade level simple sentence is low
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by detectors complexity
     """
-    grade = complexity.compute_grade_level(_SIMPLE_TEXT)
-    assert grade < 14.0
+    assert complexity.compute_grade_level("The cat sat on the mat.") < 14.0
 
 
-def test_compute_grade_level_dense_academic_text_above_threshold() :
+def test_compute_grade_level_dense_sentence_is_high():
     """
-    [Unit] detectors complexity: verifies compute grade level dense academic text above threshold.
+    [Unit] detectors complexity: verifies compute grade level dense sentence is high.
 
     Scenario:
-        Given test inputs and fixtures for compute grade level dense academic text above threshold
-        When test_compute_grade_level_dense_academic_text_above_threshold executes the target flow
-        Then the expected outcome for compute grade level dense academic text above threshold is confirmed.
+        Given test inputs and fixtures for compute grade level dense sentence is high
+        When test_compute_grade_level_dense_sentence_is_high executes the target flow
+        Then the expected outcome for compute grade level dense sentence is high is confirmed.
 
     Boundaries:
-        - Focus: compute grade level dense academic text above threshold
+        - Focus: compute grade level dense sentence is high
         - Fixtures/params: none
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
-        - Assertion details tied to compute grade level dense academic text above threshold
+        - Assertion details tied to compute grade level dense sentence is high
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by detectors complexity
     """
-    grade = complexity.compute_grade_level(_DENSE_TEXT)
-    assert grade > 14.0
+    sentence = (
+        "The epistemological ramifications of post-structuralist hermeneutics "
+        "necessitate a comprehensive re-evaluation of ontologically indeterminate "
+        "socio-historical contextualizations within modern institutional paradigms."
+    )
+
+    assert complexity.compute_grade_level(sentence) > 14.0
 
 
-def test_strip_markdown_removes_code_blocks_and_links() :
+def test_strip_markdown_removes_code_blocks_and_links():
     """
     [Unit] detectors complexity: verifies strip markdown removes code blocks and links.
 
@@ -152,164 +135,23 @@ def test_strip_markdown_removes_code_blocks_and_links() :
     assert "echo ignored" not in stripped
 
 
-def test_short_document_skipped(tmp_path: Path) :
+def test_strip_markdown_collapses_whitespace_into_single_spaces():
     """
-    [Unit] detectors complexity: verifies short document skipped.
+    [Unit] detectors complexity: verifies strip markdown collapses whitespace into single spaces.
 
     Scenario:
-        Given test inputs and fixtures for short document skipped
-        When test_short_document_skipped executes the target flow
-        Then the expected outcome for short document skipped is confirmed.
+        Given test inputs and fixtures for strip markdown collapses whitespace into single spaces
+        When test_strip_markdown_collapses_whitespace_into_single_spaces executes the target flow
+        Then the expected outcome for strip markdown collapses whitespace into single spaces is confirmed.
 
     Boundaries:
-        - Focus: short document skipped
-        - Fixtures/params: tmp_path
+        - Focus: strip markdown collapses whitespace into single spaces
+        - Fixtures/params: none
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
-        - Assertion details tied to short document skipped
+        - Assertion details tied to strip markdown collapses whitespace into single spaces
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by detectors complexity
     """
-    short_dense = (
-        "The epistemological ramifications of post-structuralist hermeneutics "
-        "necessitate a comprehensive re-evaluation of ontologically indeterminate "
-        "socio-historical contextualizations."
-    )
-    doc_path = tmp_path / "short.md"
-    doc_path.write_text(short_dense, encoding="utf-8")
-    doc = models.Document(path="short.md", bytes=len(short_dense.encode("utf-8")))
-
-    findings = complexity.check_document(tmp_path, doc, max_grade=14.0)
-    assert findings == ()
-
-
-def test_check_document_emits_warning_finding_on_breach(tmp_path: Path) :
-    """
-    [Unit] detectors complexity: verifies check document emits warning finding on breach.
-
-    Scenario:
-        Given test inputs and fixtures for check document emits warning finding on breach
-        When test_check_document_emits_warning_finding_on_breach executes the target flow
-        Then the expected outcome for check document emits warning finding on breach is confirmed.
-
-    Boundaries:
-        - Focus: check document emits warning finding on breach
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to check document emits warning finding on breach
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors complexity
-    """
-    doc_path = tmp_path / "dense.md"
-    doc_path.write_text(_DENSE_TEXT, encoding="utf-8")
-    doc = models.Document(path="dense.md", bytes=len(_DENSE_TEXT.encode("utf-8")))
-
-    findings = complexity.check_document(tmp_path, doc, max_grade=14.0)
-    assert len(findings) == 1
-    finding = findings[0]
-    assert finding.rule == "DS201"
-    assert finding.path == "dense.md"
-    assert finding.severity == "warning"
-    assert "Readability grade level" in finding.message
-    assert "exceeds threshold 14.0" in finding.message
-
-
-def test_check_document_clean_below_threshold(tmp_path: Path) :
-    """
-    [Unit] detectors complexity: verifies check document clean below threshold.
-
-    Scenario:
-        Given test inputs and fixtures for check document clean below threshold
-        When test_check_document_clean_below_threshold executes the target flow
-        Then the expected outcome for check document clean below threshold is confirmed.
-
-    Boundaries:
-        - Focus: check document clean below threshold
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to check document clean below threshold
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors complexity
-    """
-    doc_path = tmp_path / "simple.md"
-    doc_path.write_text(_SIMPLE_TEXT, encoding="utf-8")
-    doc = models.Document(path="simple.md", bytes=len(_SIMPLE_TEXT.encode("utf-8")))
-
-    findings = complexity.check_document(tmp_path, doc, max_grade=14.0)
-    assert findings == ()
-
-
-def test_detect_runs_over_all_documents(tmp_path: Path) :
-    """
-    [Unit] detectors complexity: verifies detect runs over all documents.
-
-    Scenario:
-        Given test inputs and fixtures for detect runs over all documents
-        When test_detect_runs_over_all_documents executes the target flow
-        Then the expected outcome for detect runs over all documents is confirmed.
-
-    Boundaries:
-        - Focus: detect runs over all documents
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to detect runs over all documents
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors complexity
-    """
-    dense_path = tmp_path / "dense.md"
-    dense_path.write_text(_DENSE_TEXT, encoding="utf-8")
-    simple_path = tmp_path / "simple.md"
-    simple_path.write_text(_SIMPLE_TEXT, encoding="utf-8")
-    txt_path = tmp_path / "dense.txt"
-    txt_path.write_text(_DENSE_TEXT, encoding="utf-8")
-
-    docs = (
-        models.Document(path="dense.md", bytes=len(_DENSE_TEXT.encode("utf-8"))),
-        models.Document(path="simple.md", bytes=len(_SIMPLE_TEXT.encode("utf-8"))),
-        models.Document(path="dense.txt", bytes=len(_DENSE_TEXT.encode("utf-8"))),
-    )
-
-    findings = complexity.detect(tmp_path, docs)
-    assert len(findings) == 1
-    assert findings[0].path == "dense.md"
-    assert findings[0].rule == "DS201"
-
-
-def test_detect_respects_custom_threshold_from_config(tmp_path: Path) :
-    """
-    [Unit] detectors complexity: verifies detect respects custom threshold from config.
-
-    Scenario:
-        Given test inputs and fixtures for detect respects custom threshold from config
-        When test_detect_respects_custom_threshold_from_config executes the target flow
-        Then the expected outcome for detect respects custom threshold from config is confirmed.
-
-    Boundaries:
-        - Focus: detect respects custom threshold from config
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to detect respects custom threshold from config
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors complexity
-    """
-    dense_path = tmp_path / "dense.md"
-    dense_path.write_text(_DENSE_TEXT, encoding="utf-8")
-    docs = (models.Document(path="dense.md", bytes=len(_DENSE_TEXT.encode("utf-8"))),)
-
-    (tmp_path / "doc_sentinel.toml").write_text("max_grade_level = 50.0\n", encoding="utf-8")
-    findings = complexity.detect(tmp_path, docs)
-    assert findings == ()
-
-    (tmp_path / "doc_sentinel.toml").write_text("max_grade_level = 10.0\n", encoding="utf-8")
-    findings = complexity.detect(tmp_path, docs)
-    assert len(findings) == 1
-    assert "exceeds threshold 10.0" in findings[0].message
+    assert complexity._strip_markdown("First   line\n\nSecond\tline\n") == "First line Second line"

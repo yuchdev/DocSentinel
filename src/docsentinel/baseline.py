@@ -42,7 +42,7 @@ def load_baseline(path: Path) -> frozenset[str]:
     return frozenset(fingerprints)
 
 
-def save_baseline(path: Path, findings: tuple[Finding, ...]) -> None:
+def save_baseline(path: Path, findings: tuple[Finding, ...]) :
     """Save finding fingerprints to a JSON baseline file in deterministic sorted order."""
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"fingerprints": sorted({fingerprint(f) for f in findings})}

@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "flakeforge==1.1.0",
     "release-saga==1.2.0",
+    "spacy>=3.8.16",
 ]
 
 [project.scripts]
@@ -23,6 +24,32 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "unit: Unit tests exercising pure logic in isolation",
+    "mock: Tests exercising units with mocked external collaborators",
+    "integration: Integration tests exercising multiple real components",
+    "e2e: End-to-end journey tests exercising complete entry points",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/docsentinel"]
+
+[tool.flakeforge]
+include = ["src", "tests", "scripts"]
+exclude = [".venv", "build", ".build", "dist", ".dist", "tests/assets"]
+
+# select = []
+# ignore = []
+
+# When false, a `# noqa` comment never suppresses a violation (the rule
+# engine's noqa support is bypassed entirely). Default true.
+allow_noqa = true
+
+# Whitelist: when non-empty, only files/directories listed here may use `# noqa`.
+# When empty, all files not in `noqa_forbidden` are permitted.
+noqa_allowed = []
+
+# Blacklist: files/directories where `# noqa` is strictly forbidden (violations always fire).
+# Blacklist always wins over `noqa_allowed`.
+noqa_forbidden = []

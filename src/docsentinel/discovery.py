@@ -14,7 +14,8 @@ def discover(root: Path, config: Config) -> tuple[Document, ...]:
         raise ValueError(f"Not a directory: {root}")
     documents: list[Document] = []
 
-    def raise_walk_error(error: OSError) -> None:
+    def raise_walk_error(error: OSError):
+        """Re-raise directory walk errors encountered during os.walk."""
         raise error
 
     for current, directories, filenames in os.walk(root, topdown=True, onerror=raise_walk_error):

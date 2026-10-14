@@ -1,7 +1,8 @@
-"""Unit tests for the shared corpus model and paragraph chunking module."""
+"""Unit tests for the shared corpus module's text-level logic (paragraph extraction and markdown masking).
 
-from pathlib import Path
-from unittest.mock import patch
+Paragraph extraction is driven through the ``text=`` argument so no files are read. Model building over
+documents on disk is covered by ``tests/integration/test_corpus_model_ds202.py``.
+"""
 
 import pytest
 
@@ -17,15 +18,13 @@ def _clear_cache():
     corpus.clear_corpus_cache()
 
 
-def _create_doc(tmp_path: Path, relative_path: str, content: str) -> models.Document:
-    """Create a test document file and return its Document representation."""
-    full_path = tmp_path / relative_path
-    full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_text(content, encoding="utf-8")
-    return models.Document(path=relative_path, bytes=len(content.encode("utf-8")))
+def _extract(path: str, content: str, **kwargs: int) -> tuple[corpus.Paragraph, ...]:
+    """Extract paragraphs from in-memory text attributed to a document path."""
+    document = models.Document(path=path, bytes=len(content.encode("utf-8")))
+    return corpus.extract_paragraphs(document, text=content, **kwargs)
 
 
-def test_extract_paragraphs_splits_on_blank_lines(tmp_path: Path):
+def test_extract_paragraphs_splits_on_blank_lines():
     """
     [Unit] detectors corpus: verifies extract paragraphs splits on blank lines.
 
@@ -36,7 +35,7 @@ def test_extract_paragraphs_splits_on_blank_lines(tmp_path: Path):
 
     Boundaries:
         - Focus: extract paragraphs splits on blank lines
-        - Fixtures/params: tmp_path
+        - Fixtures/params: none
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
@@ -50,8 +49,8 @@ def test_extract_paragraphs_splits_on_blank_lines(tmp_path: Path):
         "This is the second distinct paragraph which is also sufficiently long.\n"
         "It contains multiple descriptive terms and facts.\n"
     )
-    doc = _create_doc(tmp_path, "split_test.md", content)
-    paragraphs = corpus.extract_paragraphs(doc, root=tmp_path)
+
+    paragraphs = _extract("split_test.md", content)
 
     assert len(paragraphs) == 2
     assert paragraphs[0].index == 0
@@ -62,7 +61,7 @@ def test_extract_paragraphs_splits_on_blank_lines(tmp_path: Path):
     assert "second distinct paragraph" in paragraphs[1].text
 
 
-def test_extract_paragraphs_ignores_code_blocks(tmp_path: Path):
+def test_extract_paragraphs_ignores_code_blocks():
     """
     [Unit] detectors corpus: verifies extract paragraphs ignores code blocks.
 
@@ -73,7 +72,7 @@ def test_extract_paragraphs_ignores_code_blocks(tmp_path: Path):
 
     Boundaries:
         - Focus: extract paragraphs ignores code blocks
-        - Fixtures/params: tmp_path
+        - Fixtures/params: none
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
@@ -95,8 +94,8 @@ def test_extract_paragraphs_ignores_code_blocks(tmp_path: Path):
         "echo 'another ignored block'\n"
         "~~~\n"
     )
-    doc = _create_doc(tmp_path, "code_blocks.md", content)
-    paragraphs = corpus.extract_paragraphs(doc, root=tmp_path)
+
+    paragraphs = _extract("code_blocks.md", content)
 
     assert len(paragraphs) == 2
     for p in paragraphs:
@@ -107,7 +106,7 @@ def test_extract_paragraphs_ignores_code_blocks(tmp_path: Path):
         assert "~~~" not in p.text
 
 
-def test_extract_paragraphs_records_one_based_line_numbers(tmp_path: Path):
+def test_extract_paragraphs_records_one_based_line_numbers():
     """
     [Unit] detectors corpus: verifies extract paragraphs records one based line numbers.
 
@@ -118,7 +117,7 @@ def test_extract_paragraphs_records_one_based_line_numbers(tmp_path: Path):
 
     Boundaries:
         - Focus: extract paragraphs records one based line numbers
-        - Fixtures/params: tmp_path
+        - Fixtures/params: none
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
@@ -140,15 +139,15 @@ def test_extract_paragraphs_records_one_based_line_numbers(tmp_path: Path):
         "This is paragraph two starting on line eleven following the code.\n"  # Line 11
         "It also carries enough tokens to pass the minimum threshold.\n"  # Line 12
     )
-    doc = _create_doc(tmp_path, "line_numbers.md", content)
-    paragraphs = corpus.extract_paragraphs(doc, root=tmp_path)
+
+    paragraphs = _extract("line_numbers.md", content)
 
     assert len(paragraphs) == 2
     assert paragraphs[0].line == 3
     assert paragraphs[1].line == 11
 
 
-def test_extract_paragraphs_skips_short_paragraphs(tmp_path: Path):
+def test_extract_paragraphs_skips_short_paragraphs():
     """
     [Unit] detectors corpus: verifies extract paragraphs skips short paragraphs.
 
@@ -159,7 +158,7 @@ def test_extract_paragraphs_skips_short_paragraphs(tmp_path: Path):
 
     Boundaries:
         - Focus: extract paragraphs skips short paragraphs
-        - Fixtures/params: tmp_path
+        - Fixtures/params: none
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
@@ -174,15 +173,15 @@ def test_extract_paragraphs_skips_short_paragraphs(tmp_path: Path):
         "This is a proper and informative paragraph containing enough words to be analyzed.\n\n"
         "End note.\n"
     )
-    doc = _create_doc(tmp_path, "short.md", content)
-    paragraphs = corpus.extract_paragraphs(doc, root=tmp_path)
+
+    paragraphs = _extract("short.md", content)
 
     assert len(paragraphs) == 1
     assert "proper and informative paragraph" in paragraphs[0].text
     assert paragraphs[0].index == 0
 
 
-def test_extract_paragraphs_strips_html_comments_and_markdown(tmp_path: Path):
+def test_extract_paragraphs_strips_html_comments_and_markdown():
     """
     [Unit] detectors corpus: verifies extract paragraphs strips html comments and markdown.
 
@@ -193,7 +192,7 @@ def test_extract_paragraphs_strips_html_comments_and_markdown(tmp_path: Path):
 
     Boundaries:
         - Focus: extract paragraphs strips html comments and markdown
-        - Fixtures/params: tmp_path
+        - Fixtures/params: none
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
@@ -206,8 +205,8 @@ def test_extract_paragraphs_strips_html_comments_and_markdown(tmp_path: Path):
         "Here is a paragraph with [hyperlink text](https://example.com/target) and `inline_code()`.\n"
         "It also features **bold text**, *italic text*, and <span class='tag'>HTML</span> elements.\n"
     )
-    doc = _create_doc(tmp_path, "formatting.md", content)
-    paragraphs = corpus.extract_paragraphs(doc, root=tmp_path)
+
+    paragraphs = _extract("formatting.md", content)
 
     assert len(paragraphs) == 1
     text = paragraphs[0].text
@@ -217,6 +216,87 @@ def test_extract_paragraphs_strips_html_comments_and_markdown(tmp_path: Path):
     assert "inline_code" not in text
     assert "<span" not in text
     assert "HTML" in text
+
+
+def test_extract_paragraphs_honours_min_chars_and_min_words_overrides():
+    """
+    [Unit] detectors corpus: verifies extract paragraphs honours min chars and min words overrides.
+
+    Scenario:
+        Given test inputs and fixtures for extract paragraphs honours min chars and min words overrides
+        When test_extract_paragraphs_honours_min_chars_and_min_words_overrides executes the target flow
+        Then the expected outcome for extract paragraphs honours min chars and min words overrides is confirmed.
+
+    Boundaries:
+        - Focus: extract paragraphs honours min chars and min words overrides
+        - Fixtures/params: none
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - Assertion details tied to extract paragraphs honours min chars and min words overrides
+        - Fixture or parameter values used by this test
+        - Recent changes in code paths exercised by detectors corpus
+    """
+    content = "Tiny paragraph here.\n\nAnother small one.\n"
+
+    assert _extract("tiny.md", content) == ()
+
+    relaxed = _extract("tiny.md", content, min_chars=0, min_words=1)
+    assert [p.text for p in relaxed] == ["Tiny paragraph here.", "Another small one."]
+
+
+def test_strip_markdown_markers_removes_links_images_quotes_and_list_markers():
+    """
+    [Unit] detectors corpus: verifies strip markdown markers removes links images quotes and list markers.
+
+    Scenario:
+        Given test inputs and fixtures for strip markdown markers removes links images quotes and list markers
+        When test_strip_markdown_markers_removes_links_images_quotes_and_list_markers executes the target flow
+        Then the expected outcome for strip markdown markers removes links images quotes and list markers is confirmed.
+
+    Boundaries:
+        - Focus: strip markdown markers removes links images quotes and list markers
+        - Fixtures/params: none
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - Assertion details tied to strip markdown markers removes links images quotes and list markers
+        - Fixture or parameter values used by this test
+        - Recent changes in code paths exercised by detectors corpus
+    """
+    raw = "> Quoted [label](https://example.com) text\n- item ![logo](img.png) end\n## Heading"
+
+    assert corpus._strip_markdown_markers(raw) == "Quoted label text item end Heading"
+
+
+def test_strip_comments_blanks_comment_text_but_keeps_newlines():
+    """
+    [Unit] detectors corpus: verifies strip comments blanks comment text but keeps newlines.
+
+    Scenario:
+        Given test inputs and fixtures for strip comments blanks comment text but keeps newlines
+        When test_strip_comments_blanks_comment_text_but_keeps_newlines executes the target flow
+        Then the expected outcome for strip comments blanks comment text but keeps newlines is confirmed.
+
+    Boundaries:
+        - Focus: strip comments blanks comment text but keeps newlines
+        - Fixtures/params: none
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - Assertion details tied to strip comments blanks comment text but keeps newlines
+        - Fixture or parameter values used by this test
+        - Recent changes in code paths exercised by detectors corpus
+    """
+    text = "before <!-- a\nb --> after\n"
+
+    stripped = corpus._strip_comments(text)
+
+    assert len(stripped) == len(text)
+    assert stripped.count("\n") == text.count("\n")
+    assert "<!--" not in stripped
+    assert stripped.startswith("before ")
+    assert stripped.rstrip().endswith("after")
 
 
 def test_paragraph_preview_property():
@@ -278,276 +358,3 @@ def test_build_corpus_model_empty_documents():
     assert model.matrix.shape == (0, 0)
     assert model.vocabulary == {}
     assert model.idf is None
-
-
-def test_build_corpus_model_single_document(tmp_path: Path):
-    """
-    [Unit] detectors corpus: verifies build corpus model single document.
-
-    Scenario:
-        Given test inputs and fixtures for build corpus model single document
-        When test_build_corpus_model_single_document executes the target flow
-        Then the expected outcome for build corpus model single document is confirmed.
-
-    Boundaries:
-        - Focus: build corpus model single document
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to build corpus model single document
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors corpus
-    """
-    content = (
-        "DocSentinel provides deterministic documentation quality assurance.\n"
-        "It inspects markdown links, text complexity, and corpus statistics.\n\n"
-        "The standard profile includes duplicate paragraph and low information detectors.\n"
-        "All detectors produce actionable finding objects with diagnostic messages.\n"
-    )
-    doc = _create_doc(tmp_path, "overview.md", content)
-    model = corpus.build_corpus_model(tmp_path, (doc,))
-
-    assert len(model.documents) == 1
-    assert len(model.paragraphs) == 2
-    assert model.tfidf_matrix.shape[0] == 2
-    assert model.tfidf_matrix.shape[1] > 0
-    assert len(model.vocabulary) > 0
-    assert model.idf is not None
-    assert len(model.idf) == model.tfidf_matrix.shape[1]
-
-
-def test_build_corpus_model_multi_document_matrix_shape(tmp_path: Path):
-    """
-    [Unit] detectors corpus: verifies build corpus model multi document matrix shape.
-
-    Scenario:
-        Given test inputs and fixtures for build corpus model multi document matrix shape
-        When test_build_corpus_model_multi_document_matrix_shape executes the target flow
-        Then the expected outcome for build corpus model multi document matrix shape is confirmed.
-
-    Boundaries:
-        - Focus: build corpus model multi document matrix shape
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to build corpus model multi document matrix shape
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors corpus
-    """
-    doc1_content = (
-        "Architectural components handle document discovery and invariant verification.\n"
-        "Each engine pass runs deterministic analyzers in sequence across documents.\n"
-    )
-    doc2_content = (
-        "Configuration conventions allow tuning thresholds for grade level and similarity.\n"
-        "Invalid configurations raise informative errors early during initialization.\n"
-    )
-    doc1 = _create_doc(tmp_path, "arch.md", doc1_content)
-    doc2 = _create_doc(tmp_path, "config.md", doc2_content)
-
-    model = corpus.build_corpus_model(tmp_path, (doc1, doc2))
-
-    assert len(model.documents) == 2
-    assert len(model.paragraphs) == 2
-    assert model.tfidf_matrix.shape[0] == 2
-    assert model.paragraphs[0].doc_path == "arch.md"
-    assert model.paragraphs[1].doc_path == "config.md"
-
-
-def test_build_corpus_model_deterministic(tmp_path: Path):
-    """
-    [Unit] detectors corpus: verifies build corpus model deterministic.
-
-    Scenario:
-        Given test inputs and fixtures for build corpus model deterministic
-        When test_build_corpus_model_deterministic executes the target flow
-        Then the expected outcome for build corpus model deterministic is confirmed.
-
-    Boundaries:
-        - Focus: build corpus model deterministic
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to build corpus model deterministic
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors corpus
-    """
-    doc1_content = (
-        "First document prose describing repository maintenance workflows.\n"
-        "Includes instructions for running unit tests and linters.\n"
-    )
-    doc2_content = (
-        "Second document prose describing release management procedures.\n"
-        "Details version bumping and package distribution steps.\n"
-    )
-    doc1 = _create_doc(tmp_path, "a.md", doc1_content)
-    doc2 = _create_doc(tmp_path, "b.md", doc2_content)
-
-    corpus.build_corpus_model.cache_clear()
-    model1 = corpus.build_corpus_model(tmp_path, (doc2, doc1))
-    corpus.build_corpus_model.cache_clear()
-    model2 = corpus.build_corpus_model(tmp_path, (doc1, doc2))
-
-    assert [p.doc_path for p in model1.paragraphs] == [p.doc_path for p in model2.paragraphs]
-    assert [p.text for p in model1.paragraphs] == [p.text for p in model2.paragraphs]
-    assert model1.vocabulary == model2.vocabulary
-    assert (model1.tfidf_matrix.toarray() == model2.tfidf_matrix.toarray()).all()
-
-
-def test_build_corpus_model_fits_once(tmp_path: Path):
-    """
-    [Unit] detectors corpus: verifies build corpus model fits once.
-
-    Scenario:
-        Given test inputs and fixtures for build corpus model fits once
-        When test_build_corpus_model_fits_once executes the target flow
-        Then the expected outcome for build corpus model fits once is confirmed.
-
-    Boundaries:
-        - Focus: build corpus model fits once
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to build corpus model fits once
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors corpus
-    """
-    content = "DocSentinel verifies documentation quality deterministically using TF-IDF statistics."
-    doc = _create_doc(tmp_path, "doc.md", content)
-
-    corpus.build_corpus_model.cache_clear()
-    with patch.object(
-        corpus.TfidfVectorizer, "fit_transform", autospec=True, side_effect=corpus.TfidfVectorizer.fit_transform
-    ) as mock_fit:
-        model = corpus.build_corpus_model(tmp_path, (doc,))
-        assert mock_fit.call_count == 1
-        assert model.tfidf_matrix.shape[0] == 1
-
-
-def test_build_corpus_model_is_cached_for_identical_inputs(tmp_path: Path):
-    """
-    [Unit] detectors corpus: verifies build corpus model is cached for identical inputs.
-
-    Scenario:
-        Given test inputs and fixtures for build corpus model is cached for identical inputs
-        When test_build_corpus_model_is_cached_for_identical_inputs executes the target flow
-        Then the expected outcome for build corpus model is cached for identical inputs is confirmed.
-
-    Boundaries:
-        - Focus: build corpus model is cached for identical inputs
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to build corpus model is cached for identical inputs
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors corpus
-    """
-    content = (
-        "DocSentinel provides deterministic documentation quality assurance.\n"
-        "It inspects markdown links, text complexity, and corpus statistics.\n"
-    )
-    doc = _create_doc(tmp_path, "doc.md", content)
-    corpus.build_corpus_model.cache_clear()
-    with patch.object(
-        corpus.TfidfVectorizer, "fit_transform", autospec=True, side_effect=corpus.TfidfVectorizer.fit_transform
-    ) as mock_fit:
-        model1 = corpus.build_corpus_model(tmp_path, (doc,))
-        model2 = corpus.build_corpus_model(tmp_path, (doc,))
-        assert model1 is model2
-        assert mock_fit.call_count == 1
-    corpus.build_corpus_model.cache_clear()
-
-
-def test_cache_busts_on_changed_documents(tmp_path: Path):
-    """
-    [Unit] detectors corpus: verifies cache busts on changed documents.
-
-    Scenario:
-        Given test inputs and fixtures for cache busts on changed documents
-        When test_cache_busts_on_changed_documents executes the target flow
-        Then the expected outcome for cache busts on changed documents is confirmed.
-
-    Boundaries:
-        - Focus: cache busts on changed documents
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to cache busts on changed documents
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors corpus
-    """
-    content1 = "DocSentinel provides deterministic documentation quality assurance with unique content."
-    content2 = "DocSentinel provides deterministic documentation quality assurance with altered contents."
-    doc1 = _create_doc(tmp_path, "doc1.md", content1)
-    doc2 = _create_doc(tmp_path, "doc2.md", content2)
-    corpus.build_corpus_model.cache_clear()
-    model1 = corpus.build_corpus_model(tmp_path, (doc1,))
-    model2 = corpus.build_corpus_model(tmp_path, (doc2,))
-    assert model1 is not model2
-    corpus.build_corpus_model.cache_clear()
-
-
-def test_build_corpus_model_all_code_returns_empty_model(tmp_path: Path):
-    """
-    [Unit] detectors corpus: verifies build corpus model all code returns empty model.
-
-    Scenario:
-        Given test inputs and fixtures for build corpus model all code returns empty model
-        When test_build_corpus_model_all_code_returns_empty_model executes the target flow
-        Then the expected outcome for build corpus model all code returns empty model is confirmed.
-
-    Boundaries:
-        - Focus: build corpus model all code returns empty model
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to build corpus model all code returns empty model
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors corpus
-    """
-    code_content = "```python\ndef only_code():\n    return 42\n```\n"
-    doc = _create_doc(tmp_path, "code_only.md", code_content)
-    model = corpus.build_corpus_model(tmp_path, (doc,))
-
-    assert model.paragraphs == ()
-    assert model.tfidf_matrix.shape == (0, 0)
-    assert model.vocabulary == {}
-
-
-def test_iter_chunks_helper(tmp_path: Path):
-    """
-    [Unit] detectors corpus: verifies iter chunks helper.
-
-    Scenario:
-        Given test inputs and fixtures for iter chunks helper
-        When test_iter_chunks_helper executes the target flow
-        Then the expected outcome for iter chunks helper is confirmed.
-
-    Boundaries:
-        - Focus: iter chunks helper
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to iter chunks helper
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors corpus
-    """
-    content = (
-        "This is paragraph one with at least twenty words to satisfy the chunk threshold for DS202 and DS203 detectors properly.\n\n"
-        "Short paragraph.\n\n"
-        "This is paragraph two which also has enough descriptive prose words to pass the twenty words requirement easily without issues.\n"
-    )
-    doc = _create_doc(tmp_path, "chunks.md", content)
-    chunks = corpus.iter_chunks(tmp_path, (doc,), min_words=20)
-
-    assert len(chunks) == 2
-    assert chunks[0].index == 0
-    assert chunks[1].index == 1

@@ -1,0 +1,1 @@
+DocSentinel provides deterministic documentation analysis and link validation. It scans markdown files across the entire workspace to identify broken references and formatting issues. Every finding contains precise file path and line provenance for automated remediation.

@@ -1,18 +1,18 @@
 """Triple extraction and claim normalization for fact-contradiction candidate detection.
 
-Extraction is deterministic only for a pinned model version (e.g. en_core_web_sm).
+Extraction is deterministic only for a pinned model version (e.g., en_core_web_sm).
 A model upgrade can alter Claim output.
 """
 
 from __future__ import annotations
 
+import importlib
 import re
 import string
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    import spacy.language
+import spacy.language
 
 _CLOSED_ENTITY_TYPES: frozenset[str] = frozenset(
     {"ORG", "PRODUCT", "GPE", "PERSON", "CARDINAL", "QUANTITY", "PERCENT", "DATE"}
@@ -116,7 +116,7 @@ def extract_claims(
     path: str,
 ) -> tuple[Claim, ...]:
     """Extract normalized SVO claims per paragraph from text."""
-    import textacy.extract
+    textacy_extract = importlib.import_module("textacy.extract")
 
     paragraphs = re.split(r"\n\s*\n", text)
     claims: list[Claim] = []
@@ -126,9 +126,9 @@ def extract_claims(
         if not para_clean:
             continue
         doc = pipeline(para_clean)
-        svo_extractor = getattr(textacy.extract, "subject_verb_object_triples", None)
-        if svo_extractor is None:
-            svo_extractor = textacy.extract.triples.subject_verb_object_triples
+        svo_extractor = getattr(
+            textacy_extract, "subject_verb_object_triples", textacy_extract.triples.subject_verb_object_triples
+        )
         for svo in svo_extractor(doc):
             subject_toks = list(svo.subject) if hasattr(svo.subject, "__iter__") else [svo.subject]
             verb_toks = list(svo.verb) if hasattr(svo.verb, "__iter__") else [svo.verb]

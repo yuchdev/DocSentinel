@@ -565,6 +565,7 @@ source = { editable = "." }
 dependencies = [
     { name = "flakeforge" },
     { name = "release-saga" },
+    { name = "spacy" },
 ]
 
 [package.optional-dependencies]
@@ -588,6 +589,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8,<10" },
     { name = "release-saga", specifier = "==1.2.0" },
     { name = "scikit-learn", marker = "extra == 'standard'", specifier = ">=1.4" },
+    { name = "spacy", specifier = ">=3.8.16" },
     { name = "spacy", marker = "extra == 'deep'", specifier = ">=3.7" },
     { name = "textacy", marker = "extra == 'deep'", specifier = ">=0.13" },
     { name = "textstat", marker = "extra == 'standard'", specifier = ">=0.7" },

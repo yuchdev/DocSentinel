@@ -12,7 +12,7 @@ from pathlib import Path
 
 import textstat
 
-from docsentinel import engine, models, rules
+from docsentinel import models, rules
 from docsentinel.config import load_config
 
 DS201 = rules.register_rule(
@@ -101,4 +101,4 @@ def detect(
     return tuple(findings)
 
 
-engine.ANALYZERS[DS201.code] = detect
+rules.ANALYZERS[DS201.code] = detect

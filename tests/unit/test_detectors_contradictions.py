@@ -1,16 +1,39 @@
-"""Tests for DS301 fact-contradiction candidate detector."""
+"""Unit tests for DS301 claim-comparison logic using hand-built ``Claim`` values (no NLP model, no files).
 
-from pathlib import Path
+Detection over documents is covered by ``tests/integration/test_detectors_contradictions_ds301.py``.
+"""
 
-import pytest
-
-from docsentinel import deep_support, models
 from docsentinel.detectors._triples import Claim
-from docsentinel.detectors.contradictions import DS301, _candidate_findings, _disagree, detect
+from docsentinel.detectors.contradictions import DS301, _candidate_findings, _disagree
 from docsentinel.rules import RULES
 
 
-def test_ds301_registered_as_warning_deep() :
+def _claim(
+    path: str,
+    raw_object: str,
+    object_numbers: tuple[str, ...] = (),
+    object_entities: tuple[str, ...] = (),
+    *,
+    subject_key: str = "cache",
+    predicate_key: str = "holds",
+    raw_subject: str = "The cache",
+    paragraph_index: int = 0,
+) -> Claim:
+    """Build a claim whose sentence is derived from its subject, predicate, and object."""
+    return Claim(
+        subject_key=subject_key,
+        predicate_key=predicate_key,
+        raw_subject=raw_subject,
+        raw_object=raw_object,
+        raw_sentence=f"{raw_subject} {predicate_key} {raw_object}.",
+        object_numbers=object_numbers,
+        object_entities=object_entities,
+        path=path,
+        paragraph_index=paragraph_index,
+    )
+
+
+def test_ds301_registered_as_warning_deep():
     """
     [Unit] detectors contradictions: verifies ds301 registered as warning deep.
 
@@ -36,7 +59,7 @@ def test_ds301_registered_as_warning_deep() :
     assert RULES["DS301"].severity == "warning"
 
 
-def test_disagree_on_number_mismatch() :
+def test_disagree_on_number_mismatch():
     """
     [Unit] detectors contradictions: verifies disagree on number mismatch.
 
@@ -55,32 +78,13 @@ def test_disagree_on_number_mismatch() :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by detectors contradictions
     """
-    a = Claim(
-        subject_key="cache",
-        predicate_key="holds",
-        raw_subject="The cache",
-        raw_object="100 entries",
-        raw_sentence="The cache holds 100 entries.",
-        object_numbers=("100",),
-        object_entities=(),
-        path="doc_a.md",
-        paragraph_index=0,
-    )
-    b = Claim(
-        subject_key="cache",
-        predicate_key="holds",
-        raw_subject="The cache",
-        raw_object="256 entries",
-        raw_sentence="The cache holds 256 entries.",
-        object_numbers=("256",),
-        object_entities=(),
-        path="doc_b.md",
-        paragraph_index=0,
-    )
+    a = _claim("doc_a.md", "100 entries", ("100",))
+    b = _claim("doc_b.md", "256 entries", ("256",))
+
     assert _disagree(a, b) is True
 
 
-def test_no_disagree_on_shared_number() :
+def test_no_disagree_on_shared_number():
     """
     [Unit] detectors contradictions: verifies no disagree on shared number.
 
@@ -99,32 +103,13 @@ def test_no_disagree_on_shared_number() :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by detectors contradictions
     """
-    a = Claim(
-        subject_key="cache",
-        predicate_key="holds",
-        raw_subject="The cache",
-        raw_object="100 to 200 entries",
-        raw_sentence="The cache holds 100 to 200 entries.",
-        object_numbers=("100", "200"),
-        object_entities=(),
-        path="doc_a.md",
-        paragraph_index=0,
-    )
-    b = Claim(
-        subject_key="cache",
-        predicate_key="holds",
-        raw_subject="The cache",
-        raw_object="100 entries",
-        raw_sentence="The cache holds 100 entries.",
-        object_numbers=("100",),
-        object_entities=(),
-        path="doc_b.md",
-        paragraph_index=0,
-    )
+    a = _claim("doc_a.md", "100 to 200 entries", ("100", "200"))
+    b = _claim("doc_b.md", "100 entries", ("100",))
+
     assert _disagree(a, b) is False
 
 
-def test_disagree_on_entity_mismatch() :
+def test_disagree_on_entity_mismatch():
     """
     [Unit] detectors contradictions: verifies disagree on entity mismatch.
 
@@ -143,32 +128,27 @@ def test_disagree_on_entity_mismatch() :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by detectors contradictions
     """
-    a = Claim(
-        subject_key="service",
-        predicate_key="uses",
-        raw_subject="The service",
-        raw_object="Acme Corp",
-        raw_sentence="The service uses Acme Corp.",
-        object_numbers=(),
+    a = _claim(
+        "doc_a.md",
+        "Acme Corp",
         object_entities=("ORG:acme corp",),
-        path="doc_a.md",
-        paragraph_index=0,
-    )
-    b = Claim(
         subject_key="service",
         predicate_key="uses",
         raw_subject="The service",
-        raw_object="Globex",
-        raw_sentence="The service uses Globex.",
-        object_numbers=(),
-        object_entities=("ORG:globex",),
-        path="doc_b.md",
-        paragraph_index=0,
     )
+    b = _claim(
+        "doc_b.md",
+        "Globex",
+        object_entities=("ORG:globex",),
+        subject_key="service",
+        predicate_key="uses",
+        raw_subject="The service",
+    )
+
     assert _disagree(a, b) is True
 
 
-def test_no_disagree_when_one_side_has_no_payload() :
+def test_no_disagree_when_one_side_has_no_payload():
     """
     [Unit] detectors contradictions: verifies no disagree when one side has no payload.
 
@@ -187,32 +167,13 @@ def test_no_disagree_when_one_side_has_no_payload() :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by detectors contradictions
     """
-    a = Claim(
-        subject_key="cache",
-        predicate_key="holds",
-        raw_subject="The cache",
-        raw_object="100 entries",
-        raw_sentence="The cache holds 100 entries.",
-        object_numbers=("100",),
-        object_entities=(),
-        path="doc_a.md",
-        paragraph_index=0,
-    )
-    b = Claim(
-        subject_key="cache",
-        predicate_key="holds",
-        raw_subject="The cache",
-        raw_object="items in memory",
-        raw_sentence="The cache holds items in memory.",
-        object_numbers=(),
-        object_entities=(),
-        path="doc_b.md",
-        paragraph_index=0,
-    )
+    a = _claim("doc_a.md", "100 entries", ("100",))
+    b = _claim("doc_b.md", "items in memory")
+
     assert _disagree(a, b) is False
 
 
-def test_same_document_pair_not_compared() :
+def test_same_document_pair_not_compared():
     """
     [Unit] detectors contradictions: verifies same document pair not compared.
 
@@ -231,34 +192,14 @@ def test_same_document_pair_not_compared() :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by detectors contradictions
     """
-    a = Claim(
-        subject_key="cache",
-        predicate_key="holds",
-        raw_subject="The cache",
-        raw_object="100 entries",
-        raw_sentence="The cache holds 100 entries.",
-        object_numbers=("100",),
-        object_entities=(),
-        path="doc_a.md",
-        paragraph_index=0,
-    )
-    b = Claim(
-        subject_key="cache",
-        predicate_key="holds",
-        raw_subject="The cache",
-        raw_object="256 entries",
-        raw_sentence="The cache holds 256 entries.",
-        object_numbers=("256",),
-        object_entities=(),
-        path="doc_a.md",
-        paragraph_index=1,
-    )
+    a = _claim("doc_a.md", "100 entries", ("100",), paragraph_index=0)
+    b = _claim("doc_a.md", "256 entries", ("256",), paragraph_index=1)
+
     assert _disagree(a, b) is False
-    findings = _candidate_findings((a, b))
-    assert findings == ()
+    assert _candidate_findings((a, b)) == ()
 
 
-def test_single_finding_attached_to_greater_path() :
+def test_single_finding_attached_to_greater_path():
     """
     [Unit] detectors contradictions: verifies single finding attached to greater path.
 
@@ -277,29 +218,11 @@ def test_single_finding_attached_to_greater_path() :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by detectors contradictions
     """
-    a = Claim(
-        subject_key="cache",
-        predicate_key="holds",
-        raw_subject="The cache",
-        raw_object="100 entries",
-        raw_sentence="The cache holds 100 entries.",
-        object_numbers=("100",),
-        object_entities=(),
-        path="alpha.md",
-        paragraph_index=0,
-    )
-    b = Claim(
-        subject_key="cache",
-        predicate_key="holds",
-        raw_subject="The cache",
-        raw_object="256 entries",
-        raw_sentence="The cache holds 256 entries.",
-        object_numbers=("256",),
-        object_entities=(),
-        path="beta.md",
-        paragraph_index=0,
-    )
+    a = _claim("alpha.md", "100 entries", ("100",))
+    b = _claim("beta.md", "256 entries", ("256",))
+
     findings = _candidate_findings((a, b))
+
     assert len(findings) == 1
     finding = findings[0]
     assert finding.path == "beta.md"
@@ -308,7 +231,7 @@ def test_single_finding_attached_to_greater_path() :
     assert "beta.md" in finding.message
 
 
-def test_findings_are_deduplicated_and_sorted() :
+def test_findings_are_deduplicated_and_sorted():
     """
     [Unit] detectors contradictions: verifies findings are deduplicated and sorted.
 
@@ -327,133 +250,33 @@ def test_findings_are_deduplicated_and_sorted() :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by detectors contradictions
     """
-    a1 = Claim(
-        subject_key="cache",
-        predicate_key="holds",
-        raw_subject="The cache",
-        raw_object="100 entries",
-        raw_sentence="The cache holds 100 entries.",
-        object_numbers=("100",),
-        object_entities=(),
-        path="alpha.md",
-        paragraph_index=0,
-    )
-    a2 = Claim(
-        subject_key="cache",
-        predicate_key="holds",
-        raw_subject="The cache",
-        raw_object="100 entries",
-        raw_sentence="The cache holds 100 entries.",
-        object_numbers=("100",),
-        object_entities=(),
-        path="alpha.md",
-        paragraph_index=1,
-    )
-    b = Claim(
-        subject_key="cache",
-        predicate_key="holds",
-        raw_subject="The cache",
-        raw_object="256 entries",
-        raw_sentence="The cache holds 256 entries.",
-        object_numbers=("256",),
-        object_entities=(),
-        path="beta.md",
-        paragraph_index=0,
-    )
-    findings = _candidate_findings((a1, a2, b))
-    assert len(findings) == 1
+    a1 = _claim("alpha.md", "100 entries", ("100",), paragraph_index=0)
+    a2 = _claim("alpha.md", "100 entries", ("100",), paragraph_index=1)
+    b = _claim("beta.md", "256 entries", ("256",))
+
+    assert len(_candidate_findings((a1, a2, b))) == 1
 
 
-@pytest.mark.skipif(not deep_support.deep_ready(), reason="deep dependencies and model not installed")
-def test_detect_end_to_end_number_contradiction(tmp_path: Path) :
+def test_claims_without_subject_or_predicate_are_not_grouped():
     """
-    [Unit] detectors contradictions: verifies detect end to end number contradiction.
+    [Unit] detectors contradictions: verifies claims without subject or predicate are not grouped.
 
     Scenario:
-        Given test inputs and fixtures for detect end to end number contradiction
-        When test_detect_end_to_end_number_contradiction executes the target flow
-        Then the expected outcome for detect end to end number contradiction is confirmed.
+        Given test inputs and fixtures for claims without subject or predicate are not grouped
+        When test_claims_without_subject_or_predicate_are_not_grouped executes the target flow
+        Then the expected outcome for claims without subject or predicate are not grouped is confirmed.
 
     Boundaries:
-        - Focus: detect end to end number contradiction
-        - Fixtures/params: tmp_path
+        - Focus: claims without subject or predicate are not grouped
+        - Fixtures/params: none
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
-        - Assertion details tied to detect end to end number contradiction
+        - Assertion details tied to claims without subject or predicate are not grouped
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by detectors contradictions
     """
-    (tmp_path / "a.md").write_text("The cache holds 100 entries.", encoding="utf-8")
-    (tmp_path / "b.md").write_text("The cache holds 256 entries.", encoding="utf-8")
+    a = _claim("alpha.md", "100 entries", ("100",), subject_key="")
+    b = _claim("beta.md", "256 entries", ("256",), subject_key="")
 
-    docs = (
-        models.Document("a.md", 29),
-        models.Document("b.md", 29),
-    )
-    findings = detect(tmp_path, docs)
-    assert len(findings) == 1
-    assert findings[0].rule == "DS301"
-    assert findings[0].path == "b.md"
-
-
-@pytest.mark.skipif(not deep_support.deep_ready(), reason="deep dependencies and model not installed")
-def test_detect_no_finding_when_consistent(tmp_path: Path) :
-    """
-    [Unit] detectors contradictions: verifies detect no finding when consistent.
-
-    Scenario:
-        Given test inputs and fixtures for detect no finding when consistent
-        When test_detect_no_finding_when_consistent executes the target flow
-        Then the expected outcome for detect no finding when consistent is confirmed.
-
-    Boundaries:
-        - Focus: detect no finding when consistent
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to detect no finding when consistent
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors contradictions
-    """
-    (tmp_path / "a.md").write_text("The cache holds 100 entries.", encoding="utf-8")
-    (tmp_path / "b.md").write_text("The cache holds 100 entries.", encoding="utf-8")
-
-    docs = (
-        models.Document("a.md", 29),
-        models.Document("b.md", 29),
-    )
-    findings = detect(tmp_path, docs)
-    assert findings == ()
-
-
-@pytest.mark.skipif(not deep_support.deep_ready(), reason="deep dependencies and model not installed")
-def test_detect_skips_non_markdown(tmp_path: Path) :
-    """
-    [Unit] detectors contradictions: verifies detect skips non markdown.
-
-    Scenario:
-        Given test inputs and fixtures for detect skips non markdown
-        When test_detect_skips_non_markdown executes the target flow
-        Then the expected outcome for detect skips non markdown is confirmed.
-
-    Boundaries:
-        - Focus: detect skips non markdown
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to detect skips non markdown
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by detectors contradictions
-    """
-    (tmp_path / "a.txt").write_text("The cache holds 100 entries.", encoding="utf-8")
-    (tmp_path / "b.txt").write_text("The cache holds 256 entries.", encoding="utf-8")
-
-    docs = (
-        models.Document("a.txt", 29),
-        models.Document("b.txt", 29),
-    )
-    findings = detect(tmp_path, docs)
-    assert findings == ()
+    assert _candidate_findings((a, b)) == ()

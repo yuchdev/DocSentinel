@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class Rule:
 
 
 RULES: dict[str, Rule] = {}
+ANALYZERS: dict[str, Any] = {}
 
 
 def register_rule(rule: Rule) -> Rule:
