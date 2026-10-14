@@ -18,7 +18,7 @@ All three initial milestones are complete, providing a fully working command-lin
 
 ## Requirements and Installation
 
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/) (or standard `pip`).
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/) (or standard `pip`).
 
 ```sh
 # Core installation (fast profile)
