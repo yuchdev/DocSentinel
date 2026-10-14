@@ -9,6 +9,7 @@ are documented for future consideration.
 
 import re
 from pathlib import Path
+from typing import Optional
 
 import textstat
 
@@ -90,7 +91,7 @@ def check_document(
 def detect(
     root: Path,
     documents: tuple[models.Document, ...],
-    config: Config | None = None,
+    config: Optional[Config] = None,
 ) -> tuple[models.Finding, ...]:
     """Return DS201 findings for Markdown documents in their supplied order."""
     config = config or load_config(root)

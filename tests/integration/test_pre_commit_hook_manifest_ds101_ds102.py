@@ -219,7 +219,7 @@ def test_standard_hook_present_and_opt_in():
     assert standard_hook is not None, "docsentinel-standard hook not found in manifest"
 
     assert standard_hook["id"] == "docsentinel-standard"
-    assert standard_hook["entry"] == "docsentinel scan --profile standard"
+    assert standard_hook["entry"] == "docsentinel scan --profile standard --baseline .docsentinel-standard-baseline.json"
     assert standard_hook["language"] == "python"
     assert standard_hook["pass_filenames"] is False
     assert standard_hook["always_run"] is True

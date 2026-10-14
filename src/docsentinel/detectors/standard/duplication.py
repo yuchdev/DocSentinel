@@ -59,7 +59,7 @@ def duplicate_pairs(
 def detect(
     root: Path,
     documents: tuple[models.Document, ...],
-    config: Config | None = None,
+    config: Optional[Config] = None,
 ) -> tuple[models.Finding, ...]:
     """Return DS202 findings for near-duplicate paragraph chunks across documents."""
     config = config or load_config(root)

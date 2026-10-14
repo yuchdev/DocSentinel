@@ -9,6 +9,7 @@ import pytest
 
 from docsentinel import Config, ConfigError, cli, load_config, scan
 from docsentinel.cli import _exit_code, main
+from docsentinel.detectors.loader import ensure_standard_loaded
 from docsentinel.engine import ANALYZERS
 from docsentinel.errors import ExtraNotInstalledError
 from docsentinel.models import Document, Finding, ScanResult
@@ -113,13 +114,29 @@ def test_scan_runs_analyzer_for_active_profile(
 
 
 def test_standard_scan_passes_resolved_config_to_analyzers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Standard analyzers receive the same resolved configuration as discovery."""
-    from docsentinel.detectors.loader import ensure_standard_loaded
+    """
+    [Integration] scan: verifies standard scan passes resolved config to analyzers.
 
+    Scenario:
+        Given test inputs and fixtures for standard scan passes resolved config to analyzers
+        When test_standard_scan_passes_resolved_config_to_analyzers executes the target flow
+        Then the expected outcome for standard scan passes resolved config to analyzers is confirmed.
+
+    Boundaries:
+        - Focus: standard scan passes resolved config to analyzers
+        - Fixtures/params: tmp_path, monkeypatch
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - Assertion details tied to standard scan passes resolved config to analyzers
+        - Fixture or parameter values used by this test
+        - Recent changes in code paths exercised by scan
+    """
     ensure_standard_loaded()
     received: list[Config] = []
 
     def analyzer(root: Path, documents: tuple[Document, ...], config: Config) -> tuple[Finding, ...]:
+        """Record the configuration each standard analyzer receives."""
         received.append(config)
         return ()
 

@@ -156,7 +156,7 @@ def check_file(root: Path, path: Path) -> tuple[models.Finding, ...]:
 def detect(
     root: Path,
     documents: tuple[models.Document, ...],
-    config: Config | None = None,
+    config: Optional[Config] = None,
 ) -> tuple[models.Finding, ...]:
     """Return DS204 findings for Python source files discovered under root.
 
