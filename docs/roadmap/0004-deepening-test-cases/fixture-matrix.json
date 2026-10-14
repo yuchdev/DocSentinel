@@ -1,0 +1,1635 @@
+{
+  "master_sha": "04a3eb337f7b75d1783cd4a7f45da2c68528113b",
+  "cases": [
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "reachable_from_index",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds107/reachable_from_index/README.md | tests/assets/ds107/reachable_from_index/docs/index.md | tests/assets/ds107/reachable_from_index/docs/guide.md",
+      "companions": "",
+      "description": "README links to docs/index.md, which links to docs/guide.md; all three reachable."
+    },
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "reachable_through_chain",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds107/reachable_through_chain/README.md | tests/assets/ds107/reachable_through_chain/a.md | tests/assets/ds107/reachable_through_chain/b.md | tests/assets/ds107/reachable_through_chain/c.md",
+      "companions": "",
+      "description": "A nested chain of three linked Markdown pages traverses from root; transitive reachability."
+    },
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "excluded_archive_document",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds107/excluded_archive_document/README.md | tests/assets/ds107/excluded_archive_document/archive/old.md",
+      "companions": "",
+      "description": "Unlinked archived page is explicitly excluded from the scanned document inventory."
+    },
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "unlinked_guide_document",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds107/unlinked_guide_document/README.md | tests/assets/ds107/unlinked_guide_document/docs/guide.md",
+      "companions": "",
+      "description": "README exists but docs/guide.md has no inbound reachable links: one finding at docs/guide.md."
+    },
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "unreachable_document_cycle",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds107/unreachable_document_cycle/README.md | tests/assets/ds107/unreachable_document_cycle/a.md | tests/assets/ds107/unreachable_document_cycle/b.md",
+      "companions": "",
+      "description": "Two orphan pages link to each other but cannot be reached from README."
+    },
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "unlinked_nested_reference",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds107/unlinked_nested_reference/README.md | tests/assets/ds107/unlinked_nested_reference/docs/reference/api.md",
+      "companions": "",
+      "description": "Nested docs/reference/api.md is present and not reached from any configured index."
+    },
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "missing_entrypoint_graceful",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds107/missing_entrypoint_graceful/README.md | tests/assets/ds107/missing_entrypoint_graceful/docs/guide.md",
+      "companions": "",
+      "description": "Configured entrypoint does not exist; cannot prove reachability; report not evaluated, not all orphan."
+    },
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "self_link_not_reachable",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds107/self_link_not_reachable/README.md | tests/assets/ds107/self_link_not_reachable/self.md",
+      "companions": "",
+      "description": "An orphan file linking to itself remains orphaned."
+    },
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "external_link_not_navigation",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds107/external_link_not_navigation/README.md | tests/assets/ds107/external_link_not_navigation/guide.md",
+      "companions": "",
+      "description": "Only an external URL mentions guide.md; guide is not locally reachable."
+    },
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "reference_style_navigation",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds107/reference_style_navigation/README.md | tests/assets/ds107/reference_style_navigation/guide.md",
+      "companions": "",
+      "description": "Navigation uses a valid Markdown reference-style link definition."
+    },
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "fragment_only_navigation",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds107/fragment_only_navigation/README.md | tests/assets/ds107/fragment_only_navigation/guide.md",
+      "companions": "",
+      "description": "An in-page #anchor cannot make a separate page reachable."
+    },
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "multiple_configured_roots",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds107/multiple_configured_roots/README.md | tests/assets/ds107/multiple_configured_roots/docs/index.md | tests/assets/ds107/multiple_configured_roots/docs/guide.md",
+      "companions": "",
+      "description": "Two independent configured entrypoints each own a reachable subtree."
+    },
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "code_fence_fake_links",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds107/code_fence_fake_links/README.md | tests/assets/ds107/code_fence_fake_links/guide.md",
+      "companions": "",
+      "description": "Link-shaped content inside fenced code must not count as a navigation edge."
+    },
+    {
+      "rule": "DS107",
+      "story": "02.0",
+      "case": "repeated_scan_stable_order",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds107/repeated_scan_stable_order/README.md | tests/assets/ds107/repeated_scan_stable_order/a.md | tests/assets/ds107/repeated_scan_stable_order/z.md",
+      "companions": "",
+      "description": "Two orphans are reported once each in stable sorted path order."
+    },
+    {
+      "rule": "DS111",
+      "story": "03.0",
+      "case": "valid_required_fields",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds111/valid_required_fields/README.md",
+      "companions": "",
+      "description": "Required title and status are present in opening frontmatter."
+    },
+    {
+      "rule": "DS111",
+      "story": "03.0",
+      "case": "valid_quoted_values",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds111/valid_quoted_values/README.md",
+      "companions": "",
+      "description": "Simple quoted scalar metadata values satisfy the rule."
+    },
+    {
+      "rule": "DS111",
+      "story": "03.0",
+      "case": "outside_selected_paths",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds111/outside_selected_paths/README.md",
+      "companions": "",
+      "description": "An unmarked ordinary README outside configured patterns is exempt."
+    },
+    {
+      "rule": "DS111",
+      "story": "03.0",
+      "case": "missing_title_field",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds111/missing_title_field/README.md",
+      "companions": "",
+      "description": "Selected document frontmatter lacks required title."
+    },
+    {
+      "rule": "DS111",
+      "story": "03.0",
+      "case": "empty_status_field",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds111/empty_status_field/README.md",
+      "companions": "",
+      "description": "Selected document has status: with no scalar value."
+    },
+    {
+      "rule": "DS111",
+      "story": "03.0",
+      "case": "duplicate_metadata_key",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds111/duplicate_metadata_key/README.md",
+      "companions": "",
+      "description": "Opening frontmatter declares title twice, with conflicting values."
+    },
+    {
+      "rule": "DS111",
+      "story": "03.0",
+      "case": "no_frontmatter_block",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds111/no_frontmatter_block/README.md",
+      "companions": "",
+      "description": "Selected document begins with prose and never declares frontmatter."
+    },
+    {
+      "rule": "DS111",
+      "story": "03.0",
+      "case": "false_zero_values",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds111/false_zero_values/README.md",
+      "companions": "",
+      "description": "Fields with literal false and 0 are defined, not missing."
+    },
+    {
+      "rule": "DS111",
+      "story": "03.0",
+      "case": "unterminated_frontmatter",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds111/unterminated_frontmatter/README.md",
+      "companions": "",
+      "description": "Opening --- has no closing delimiter; report malformed metadata without consuming whole file."
+    },
+    {
+      "rule": "DS111",
+      "story": "03.0",
+      "case": "mid_document_hr_only",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds111/mid_document_hr_only/README.md",
+      "companions": "",
+      "description": "A later thematic separator is not frontmatter on a selected doc."
+    },
+    {
+      "rule": "DS111",
+      "story": "03.0",
+      "case": "unselected_document_no_findings",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds111/unselected_document_no_findings/README.md | tests/assets/ds111/unselected_document_no_findings/docs/guide.md",
+      "companions": "",
+      "description": "Same missing keys do not trigger where path pattern does not match."
+    },
+    {
+      "rule": "DS111",
+      "story": "03.0",
+      "case": "unsupported_nested_yaml",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds111/unsupported_nested_yaml/README.md",
+      "companions": "",
+      "description": "Nested YAML constructs outside the supported scalar subset are not falsely validated."
+    },
+    {
+      "rule": "DS111",
+      "story": "03.0",
+      "case": "windows_newline_frontmatter",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds111/windows_newline_frontmatter/README.md",
+      "companions": "",
+      "description": "CRLF scalar delimiters are recognized without line offset drift."
+    },
+    {
+      "rule": "DS119",
+      "story": "04.0",
+      "case": "clean_completed_prose",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds119/clean_completed_prose/README.md",
+      "companions": "",
+      "description": "A complete section contains no configured markers."
+    },
+    {
+      "rule": "DS119",
+      "story": "04.0",
+      "case": "examples_in_code_fence",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds119/examples_in_code_fence/README.md",
+      "companions": "",
+      "description": "A code sample containing TODO should not be treated as unfinished documentation prose."
+    },
+    {
+      "rule": "DS119",
+      "story": "04.0",
+      "case": "literal_inline_marker",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds119/literal_inline_marker/README.md",
+      "companions": "",
+      "description": "Inline code `TODO` is descriptive rather than an editorial task."
+    },
+    {
+      "rule": "DS119",
+      "story": "04.0",
+      "case": "todo_in_paragraph",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds119/todo_in_paragraph/README.md",
+      "companions": "",
+      "description": "A visible TODO: replace this section marker triggers at exact source line."
+    },
+    {
+      "rule": "DS119",
+      "story": "04.0",
+      "case": "fixme_section_note",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds119/fixme_section_note/README.md",
+      "companions": "",
+      "description": "Visible FIXME(owner): prose triggers one finding."
+    },
+    {
+      "rule": "DS119",
+      "story": "04.0",
+      "case": "placeholder_title_text",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds119/placeholder_title_text/README.md",
+      "companions": "",
+      "description": "A visible PLACEHOLDER in a heading or paragraph triggers one finding."
+    },
+    {
+      "rule": "DS119",
+      "story": "04.0",
+      "case": "html_comment_owned_ds102",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds119/html_comment_owned_ds102/README.md",
+      "companions": "",
+      "description": "HTML comment containing TODO is not double-reported by DS119."
+    },
+    {
+      "rule": "DS119",
+      "story": "04.0",
+      "case": "marker_inside_identifier",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds119/marker_inside_identifier/README.md",
+      "companions": "",
+      "description": "Method named TODOParser should not trigger word-boundary detection."
+    },
+    {
+      "rule": "DS119",
+      "story": "04.0",
+      "case": "marker_in_plain_url",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds119/marker_in_plain_url/README.md",
+      "companions": "",
+      "description": "URL path containing /TODO/ is not a prose marker."
+    },
+    {
+      "rule": "DS119",
+      "story": "04.0",
+      "case": "tbd_punctuation_forms",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds119/tbd_punctuation_forms/README.md",
+      "companions": "",
+      "description": "TBD — and TBD: are both recognized as editorial markers."
+    },
+    {
+      "rule": "DS119",
+      "story": "04.0",
+      "case": "multiple_markers_same_line",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds119/multiple_markers_same_line/README.md",
+      "companions": "",
+      "description": "Two distinct markers on one line yield deterministic independent findings."
+    },
+    {
+      "rule": "DS119",
+      "story": "04.0",
+      "case": "escaped_marker_literal",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds119/escaped_marker_literal/README.md",
+      "companions": "",
+      "description": "An escaped literal is excluded by documented escape semantics."
+    },
+    {
+      "rule": "DS119",
+      "story": "04.0",
+      "case": "custom_marker_vocabulary",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds119/custom_marker_vocabulary/README.md",
+      "companions": "",
+      "description": "Configured WIP is found and default TODO is ignored when configured replacement is active."
+    },
+    {
+      "rule": "DS205",
+      "story": "05.0",
+      "case": "canonical_terms_only",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds205/canonical_terms_only/README.md",
+      "companions": "terminology.toml",
+      "description": "Docs use CanonixEngine and translation pipeline exclusively."
+    },
+    {
+      "rule": "DS205",
+      "story": "05.0",
+      "case": "alias_in_code_example",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds205/alias_in_code_example/README.md",
+      "companions": "terminology.toml",
+      "description": "Disallowed alias occurs only inside a code fence and is not evaluated as prose."
+    },
+    {
+      "rule": "DS205",
+      "story": "05.0",
+      "case": "alias_in_link_target",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds205/alias_in_link_target/README.md",
+      "companions": "terminology.toml",
+      "description": "Alias appears in a URL destination, not visible link label."
+    },
+    {
+      "rule": "DS205",
+      "story": "05.0",
+      "case": "deprecated_term_in_prose",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds205/deprecated_term_in_prose/README.md",
+      "companions": "terminology.toml",
+      "description": "Configured alias translation chain occurs as visible prose and maps to translation pipeline."
+    },
+    {
+      "rule": "DS205",
+      "story": "05.0",
+      "case": "wrong_product_spelling",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds205/wrong_product_spelling/README.md",
+      "companions": "terminology.toml",
+      "description": "Alias Canonix Engine is found in a heading and corrected to CanonixEngine."
+    },
+    {
+      "rule": "DS205",
+      "story": "05.0",
+      "case": "alias_inside_link_label",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds205/alias_inside_link_label/README.md",
+      "companions": "terminology.toml",
+      "description": "Visible Markdown link label contains deprecated term."
+    },
+    {
+      "rule": "DS205",
+      "story": "05.0",
+      "case": "case_sensitive_alias",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds205/case_sensitive_alias/README.md",
+      "companions": "terminology.toml",
+      "description": "Capitalization is valid under configured exact-case policy."
+    },
+    {
+      "rule": "DS205",
+      "story": "05.0",
+      "case": "unicode_word_boundary",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds205/unicode_word_boundary/README.md",
+      "companions": "terminology.toml",
+      "description": "Configured non-ASCII alias is matched on Unicode word boundaries."
+    },
+    {
+      "rule": "DS205",
+      "story": "05.0",
+      "case": "substring_not_full_term",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds205/substring_not_full_term/README.md",
+      "companions": "terminology.toml",
+      "description": "Alias `arc` must not match `architecture` or `arcade`."
+    },
+    {
+      "rule": "DS205",
+      "story": "05.0",
+      "case": "conflicting_alias_definitions",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds205/conflicting_alias_definitions/README.md",
+      "companions": "terminology.toml",
+      "description": "Ambiguous alias mapped to two canonical forms fails configuration validation, not prose lint."
+    },
+    {
+      "rule": "DS205",
+      "story": "05.0",
+      "case": "quoted_legacy_term",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds205/quoted_legacy_term/README.md",
+      "companions": "terminology.toml",
+      "description": "Explicit quotation opt-out syntax marks historic terminology with a documented exemption."
+    },
+    {
+      "rule": "DS205",
+      "story": "05.0",
+      "case": "repeated_alias_locations",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds205/repeated_alias_locations/README.md",
+      "companions": "terminology.toml",
+      "description": "Two occurrences on different lines are each located; ordering is stable."
+    },
+    {
+      "rule": "DS205",
+      "story": "05.0",
+      "case": "dictionary_missing_file",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds205/dictionary_missing_file/README.md",
+      "companions": "",
+      "description": "Configured dictionary path missing: report configuration failure, not a clean corpus."
+    },
+    {
+      "rule": "DS207",
+      "story": "06.0",
+      "case": "distinct_section_explanations",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds207/distinct_section_explanations/a.md | tests/assets/ds207/distinct_section_explanations/b.md",
+      "companions": "",
+      "description": "Two same-title sections contain clearly different substantive material."
+    },
+    {
+      "rule": "DS207",
+      "story": "06.0",
+      "case": "short_section_exception",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds207/short_section_exception/a.md | tests/assets/ds207/short_section_exception/b.md",
+      "companions": "",
+      "description": "A repeated small boilerplate section below minimum word threshold is ignored."
+    },
+    {
+      "rule": "DS207",
+      "story": "06.0",
+      "case": "code_only_section_bodies",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds207/code_only_section_bodies/a.md | tests/assets/ds207/code_only_section_bodies/b.md",
+      "companions": "",
+      "description": "Sections containing only code examples are excluded from prose similarity."
+    },
+    {
+      "rule": "DS207",
+      "story": "06.0",
+      "case": "identical_multisection_text",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds207/identical_multisection_text/a.md | tests/assets/ds207/identical_multisection_text/b.md",
+      "companions": "",
+      "description": "Two substantial sections share the same multi-paragraph text; report second one."
+    },
+    {
+      "rule": "DS207",
+      "story": "06.0",
+      "case": "near_duplicate_section_text",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds207/near_duplicate_section_text/a.md | tests/assets/ds207/near_duplicate_section_text/b.md",
+      "companions": "",
+      "description": "Two substantial sections paraphrase a few phrases while retaining high similarity."
+    },
+    {
+      "rule": "DS207",
+      "story": "06.0",
+      "case": "duplicate_nested_sections",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds207/duplicate_nested_sections/a.md | tests/assets/ds207/duplicate_nested_sections/b.md",
+      "companions": "",
+      "description": "Nested H3 sections are identical under separate parent H2 headings."
+    },
+    {
+      "rule": "DS207",
+      "story": "06.0",
+      "case": "identical_heading_only",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds207/identical_heading_only/a.md | tests/assets/ds207/identical_heading_only/b.md",
+      "companions": "",
+      "description": "Only headings match, body differs; no finding."
+    },
+    {
+      "rule": "DS207",
+      "story": "06.0",
+      "case": "section_body_single_paragraph",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds207/section_body_single_paragraph/a.md | tests/assets/ds207/section_body_single_paragraph/b.md",
+      "companions": "",
+      "description": "Single paragraph is DS202 territory and not eligible for DS207."
+    },
+    {
+      "rule": "DS207",
+      "story": "06.0",
+      "case": "within_document_repetition",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds207/within_document_repetition/README.md",
+      "companions": "",
+      "description": "Default cross-document scope ignores two similar sections inside one file."
+    },
+    {
+      "rule": "DS207",
+      "story": "06.0",
+      "case": "pair_reported_only_once",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds207/pair_reported_only_once/a.md | tests/assets/ds207/pair_reported_only_once/b.md | tests/assets/ds207/pair_reported_only_once/c.md",
+      "companions": "",
+      "description": "Three similar sections yield stable unique pairs without mirrored duplicates."
+    },
+    {
+      "rule": "DS207",
+      "story": "06.0",
+      "case": "threshold_boundary_similarity",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds207/threshold_boundary_similarity/a.md | tests/assets/ds207/threshold_boundary_similarity/b.md",
+      "companions": "",
+      "description": "At exactly configured similarity threshold a result is reported."
+    },
+    {
+      "rule": "DS207",
+      "story": "06.0",
+      "case": "heading_in_fenced_block",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds207/heading_in_fenced_block/a.md | tests/assets/ds207/heading_in_fenced_block/b.md",
+      "companions": "",
+      "description": "Fake headings inside a fenced block never become section boundaries."
+    },
+    {
+      "rule": "DS207",
+      "story": "06.0",
+      "case": "table_dominated_section",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds207/table_dominated_section/a.md | tests/assets/ds207/table_dominated_section/b.md",
+      "companions": "",
+      "description": "Table-only sections are excluded from the prose-driven threshold."
+    },
+    {
+      "rule": "DS208",
+      "story": "07.0",
+      "case": "different_topic_documents",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds208/different_topic_documents/a.md | tests/assets/ds208/different_topic_documents/b.md",
+      "companions": "",
+      "description": "Two substantial documents describe disjoint architecture topics."
+    },
+    {
+      "rule": "DS208",
+      "story": "07.0",
+      "case": "short_identical_documents",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds208/short_identical_documents/a.md | tests/assets/ds208/short_identical_documents/b.md",
+      "companions": "",
+      "description": "Two tiny identical pages are below minimum-document length."
+    },
+    {
+      "rule": "DS208",
+      "story": "07.0",
+      "case": "shared_template_distinct_body",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds208/shared_template_distinct_body/a.md | tests/assets/ds208/shared_template_distinct_body/b.md",
+      "companions": "",
+      "description": "Common frontmatter and navigation with different substantive bodies is allowed."
+    },
+    {
+      "rule": "DS208",
+      "story": "07.0",
+      "case": "identical_full_documents",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds208/identical_full_documents/a.md | tests/assets/ds208/identical_full_documents/b.md",
+      "companions": "",
+      "description": "Two substantive docs have identical normalized prose."
+    },
+    {
+      "rule": "DS208",
+      "story": "07.0",
+      "case": "minor_reworded_documents",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds208/minor_reworded_documents/a.md | tests/assets/ds208/minor_reworded_documents/b.md",
+      "companions": "",
+      "description": "A nearly identical guide differs only by small prose edits."
+    },
+    {
+      "rule": "DS208",
+      "story": "07.0",
+      "case": "repeated_mirror_copy",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds208/repeated_mirror_copy/a.md | tests/assets/ds208/repeated_mirror_copy/docs/copy.md",
+      "companions": "",
+      "description": "A copied page inside docs/duplicates is compared and flagged."
+    },
+    {
+      "rule": "DS208",
+      "story": "07.0",
+      "case": "cross_language_documents",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds208/cross_language_documents/a.md | tests/assets/ds208/cross_language_documents/b.md",
+      "companions": "",
+      "description": "Different language translations are excluded by configured language scope rather than blindly compared."
+    },
+    {
+      "rule": "DS208",
+      "story": "07.0",
+      "case": "identical_code_only_documents",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds208/identical_code_only_documents/a.md | tests/assets/ds208/identical_code_only_documents/b.md",
+      "companions": "",
+      "description": "Code-only pages are below prose threshold."
+    },
+    {
+      "rule": "DS208",
+      "story": "07.0",
+      "case": "empty_documents_ignored",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds208/empty_documents_ignored/a.md | tests/assets/ds208/empty_documents_ignored/b.md",
+      "companions": "",
+      "description": "Empty or frontmatter-only pages are ignored by this similarity rule."
+    },
+    {
+      "rule": "DS208",
+      "story": "07.0",
+      "case": "three_copies_unique_pairs",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds208/three_copies_unique_pairs/a.md | tests/assets/ds208/three_copies_unique_pairs/b.md | tests/assets/ds208/three_copies_unique_pairs/c.md",
+      "companions": "",
+      "description": "Three near-copies produce once-per-pair deterministic findings."
+    },
+    {
+      "rule": "DS208",
+      "story": "07.0",
+      "case": "threshold_equal_matches",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds208/threshold_equal_matches/a.md | tests/assets/ds208/threshold_equal_matches/b.md",
+      "companions": "",
+      "description": "Similarity at configured threshold is included."
+    },
+    {
+      "rule": "DS208",
+      "story": "07.0",
+      "case": "code_fences_noise_excluded",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds208/code_fences_noise_excluded/a.md | tests/assets/ds208/code_fences_noise_excluded/b.md",
+      "companions": "",
+      "description": "Matching long code listings with different prose do not imply duplicate documents."
+    },
+    {
+      "rule": "DS208",
+      "story": "07.0",
+      "case": "generated_directory_excluded",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds208/generated_directory_excluded/a.md | tests/assets/ds208/generated_directory_excluded/generated/b.md",
+      "companions": "",
+      "description": "Explicitly excluded generated docs do not participate."
+    },
+    {
+      "rule": "DS216",
+      "story": "08.0",
+      "case": "existing_public_function",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds216/existing_public_function/README.md",
+      "companions": "src/pkg/module.py | src/pkg/__init__.py",
+      "description": "README refers to local package.module.process(), which exists."
+    },
+    {
+      "rule": "DS216",
+      "story": "08.0",
+      "case": "external_library_reference",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds216/external_library_reference/README.md",
+      "companions": "src/pkg/module.py",
+      "description": "Reference to stdlib/pathlib.Path is not claimed to be an in-repo symbol."
+    },
+    {
+      "rule": "DS216",
+      "story": "08.0",
+      "case": "valid_class_method_symbol",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds216/valid_class_method_symbol/README.md",
+      "companions": "src/pkg/module.py",
+      "description": "README refers to local module.Worker.run that exists."
+    },
+    {
+      "rule": "DS216",
+      "story": "08.0",
+      "case": "removed_function_reference",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds216/removed_function_reference/README.md",
+      "companions": "src/pkg/module.py | src/pkg/__init__.py",
+      "description": "README refers to qualified local pkg.module.old_api(), absent from the symbol index."
+    },
+    {
+      "rule": "DS216",
+      "story": "08.0",
+      "case": "misspelled_class_method",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds216/misspelled_class_method/README.md",
+      "companions": "src/pkg/module.py",
+      "description": "README refers to local Worker.execut(), while only execute() exists."
+    },
+    {
+      "rule": "DS216",
+      "story": "08.0",
+      "case": "removed_module_reference",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds216/removed_module_reference/README.md",
+      "companions": "src/pkg/__init__.py | src/pkg/module.py",
+      "description": "README links qualified pkg.legacy.helper() but no local module or mapped symbol exists."
+    },
+    {
+      "rule": "DS216",
+      "story": "08.0",
+      "case": "backtick_ambiguous_name",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds216/backtick_ambiguous_name/README.md",
+      "companions": "src/pkg/module.py",
+      "description": "Plain `run()` without module context is not automatically assumed to be local."
+    },
+    {
+      "rule": "DS216",
+      "story": "08.0",
+      "case": "decorator_alias_function",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds216/decorator_alias_function/README.md",
+      "companions": "src/pkg/module.py",
+      "description": "Statically declared alias resolves to an existing function."
+    },
+    {
+      "rule": "DS216",
+      "story": "08.0",
+      "case": "nested_class_definition",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds216/nested_class_definition/README.md",
+      "companions": "src/pkg/module.py",
+      "description": "Nested class symbol is indexed with complete qualified path."
+    },
+    {
+      "rule": "DS216",
+      "story": "08.0",
+      "case": "dynamic_getattr_reference",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds216/dynamic_getattr_reference/README.md",
+      "companions": "src/pkg/module.py",
+      "description": "Documented dynamic attribute is exempt unless explicit static mapping proves otherwise."
+    },
+    {
+      "rule": "DS216",
+      "story": "08.0",
+      "case": "symbol_inside_code_fence",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds216/symbol_inside_code_fence/README.md",
+      "companions": "src/pkg/module.py",
+      "description": "Standalone example code does not create a symbol-reference claim by default."
+    },
+    {
+      "rule": "DS216",
+      "story": "08.0",
+      "case": "python_source_syntax_error",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds216/python_source_syntax_error/README.md",
+      "companions": "src/pkg/module.py",
+      "description": "Broken source AST must yield an actionable scan error/pending state, never a clean symbol audit."
+    },
+    {
+      "rule": "DS216",
+      "story": "08.0",
+      "case": "symlink_outside_code_root",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds216/symlink_outside_code_root/README.md",
+      "companions": "src/pkg/module.py",
+      "description": "Never follow symlink escapes when indexing source paths."
+    },
+    {
+      "rule": "DS217",
+      "story": "09.0",
+      "case": "documented_defaults_match",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds217/documented_defaults_match/README.md",
+      "companions": "src/pkg/settings.py | mapping.toml",
+      "description": "Configured doc table key retry_count=3 matches supported dataclass literal default 3."
+    },
+    {
+      "rule": "DS217",
+      "story": "09.0",
+      "case": "optional_source_key_omitted",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds217/optional_source_key_omitted/README.md",
+      "companions": "src/pkg/settings.py | mapping.toml",
+      "description": "Configured optional key is intentionally not required to appear in docs."
+    },
+    {
+      "rule": "DS217",
+      "story": "09.0",
+      "case": "matching_toml_configuration",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds217/matching_toml_configuration/README.md",
+      "companions": "config/defaults.toml | mapping.toml",
+      "description": "Documented TOML snippet matches mapped TOML reference schema values."
+    },
+    {
+      "rule": "DS217",
+      "story": "09.0",
+      "case": "documented_default_mismatch",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds217/documented_default_mismatch/README.md",
+      "companions": "src/pkg/settings.py | mapping.toml",
+      "description": "Documentation declares retry_count=5 while mapped literal source default is 3."
+    },
+    {
+      "rule": "DS217",
+      "story": "09.0",
+      "case": "documented_key_not_defined",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds217/documented_key_not_defined/README.md",
+      "companions": "src/pkg/settings.py | mapping.toml",
+      "description": "README describes removed key fallback_workers absent from explicitly mapped schema."
+    },
+    {
+      "rule": "DS217",
+      "story": "09.0",
+      "case": "required_key_not_documented",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds217/required_key_not_documented/README.md",
+      "companions": "src/pkg/settings.py | mapping.toml",
+      "description": "Source schema marks a required public key that is absent from selected documentation."
+    },
+    {
+      "rule": "DS217",
+      "story": "09.0",
+      "case": "factory_default_unknown",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds217/factory_default_unknown/README.md",
+      "companions": "src/pkg/settings.py | mapping.toml",
+      "description": "Source default_factory or computed function is not statically resolved; emit unverifiable status, not mismatch."
+    },
+    {
+      "rule": "DS217",
+      "story": "09.0",
+      "case": "boolean_false_matches",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds217/boolean_false_matches/README.md",
+      "companions": "src/pkg/settings.py | mapping.toml",
+      "description": "false is a real typed default and compares correctly to False."
+    },
+    {
+      "rule": "DS217",
+      "story": "09.0",
+      "case": "numeric_type_mismatch",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds217/numeric_type_mismatch/README.md",
+      "companions": "src/pkg/settings.py | mapping.toml",
+      "description": "String \"3\" in documentation is not equal to integer 3 for a typed source field."
+    },
+    {
+      "rule": "DS217",
+      "story": "09.0",
+      "case": "unmapped_prose_number",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds217/unmapped_prose_number/README.md",
+      "companions": "src/pkg/settings.py | mapping.toml",
+      "description": "Unmapped numbers mentioned in background prose are ignored."
+    },
+    {
+      "rule": "DS217",
+      "story": "09.0",
+      "case": "schema_version_scopes",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds217/schema_version_scopes/README.md",
+      "companions": "src/pkg/settings.py | mapping.toml",
+      "description": "Version-scoped config examples with distinct defaults are not compared cross-version."
+    },
+    {
+      "rule": "DS217",
+      "story": "09.0",
+      "case": "schema_source_path_escape",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds217/schema_source_path_escape/README.md",
+      "companions": "mapping.toml",
+      "description": "Mapping pointing outside scan root fails validation; no external filesystem reads."
+    },
+    {
+      "rule": "DS217",
+      "story": "09.0",
+      "case": "duplicate_config_key_row",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds217/duplicate_config_key_row/README.md",
+      "companions": "src/pkg/settings.py | mapping.toml",
+      "description": "Two rows for same canonical key with different documented values are flagged deterministically."
+    },
+    {
+      "rule": "DS218",
+      "story": "10.0",
+      "case": "matching_argument_flags",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds218/matching_argument_flags/README.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "Mapped docs list --timeout and --max-retries that exist with matching defaults."
+    },
+    {
+      "rule": "DS218",
+      "story": "10.0",
+      "case": "valid_short_alias_flag",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds218/valid_short_alias_flag/README.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "Mapped docs use -t alias for --timeout, both declared by argparse."
+    },
+    {
+      "rule": "DS218",
+      "story": "10.0",
+      "case": "internal_flag_not_required",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds218/internal_flag_not_required/README.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "An internal/private flag omitted from docs does not trigger completeness unless explicitly required."
+    },
+    {
+      "rule": "DS218",
+      "story": "10.0",
+      "case": "removed_option_in_docs",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds218/removed_option_in_docs/README.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "README documents --obsolete but argparse no longer defines it."
+    },
+    {
+      "rule": "DS218",
+      "story": "10.0",
+      "case": "wrong_argument_default",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds218/wrong_argument_default/README.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "README default 60 contrasts with parser literal default 30."
+    },
+    {
+      "rule": "DS218",
+      "story": "10.0",
+      "case": "missing_required_public_flag",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds218/missing_required_public_flag/README.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "Completeness enabled; public --max-retries omitted from reference table."
+    },
+    {
+      "rule": "DS218",
+      "story": "10.0",
+      "case": "unrelated_shell_snippet_flag",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds218/unrelated_shell_snippet_flag/README.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "A shell example unrelated to mapped CLI reference contains --temporary; ignore it."
+    },
+    {
+      "rule": "DS218",
+      "story": "10.0",
+      "case": "argparse_boolean_actions",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds218/argparse_boolean_actions/README.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "Documented `--verbose` store_true default agrees with argparse behavior."
+    },
+    {
+      "rule": "DS218",
+      "story": "10.0",
+      "case": "subcommand_scoped_options",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds218/subcommand_scoped_options/README.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "Different subcommands own flags of same name without false conflicts."
+    },
+    {
+      "rule": "DS218",
+      "story": "10.0",
+      "case": "computed_arg_default_unknown",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds218/computed_arg_default_unknown/README.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "Env-derived default cannot be safely resolved; report as unknown rather than mismatch."
+    },
+    {
+      "rule": "DS218",
+      "story": "10.0",
+      "case": "parser_aliases_same_action",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds218/parser_aliases_same_action/README.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "Flag aliases map to one argparse action and do not inflate required count."
+    },
+    {
+      "rule": "DS218",
+      "story": "10.0",
+      "case": "dynamic_flag_registration",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds218/dynamic_flag_registration/README.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "Custom parser builder cannot be statically analyzed; mark unsupported."
+    },
+    {
+      "rule": "DS218",
+      "story": "10.0",
+      "case": "argument_inside_code_fence",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds218/argument_inside_code_fence/README.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "Ordinary fenced shell example is not the official option reference."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "valid_python_example",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds219/valid_python_example/README.md",
+      "companions": "",
+      "description": "Complete ```python check=syntax fenced code parses with ast.parse."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "valid_json_example",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds219/valid_json_example/README.md",
+      "companions": "",
+      "description": "Explicit JSON fence with object validates using json.loads."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "valid_toml_example",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds219/valid_toml_example/README.md",
+      "companions": "",
+      "description": "Explicit TOML fence parses with tomllib.loads."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "invalid_python_indentation",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds219/invalid_python_indentation/README.md",
+      "companions": "",
+      "description": "Explicit Python example contains indentation SyntaxError; flag precise line."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "invalid_json_trailing_comma",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds219/invalid_json_trailing_comma/README.md",
+      "companions": "",
+      "description": "Explicit JSON example has a trailing comma not allowed in JSON."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "invalid_toml_assignment",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds219/invalid_toml_assignment/README.md",
+      "companions": "",
+      "description": "Explicit TOML code block contains invalid assignment syntax."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "partial_python_snippet_unmarked",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds219/partial_python_snippet_unmarked/README.md",
+      "companions": "",
+      "description": "Illustrative fragment without check=syntax is not automatically validated."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "python_repl_transcript",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds219/python_repl_transcript/README.md",
+      "companions": "",
+      "description": "A ```pycon transcript is unsupported/skipped, never executed."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "fence_language_not_supported",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds219/fence_language_not_supported/README.md",
+      "companions": "",
+      "description": "Explicit check=syntax for unsupported bash block yields clear unsupported warning/pending."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "two_fences_distinct_lines",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds219/two_fences_distinct_lines/README.md",
+      "companions": "",
+      "description": "One valid and one invalid marked fence yield exactly one finding at invalid source line."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "nested_backtick_fence",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds219/nested_backtick_fence/README.md",
+      "companions": "",
+      "description": "Fence with nontrivial delimiter run parses closing marker correctly."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "html_comment_in_code",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds219/html_comment_in_code/README.md",
+      "companions": "",
+      "description": "Text resembling HTML comment inside a Python string is still Python syntax."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "giant_code_block_limit",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds219/giant_code_block_limit/README.md",
+      "companions": "",
+      "description": "Configured size limit prevents pathological parse time without giving false clean."
+    },
+    {
+      "rule": "DS219",
+      "story": "11.0",
+      "case": "never_execute_side_effect",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds219/never_execute_side_effect/README.md",
+      "companions": "",
+      "description": "Python example `raise RuntimeError` is parseable; verification must never run it."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "consistent_worker_limits",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds302/consistent_worker_limits/a.md | tests/assets/ds302/consistent_worker_limits/b.md",
+      "companions": "",
+      "description": "Two docs assert maximum workers=8 for same version/context."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "distinct_limit_qualifiers",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds302/distinct_limit_qualifiers/a.md | tests/assets/ds302/distinct_limit_qualifiers/b.md",
+      "companions": "",
+      "description": "One doc says default workers=8 and another max workers=16: not contradictory."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "equivalent_memory_units",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds302/equivalent_memory_units/a.md | tests/assets/ds302/equivalent_memory_units/b.md",
+      "companions": "",
+      "description": "1 GiB and 1024 MiB are equal when unit and binary scaling match."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "conflicting_worker_maxima",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds302/conflicting_worker_maxima/a.md | tests/assets/ds302/conflicting_worker_maxima/b.md",
+      "companions": "",
+      "description": "Two docs assert max concurrent workers=8 versus 16 for identical scope."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "conflicting_retry_defaults",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds302/conflicting_retry_defaults/a.md | tests/assets/ds302/conflicting_retry_defaults/b.md",
+      "companions": "",
+      "description": "Two docs assert default retries=3 versus 5 with same identity."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "disjoint_numeric_ranges",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds302/disjoint_numeric_ranges/a.md | tests/assets/ds302/disjoint_numeric_ranges/b.md",
+      "companions": "",
+      "description": "Accepted port range 8000-8100 conflicts with 8200-8300 under same scope."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "different_product_versions",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds302/different_product_versions/a.md | tests/assets/ds302/different_product_versions/b.md",
+      "companions": "",
+      "description": "Version 1 and version 2 legitimately use different limits."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "different_unit_dimensions",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds302/different_unit_dimensions/a.md | tests/assets/ds302/different_unit_dimensions/b.md",
+      "companions": "",
+      "description": "5 seconds versus 5 requests are incomparable, not contradictions."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "spelled_numbers_match_digits",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds302/spelled_numbers_match_digits/a.md | tests/assets/ds302/spelled_numbers_match_digits/b.md",
+      "companions": "",
+      "description": "Eight and 8 normalize to same magnitude when clearly attached to same property."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "comparison_operator_overlap",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds302/comparison_operator_overlap/a.md | tests/assets/ds302/comparison_operator_overlap/b.md",
+      "companions": "",
+      "description": "“At least 8” and “at most 16” constraints have nonempty intersection."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "opposing_exclusive_bounds",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds302/opposing_exclusive_bounds/a.md | tests/assets/ds302/opposing_exclusive_bounds/b.md",
+      "companions": "",
+      "description": "“Greater than 10” and “less than 10” under same scope have no intersection."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "claim_inside_code_block",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds302/claim_inside_code_block/a.md | tests/assets/ds302/claim_inside_code_block/b.md",
+      "companions": "",
+      "description": "Numbers inside fenced code are not free-prose facts."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "unqualified_number_prose",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds302/unqualified_number_prose/a.md | tests/assets/ds302/unqualified_number_prose/b.md",
+      "companions": "",
+      "description": "Two unrelated numeric mentions have no safely matching subject/property."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "decimal_precision_tolerance",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds302/decimal_precision_tolerance/a.md | tests/assets/ds302/decimal_precision_tolerance/b.md",
+      "companions": "",
+      "description": "5.0 and 5 are equivalent where numeric precision carries no separate semantics."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "invalid_numeric_expression",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds302/invalid_numeric_expression/a.md | tests/assets/ds302/invalid_numeric_expression/b.md",
+      "companions": "",
+      "description": "Malformed quantitative phrase is skipped with candidate-extraction coverage notice."
+    },
+    {
+      "rule": "DS302",
+      "story": "12.0",
+      "case": "deduplicate_claim_pairs",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds302/deduplicate_claim_pairs/a.md | tests/assets/ds302/deduplicate_claim_pairs/b.md | tests/assets/ds302/deduplicate_claim_pairs/c.md",
+      "companions": "",
+      "description": "Three docs with conflicting values yield deterministically deduplicated candidate pair findings."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "unrelated_source_change",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds316/unrelated_source_change/README.md | tests/assets/ds316/unrelated_source_change/docs/guide.md",
+      "companions": "src/unrelated.py",
+      "description": "Changed unrelated module has no mapped documentation references."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "unchanged_referenced_source",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds316/unchanged_referenced_source/README.md | tests/assets/ds316/unchanged_referenced_source/docs/guide.md",
+      "companions": "src/tool.py",
+      "description": "A documented module exists but is absent from explicit changed set."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "excluded_document_ignored",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds316/excluded_document_ignored/README.md | tests/assets/ds316/excluded_document_ignored/docs/ignored.md",
+      "companions": "src/tool.py",
+      "description": "Documentation excluded from inventory never receives impact finding."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "changed_linked_source_file",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds316/changed_linked_source_file/README.md",
+      "companions": "src/tool.py",
+      "description": "README links to src/tool.py and it is in changed set: one advisory finding."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "changed_documented_symbol",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds316/changed_documented_symbol/README.md",
+      "companions": "src/pkg/worker.py | src/pkg/__init__.py",
+      "description": "Docs explicitly reference pkg.worker.run; changed pkg/worker.py is linked via symbol index."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "changed_config_schema_source",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds316/changed_config_schema_source/README.md",
+      "companions": "src/config.py | mapping.toml",
+      "description": "Docs map config schema to src/config.py; changed schema source prompts review."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "changed_files_missing",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds316/changed_files_missing/README.md",
+      "companions": "src/tool.py",
+      "description": "No --changed-file and no API changed_paths; explicitly not evaluated."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "duplicate_changed_paths",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds316/duplicate_changed_paths/README.md",
+      "companions": "src/tool.py",
+      "description": "Repeated path from list and normalized `./` variant yield one finding."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "outside_root_change_path",
+      "type": "edge",
+      "expected": "pending",
+      "docs": "tests/assets/ds316/outside_root_change_path/README.md",
+      "companions": "src/tool.py",
+      "description": "../secret.py path rejected; do not traverse outside scan root."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "bounded_transitive_mapping",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds316/bounded_transitive_mapping/README.md | tests/assets/ds316/bounded_transitive_mapping/docs/architecture.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "Curated docs dependency mapping routes source change to one additional docs page."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "dependency_cycle_no_repeat",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds316/dependency_cycle_no_repeat/README.md | tests/assets/ds316/dependency_cycle_no_repeat/docs/a.md | tests/assets/ds316/dependency_cycle_no_repeat/docs/b.md",
+      "companions": "src/tool.py | mapping.toml",
+      "description": "A dependency cycle terminates and each affected doc appears at most once."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "code_fence_path_reference",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds316/code_fence_path_reference/README.md",
+      "companions": "src/tool.py",
+      "description": "A source-looking string in code fence is not evidence of a doc-to-source dependency."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "deleted_source_change_path",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds316/deleted_source_change_path/README.md",
+      "companions": "",
+      "description": "Deleted source path still matches a recorded documentation reference without requiring the file to exist."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "relative_paths_normalized",
+      "type": "fail",
+      "expected": "finding",
+      "docs": "tests/assets/ds316/relative_paths_normalized/README.md",
+      "companions": "src/tool.py",
+      "description": "src/./tool.py normalizes to src/tool.py, preserving evidence and stable paths."
+    },
+    {
+      "rule": "DS316",
+      "story": "13.0",
+      "case": "unmapped_dynamic_reference",
+      "type": "pass",
+      "expected": "clean",
+      "docs": "tests/assets/ds316/unmapped_dynamic_reference/README.md",
+      "companions": "src/tool.py",
+      "description": "A speculative NLP similarity without explicit link/mapping does not produce impact."
+    }
+  ]
+}
