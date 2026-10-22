@@ -234,6 +234,10 @@ docsig_paths = ["src"]
 deep_confirm = false
 ```
 
+For the full reference for the standard-profile statistical keys (valid ranges,
+defaults, comparison rules, and worked examples), see the
+[Statistical Checks reference](../reference/statistical-checks.md).
+
 ### Example `pyproject.toml`
 
 ```toml

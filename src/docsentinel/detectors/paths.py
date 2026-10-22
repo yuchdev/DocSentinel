@@ -8,6 +8,7 @@ from pathlib import Path, PureWindowsPath
 from typing import Optional
 
 from docsentinel import models, rules
+from docsentinel.detectors.path_boundaries import escapes_via_symlink
 
 DS103 = rules.register_rule(
     rules.Rule(
@@ -82,6 +83,29 @@ def _resolve(candidate: str, source: Path, root: Path) -> Optional[Path]:
     return (source.parent / candidate).resolve()
 
 
+def _lexical_candidate(candidate: str, source: Path, root: Path) -> Optional[Path]:
+    """Join a path-like code span to its base **without** resolving symlinks or ``..``.
+
+    This mirrors :func:`_resolve`'s join rules but omits ``Path.resolve`` (which
+    follows symlinks out of root and was the existence oracle fixed in Story 11.0).
+    The result is lexically equivalent to the old resolved path for every in-root,
+    non-symlink candidate, so ``exists`` returns the same answer, while a root
+    escape or in-root symlink pointing outside is filtered by
+    :func:`~docsentinel.detectors.path_boundaries.escapes_via_symlink` before any
+    ``stat``. Windows-anchored candidates still yield ``None`` as in :func:`_resolve`.
+
+    :param candidate: The code-span text.
+    :param source: The absolute path of the referring document.
+    :param root: The scan root directory.
+    :returns: The unresolved join, or ``None`` for a Windows-anchored candidate.
+    """
+    if candidate.startswith("/"):
+        return root / candidate.lstrip("/")
+    if PureWindowsPath(candidate).anchor:
+        return None
+    return source.parent / candidate
+
+
 def _link_label_spans(text: str) -> tuple[tuple[int, int], ...]:
     """Return half-open offsets for Markdown link labels in match order."""
     spans: list[tuple[int, int]] = []
@@ -124,7 +148,20 @@ def detect(root: Path, documents: tuple[models.Document, ...]) -> tuple[models.F
             candidate = match.group(1)
             if not _looks_path_like(candidate) or _is_excluded(candidate):
                 continue
-            resolved = _resolve(candidate, source, root)
+
+            resolved = _lexical_candidate(candidate, source, root)
+            # Security skip (Story 11.0 code-span ruling): DS116 owns only a code
+            # span that escapes the root or reaches outside through an in-root
+            # symlink, so DS103 hands those two to DS116 and never stats a path
+            # outside the scan root (the existence oracle fixed in Story 11.0).
+            # Drive/UNC/backslash/control spans are documented literals, not DS116
+            # references, so DS103 keeps its exact legacy behaviour for them (a
+            # Windows-anchored candidate yields ``resolved is None`` and is reported
+            # as before, with no filesystem access). The lexical containment inside
+            # escapes_via_symlink runs first, so a root escape is skipped with zero
+            # filesystem calls and only an in-root object is ever ``lstat``-ed.
+            if resolved is not None and escapes_via_symlink(root, resolved):
+                continue
             if resolved is not None and resolved.exists():
                 continue
 

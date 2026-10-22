@@ -41,8 +41,34 @@ def test_importing_engine_registers_all_fast_analyzers():
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by fast profile end to end ds101 ds102 ds103
     """
-    assert tuple(code for code in sorted(ANALYZERS) if code.startswith("DS1")) == ("DS101", "DS102", "DS103")
-    assert tuple(rule.code for rule in rules_for_profile("fast")) == ("DS101", "DS102", "DS103")
+    assert tuple(code for code in sorted(ANALYZERS) if code.startswith("DS1")) == (
+        "DS101",
+        "DS102",
+        "DS103",
+        "DS104",
+        "DS105",
+        "DS106",
+        "DS108",
+        "DS109",
+        "DS110",
+        "DS113",
+        "DS116",
+        "DS117",
+    )
+    assert tuple(rule.code for rule in rules_for_profile("fast")) == (
+        "DS101",
+        "DS102",
+        "DS103",
+        "DS104",
+        "DS105",
+        "DS106",
+        "DS108",
+        "DS109",
+        "DS110",
+        "DS113",
+        "DS116",
+        "DS117",
+    )
 
 
 def test_default_fast_scan_reports_all_three_rule_findings(
@@ -103,9 +129,24 @@ def test_clean_tree_reports_zero_findings_with_evaluated_notice(
     result = scan(clean_file)
 
     assert result.findings == ()
-    assert result.notice == "3 fast rule(s) evaluated."
+    assert (
+        result.notice == "11 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages)."
+    )
     assert "not implemented" not in result.notice
-    assert result.enabled_rules == ("DS101", "DS102", "DS103")
+    assert result.enabled_rules == (
+        "DS101",
+        "DS102",
+        "DS103",
+        "DS104",
+        "DS105",
+        "DS106",
+        "DS108",
+        "DS109",
+        "DS110",
+        "DS113",
+        "DS116",
+        "DS117",
+    )
 
 
 def test_ignore_narrows_the_active_set(fast_profile_tree: tuple[Path, Path]):
@@ -135,7 +176,19 @@ def test_ignore_narrows_the_active_set(fast_profile_tree: tuple[Path, Path]):
         ("DS101", "dangling.md"),
         ("DS103", "path.md"),
     )
-    assert result.enabled_rules == ("DS101", "DS103")
+    assert result.enabled_rules == (
+        "DS101",
+        "DS103",
+        "DS104",
+        "DS105",
+        "DS106",
+        "DS108",
+        "DS109",
+        "DS110",
+        "DS113",
+        "DS116",
+        "DS117",
+    )
 
 
 def test_deep_profile_still_reports_pending(

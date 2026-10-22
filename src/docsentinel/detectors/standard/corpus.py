@@ -8,6 +8,12 @@ Note on coupling:
 DS201 (complexity.py) extracts whole-document prose for readability scoring, whereas DS202/DS203
 extract paragraph-level prose chunks with provenance. The markdown stripping logic is maintained
 independently in this module to avoid coupling paragraph chunking concerns to DS201.
+
+Paragraph size floors are configurable: `build_corpus_model` accepts `min_paragraph_chars`
+(default 30) and `min_paragraph_words` (default 5), which form part of the memoization cache
+key so distinct settings never share a stale corpus. The TfidfVectorizer settings (English
+stop words, sublinear term frequency, word token pattern) are fixed calibration internals and
+are not exposed as configuration.
 """
 
 from __future__ import annotations
@@ -254,10 +260,24 @@ def _create_vectorizer() -> TfidfVectorizer:
 def build_corpus_model(
     root: Optional[Union[Path, str, tuple[models.Document, ...]]] = None,
     documents: tuple[models.Document, ...] = (),
+    min_paragraph_chars: int = _MIN_PARAGRAPH_CHARS,
+    min_paragraph_words: int = _MIN_PARAGRAPH_WORDS,
 ) -> CorpusModel:
     """Build or retrieve a cached CorpusModel across all supplied documents.
 
     Accepts both build_corpus_model(documents) and build_corpus_model(root, documents).
+
+    The paragraph size floors participate in the memoization key, so two scans
+    with different floors in one process never share a stale corpus; two scans
+    with identical floors reuse the single cached entry.
+
+    :param root: The scan root, or the documents tuple in the legacy call form.
+    :param documents: The documents to model when ``root`` is a path.
+    :param min_paragraph_chars: Minimum visible-character count for a paragraph
+        to be analysed.
+    :param min_paragraph_words: Minimum prose-word count for a paragraph to be
+        analysed.
+    :returns: The fitted, cached :class:`CorpusModel`.
     """
     if isinstance(root, (tuple, list)):
         actual_docs = tuple(root)
@@ -275,7 +295,12 @@ def build_corpus_model(
     for doc in sorted_docs:
         if not doc.path.endswith(".md"):
             continue
-        doc_paragraphs = extract_paragraphs(doc, root=actual_root)
+        doc_paragraphs = extract_paragraphs(
+            doc,
+            root=actual_root,
+            min_chars=min_paragraph_chars,
+            min_words=min_paragraph_words,
+        )
         all_paragraphs.extend(doc_paragraphs)
 
     paragraphs = tuple(all_paragraphs)

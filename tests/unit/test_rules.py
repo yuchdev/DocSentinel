@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from types import SimpleNamespace
 
 import pytest
 
@@ -7,6 +8,7 @@ from docsentinel.rules import (
     Rule,
     effective_rules,
     matches_selector,
+    opt_in_satisfied,
     register_rule,
     rules_for_profile,
 )
@@ -227,3 +229,75 @@ def test_effective_rules_unmatched_selector_is_inert():
         - Recent changes in code paths exercised by rules
     """
     assert effective_rules(("DS101",), ("DS999",), ()) == ()
+
+
+def test_rule_opt_in_option_defaults_empty_and_round_trips():
+    """
+    [Unit] rules: verifies the opt_in_option field defaults empty and is preserved.
+
+    Scenario:
+        Given an ordinary rule constructed without opt_in_option and an opt-in rule constructed with one
+        When each is registered
+        Then the ordinary rule carries the empty-string default while the opt-in rule preserves its
+        named Config option, so the frozen dataclass stays backward-compatible.
+
+    Boundaries:
+        - Focus: the new Rule.opt_in_option field default and preservation
+        - Fixtures/params: none
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - The Rule dataclass field default
+        - Whether register_rule dropped the opt_in_option value
+    """
+    # Use throwaway codes (not shipped DS101/DS110) so the test neither shadows real rules nor
+    # depends on the autouse registry-clearing fixture for correctness.
+    ordinary = register_rule(Rule("DS991", "fast", "Ordinary rule", "An always-active test rule."))
+    opt_in = register_rule(
+        Rule("DS992", "fast", "Opt-in rule", "An opt-in test rule.", opt_in_option="require_fence_languages")
+    )
+
+    assert ordinary.opt_in_option == ""
+    assert RULES["DS992"].opt_in_option == "require_fence_languages"
+    assert opt_in.opt_in_option == "require_fence_languages"
+
+
+@pytest.mark.parametrize(
+    ("opt_in_option", "config", "expected"),
+    [
+        ("", SimpleNamespace(), True),  # ordinary rule: always satisfied, config irrelevant
+        ("require_fence_languages", SimpleNamespace(require_fence_languages=True), True),  # bool on
+        ("require_fence_languages", SimpleNamespace(require_fence_languages=False), False),  # bool off
+        ("navigation_indexes", SimpleNamespace(navigation_indexes=("docs/index.md",)), True),  # non-empty tuple
+        ("navigation_indexes", SimpleNamespace(navigation_indexes=()), False),  # empty tuple
+        ("deprecated_references_file", SimpleNamespace(deprecated_references_file="map.toml"), True),  # non-empty str
+        ("deprecated_references_file", SimpleNamespace(deprecated_references_file=""), False),  # empty str
+        ("documentation_naming", SimpleNamespace(documentation_naming="kebab"), True),  # enabled enum
+        ("documentation_naming", SimpleNamespace(documentation_naming="off"), False),  # "off" sentinel disables
+        ("require_fence_languages", SimpleNamespace(), False),  # config lacks the attribute entirely -> off
+    ],
+)
+def test_opt_in_satisfied_across_option_shapes(opt_in_option: str, config: object, expected: bool):
+    """
+    [Unit] rules: verifies opt_in_satisfied across the option shapes opt-in rules use.
+
+    Scenario:
+        Given a rule carrying each opt-in option shape (none, bool, tuple, string, an enum with an
+        "off" sentinel, and a config missing the attribute) and a config holding an enabling or
+        disabling value
+        When opt_in_satisfied inspects the pair
+        Then it returns True only when the policy is genuinely on: a truthy value that is not the
+        string "off"; ordinary rules (no opt-in option) are always satisfied, and a config missing
+        the named attribute reads as off.
+
+    Boundaries:
+        - Focus: the single predicate covering bool/tuple/str/"off"/missing-attribute option shapes
+        - Fixtures/params: parametrized over the ten (shape, value) combinations
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - The ``bool(value) and value != "off"`` condition in opt_in_satisfied
+        - Whether an ordinary (empty option) rule short-circuits to True
+    """
+    rule = Rule("DS992", "fast", "Opt-in", "Opt-in policy rule.", opt_in_option=opt_in_option)
+    assert opt_in_satisfied(rule, config) is expected

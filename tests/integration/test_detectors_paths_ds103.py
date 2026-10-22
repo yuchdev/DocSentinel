@@ -412,31 +412,34 @@ def test_parent_traversal_outside_root_matches_ds101_resolution(asset_case: Call
     assert paths.detect(scan_root.root, scan_root.documents("docs/README.md")) == ()
 
 
-def test_missing_parent_traversal_is_flagged_without_creating_files(asset_case: Callable[[str, str], AssetCase]):
+def test_missing_parent_traversal_is_not_reported_by_ds103(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors paths ds103: verifies missing parent traversal is flagged without creating files.
+    [Integration] detectors paths ds103: verifies a root-escaping parent traversal is no longer reported by DS103.
 
     Scenario:
-        Given test inputs and fixtures for missing parent traversal is flagged without creating files
-        When test_missing_parent_traversal_is_flagged_without_creating_files executes the target flow
-        Then the expected outcome for missing parent traversal is flagged without creating files is confirmed.
+        Given a path-like code span ``../../missing.py`` that lexically escapes the scan root
+        When DS103 scans the document through the shared lexical resolver
+        Then DS103 reports nothing: the resolver classifies the target OUTSIDE_ROOT, so DS103 skips it
+            with no filesystem call and DS116 now owns the root-escape report.
 
     Boundaries:
-        - Focus: missing parent traversal is flagged without creating files
+        - Focus: Story 11.0 ownership move -- root escapes belong to DS116, not DS103
         - Fixtures/params: asset_case
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
-        - Assertion details tied to missing parent traversal is flagged without creating files
-        - Fixture or parameter values used by this test
+        - Whether DS103 stopped skipping OUTSIDE_ROOT targets before any exists() call
+        - Whether resolve_local_reference stopped flagging ``../..`` escapes as OUTSIDE_ROOT
         - Recent changes in code paths exercised by detectors paths ds103
+
+    This replaces the pre-Story-11.0 ``test_missing_parent_traversal_is_flagged_without_creating_files``,
+    which asserted DS103 emitted ``unresolvable path -> ../../missing.py``. That encoded the old oracle
+    behavior where DS103 resolved and stat-ed an escaping target; DS116 now owns root escapes.
     """
     case = asset_case("ds103", "missing_parent_traversal")
     scan_root = case.child("scan-root")
 
-    assert paths.detect(scan_root.root, scan_root.documents("docs/README.md")) == (
-        models.Finding("DS103", "docs/README.md", "unresolvable path -> ../../missing.py", "warning", 1),
-    )
+    assert paths.detect(scan_root.root, scan_root.documents("docs/README.md")) == ()
 
 
 @pytest.mark.parametrize(
@@ -448,29 +451,37 @@ def test_missing_parent_traversal_is_flagged_without_creating_files(asset_case: 
     ),
     ids=("drive-anchored", "rooted-backslash", "unc"),
 )
-def test_windows_anchored_path_is_flagged_without_filesystem_calls(
+def test_windows_anchored_code_span_keeps_legacy_ds103_report(
     asset_case: Callable[[str, str], AssetCase],
     monkeypatch: pytest.MonkeyPatch,
     case_name: str,
     candidate: str,
 ):
     """
-    [Integration] detectors paths ds103: verifies windows anchored path is flagged without filesystem calls.
+    [Integration] detectors paths ds103: verifies a Windows-anchored code span keeps DS103's legacy report.
 
     Scenario:
-        Given test inputs and fixtures for windows anchored path is flagged without filesystem calls
-        When test_windows_anchored_path_is_flagged_without_filesystem_calls executes the target flow
-        Then the expected outcome for windows anchored path is flagged without filesystem calls is confirmed.
+        Given a path-like code span with a Windows drive, rooted-backslash, or UNC anchor
+        When DS103 scans the document
+        Then under the Story 11.0 code-span ruling DS103 reports it exactly as its frozen
+            pre-Story-11 reference did -- a drive/UNC/backslash code span is documentation, not a DS116
+            reference -- and it still makes no resolve()/exists() call on the Windows-anchored candidate
+            (``_lexical_candidate`` yields ``None`` for an anchored span, so no filesystem access occurs).
 
     Boundaries:
-        - Focus: windows anchored path is flagged without filesystem calls
+        - Focus: Story 11.0 code-span ruling -- DS116 owns only root-escape and symlink-out code spans,
+          so Windows-anchored spans return to DS103's legacy behaviour
         - Fixtures/params: asset_case, monkeypatch, case_name, candidate (parametrized, 3 cases)
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
-        - Assertion details tied to windows anchored path is flagged without filesystem calls
-        - Fixture or parameter values used by this test
+        - Whether DS103 still skips Windows-anchored spans (it must no longer call is_ds116_owned)
+        - Whether a filesystem call reached the Windows-anchored candidate
         - Recent changes in code paths exercised by detectors paths ds103
+
+    This replaces the interim ``test_windows_anchored_path_is_not_reported_by_ds103`` from task 01,
+    which asserted DS103 stayed silent; the ruling narrowed DS116's code-span scope so DS103 owns these
+    spans again.
     """
     case = asset_case("ds103", case_name)
     documents = case.documents("README.md")
@@ -478,13 +489,13 @@ def test_windows_anchored_path_is_flagged_without_filesystem_calls(
     original_exists = Path.exists
 
     def fail_resolve(self: Path, *args: object, **kwargs: object) -> Path:
-        """Fail if resolving unexpected path candidate."""
+        """Fail if resolving the Windows-anchored candidate."""
         if candidate in str(self):
             raise AssertionError(f"unexpected resolve call for {self}")
         return original_resolve(self, *args, **kwargs)
 
     def fail_exists(self: Path) -> bool:
-        """Fail if checking existence of unexpected candidate."""
+        """Fail if checking existence of the Windows-anchored candidate."""
         if candidate in str(self):
             raise AssertionError(f"unexpected exists call for {self}")
         return original_exists(self)
@@ -492,15 +503,9 @@ def test_windows_anchored_path_is_flagged_without_filesystem_calls(
     monkeypatch.setattr(Path, "resolve", fail_resolve)
     monkeypatch.setattr(Path, "exists", fail_exists)
 
-    assert paths.detect(case.root, documents) == (
-        models.Finding(
-            "DS103",
-            "README.md",
-            f"unresolvable path -> {candidate}",
-            "warning",
-            1,
-        ),
-    )
+    findings = paths.detect(case.root, documents)
+
+    assert [finding.message for finding in findings] == [f"unresolvable path -> {candidate}"]
 
 
 def test_symlink_to_existing_target_resolves(asset_case: Callable[[str, str], AssetCase]):
