@@ -63,7 +63,12 @@ def detect(
 ) -> tuple[models.Finding, ...]:
     """Return DS202 findings for near-duplicate paragraph chunks across documents."""
     config = config or load_config(root)
-    model = build_corpus_model(root, documents)
+    model = build_corpus_model(
+        root,
+        documents,
+        min_paragraph_chars=config.min_paragraph_chars,
+        min_paragraph_words=config.min_paragraph_words,
+    )
     pairs = duplicate_pairs(model, config.duplicate_similarity)
     findings: list[models.Finding] = []
     chunks = model.paragraphs

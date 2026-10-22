@@ -658,7 +658,7 @@ def test_rules_command_lists_real_registry(capsys: pytest.CaptureFixture[str]):
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by scan
     """
-    expected_codes = ("DS101", "DS102", "DS103")
+    expected_codes = ("DS101", "DS102", "DS103", "DS104", "DS105", "DS106", "DS108", "DS109", "DS110", "DS113", "DS116", "DS117")
     assert main(["rules"]) == 0
 
     output = capsys.readouterr().out
@@ -702,17 +702,72 @@ def test_doctor_command_reports_counts(capsys: pytest.CaptureFixture[str]):
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by scan
     """
-    expected_codes = ("DS101", "DS102", "DS103", "DS201", "DS202", "DS203", "DS204", "DS301")
+    expected_codes = (
+        "DS101",
+        "DS102",
+        "DS103",
+        "DS104",
+        "DS105",
+        "DS106",
+        "DS108",
+        "DS109",
+        "DS110",
+        "DS113",
+        "DS116",
+        "DS117",
+        "DS201",
+        "DS202",
+        "DS203",
+        "DS204",
+        "DS301",
+    )
     assert main(["doctor"]) == 0
 
     output = capsys.readouterr().out
     assert "Inventory: available" in output
     assert "standard profile: available" in output
     assert "deep profile:" in output
-    assert "fast rules: 3 registered" in output
+    assert "fast rules: 12 registered (1 opt-in, off unless configured: DS110)" in output
     assert "standard rules: 4 registered" in output
     assert "deep rules: 1 registered" in output
     assert tuple(sorted(RULES)) == expected_codes
+
+
+def test_rules_and_doctor_mark_an_opt_in_standard_rule(capsys: pytest.CaptureFixture[str]):
+    """
+    [Integration] scan: verifies the opt-in markers extend to the standard profile listing.
+
+    Scenario:
+        Given a throwaway opt-in standard rule registered for the duration of the test
+        When `docsentinel rules` and `docsentinel doctor` run
+        Then the standard rules listing tags it `[opt-in: set navigation_indexes]` and the doctor
+        standard-profile count reports it among the opt-in rules off unless configured, proving the
+        opt-in markers are not fast-profile-specific.
+
+    Boundaries:
+        - Focus: parity of the opt-in suffix and doctor count wording across the standard listing
+        - Fixtures/params: capsys; a throwaway rule removed in a finally block
+
+    On failure, first check:
+        - That _standard_rule_lines applies _opt_in_suffix
+        - That the doctor loop counts opt-in rules for every profile, not only fast
+    """
+    try:
+        ensure_standard_loaded()
+    except ExtraNotInstalledError:
+        pytest.skip("standard extra not installed; the standard listing cannot be exercised")
+
+    register_rule(Rule("DS299", "standard", "Throwaway opt-in", "Test rule.", opt_in_option="navigation_indexes"))
+    try:
+        assert main(["rules"]) == 0
+        rules_output = capsys.readouterr().out
+        assert "DS299: Throwaway opt-in [opt-in: set navigation_indexes]" in rules_output
+
+        assert main(["doctor"]) == 0
+        doctor_output = capsys.readouterr().out
+        assert "standard rules: 5 registered (1 opt-in, off unless configured: DS299)" in doctor_output
+    finally:
+        del RULES["DS299"]
 
 
 def test_cli_scan_returns_one_and_renders_findings(

@@ -1,0 +1,3 @@
+# Diagram
+
+![architecture diagram][diagram]

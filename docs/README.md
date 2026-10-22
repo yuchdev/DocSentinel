@@ -26,7 +26,12 @@
 | `docs/security/README.md` | Threat models and security reviews owned by `security-auditor`, including the initial DocSentinel threat-model draft. |
 | `docs/security/review-github-actions-annotations-2026-10-10.md` | Security review of GitHub Actions annotation escaping, severity mapping, and CI output exposure. |
 | `docs/security/review-pre-commit-fast-hook-wiring-2026-10-10.md` | Security review of the fast pre-commit hook manifest, subprocess invocation, and exit-code policy. |
+| `docs/security/threat-model-ds116-path-boundaries-2026-10-22.md` | Standing pre-implementation threat model for Story 11.0 (`DS116` path traversal outside the documentation root): trust boundaries, STRIDE findings, the DS101/DS103 existence-oracle fix, the safe non-following symlink containment check, bounded report echo, standing requirements, and spec gaps. |
+| `docs/security/threat-model-ds113-missing-assets-2026-10-23.md` | Standing pre-implementation threat model for Story 10.0 (`DS113` missing local media and document assets): containment inherited from DS116, the no-open regular-file check for special files, the srcset/data-URI split bug, log-injection and case-insensitive-FS risks, required rulings, the error-severity default-on verdict, and standing requirements. |
+| `docs/test/README.md` | Test suite guide: configuration, categories, techniques, coverage, lint gates. |
 | `docs/test/code_test_coverage.md` | Coverage requirements checklist and workflow. |
 | `docs/user/tutorial/README.md` | Comprehensive user tutorial for DocSentinel CLI and Python library usage. |
 | `docs/user/tutorial/cli.md` | Detailed guide and reference for using DocSentinel as a command-line executable. |
 | `docs/user/tutorial/library.md` | In-depth guide for embedding DocSentinel as a Python library and test fixture. |
+| [`docs/user/reference/README.md`](user/reference/README.md) | Index of the user reference section; links to reference pages and notes the full configuration reference pending Milestone 0005. |
+| [`docs/user/reference/statistical-checks.md`](user/reference/statistical-checks.md) | Complete reference for the six standard-profile statistical configuration keys (DS201 text complexity, DS202 duplicate text, DS203 low-information content): valid ranges, defaults, finding formats, worked examples, validation errors, and recipes. |
