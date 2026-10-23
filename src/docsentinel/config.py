@@ -83,6 +83,11 @@ _CONFIG_OPTIONS = {
 }
 _SELECTOR_PATTERN = re.compile(r"DS\d*")
 
+# A ``document_id_field`` (the frontmatter key DS114 reads) must be a simple,
+# identifier-like key name, bounded in length so a pathological config value can
+# never drive an unbounded key comparison in the detector.
+_DOCUMENT_ID_FIELD_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,127}")
+
 # Enum-valued options and their accepted vocabularies. Where a milestone
 # specification fixes a single value (for example ``anchor_renderer`` or the
 # dialect options), only that value is accepted until a story widens it.
@@ -582,6 +587,11 @@ def _load_extra_options(options: dict[str, object], defaults: Config) -> dict[st
     document_id_field = options.get("document_id_field", defaults.document_id_field)
     if not isinstance(document_id_field, str) or not document_id_field:
         raise ConfigError("document_id_field must be a nonempty string")
+    if not _DOCUMENT_ID_FIELD_PATTERN.fullmatch(document_id_field):
+        raise ConfigError(
+            "document_id_field must be a simple key name: a letter or underscore "
+            "followed by letters, digits, underscores or hyphens, at most 128 characters"
+        )
     extra["document_id_field"] = document_id_field
 
     deprecated_file = options.get("deprecated_references_file", defaults.deprecated_references_file)

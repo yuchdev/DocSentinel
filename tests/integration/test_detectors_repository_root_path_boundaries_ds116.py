@@ -25,7 +25,7 @@ through :data:`EXPECTED_SIBLINGS`). Inline code spans report only genuine traver
 backslash code spans are documentation and stay with DS103.
 
 The file also exercises select/ignore (exact plus the live ``DS11`` prefix that
-contains DS110/DS116/DS117 today, the whole-fast-set ``DS1`` prefix and the
+contains DS110/DS112/DS113/DS114/DS115/DS116/DS117 today, the whole-fast-set ``DS1`` prefix and the
 negative ``DS2``), baseline round-trips, text/json/github report stability, the
 three CLI exit paths, ``docsentinel rules``/``doctor`` surfacing, the engine
 notice, config propagation for ``root_escape_policy`` / ``decode_percent_paths`` /
@@ -43,7 +43,6 @@ handling; the exhaustive algorithmic floods live in
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import socket
@@ -145,9 +144,13 @@ FAST_RULE_ORDER: tuple[str, ...] = (
     "DS108",
     "DS109",
     "DS110",
+    "DS112",
     "DS113",
+    "DS114",
+    "DS115",
     "DS116",
     "DS117",
+    "DS118",
 )
 
 #: The DS11x rules the genuine ``DS11`` prefix matches today, derived live so the
@@ -698,7 +701,8 @@ def test_cli_doctor_counts_ds116_as_an_ordinary_fast_rule(capsys: pytest.Capture
     Scenario:
         Given the installed rule registry
         When the doctor command reports environment readiness
-        Then the fast-rule tally reads exactly "12 registered (1 opt-in, off unless configured: DS110)",
+        Then the fast-rule tally reads exactly
+            "16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)",
             so DS116 is inside the registered count and is not one of the opt-in rules.
 
     Boundaries:
@@ -713,7 +717,7 @@ def test_cli_doctor_counts_ds116_as_an_ordinary_fast_rule(capsys: pytest.Capture
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "fast rules: 12 registered (1 opt-in, off unless configured: DS110)" in captured.out
+    assert "fast rules: 16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)" in captured.out
 
 
 def test_notice_names_only_the_off_opt_in_rule(asset_case: Callable[[str, str], AssetCase]):
@@ -723,9 +727,11 @@ def test_notice_names_only_the_off_opt_in_rule(asset_case: Callable[[str, str], 
     Scenario:
         Given a clean fixture scanned under the full fast profile with no opt-in policy configured
         When the engine builds the scan notice
-        Then it reads exactly "11 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set
-            require_fence_languages)." - DS116 is counted among the ten evaluated always-active rules
-            and only the off DS110 is named, derived by running rather than hard-coded in the detector.
+        Then it reads exactly "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set
+            require_fence_languages), DS112 (set navigation_indexes), DS115 (set
+            deprecated_references_file), DS118 (set documentation_naming)." - DS116 is counted among
+            the twelve evaluated always-active rules and all four off opt-in rules
+            (DS110, DS112, DS115, DS118) are named, derived by running rather than hard-coded in the detector.
 
     Boundaries:
         - Focus: DS116 counts as evaluated while the off opt-in DS110 is the only named rule
@@ -741,7 +747,8 @@ def test_notice_names_only_the_off_opt_in_rule(asset_case: Callable[[str, str], 
 
     assert "DS116" in result.enabled_rules
     assert (
-        result.notice == "11 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages)."
+        result.notice
+        == "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
     )
 
 
@@ -1213,23 +1220,18 @@ def test_detect_import_path_pulls_no_standard_extras():
     Scenario:
         Given a fresh isolated interpreter that imports the DS116 detector and runs it
         When the loaded modules are inspected
-        Then none of the standard-profile extras (scikit-learn, textstat, docsig) are imported,
+        Then none of the optional heavy dependencies (scikit-learn, textstat, docsig, spacy, textacy) are imported,
             proving the fast DS116 path needs no optional heavy dependency.
 
     Boundaries:
         - Focus: fast-profile import isolation for DS116's own code path
-        - Non-goal: a pre-existing eager spacy import elsewhere is out of scope here
+        - Also asserted: spacy and textacy stay unimported now the deep analyzer loads them lazily
         - Fixtures/params: none
 
     On failure, first check:
         - Whether path_boundaries or markdown_blocks gained a standard-extra import
         - The subprocess probe output listing the offending module
     """
-    if importlib.util.find_spec("spacy") is None:
-        pytest.skip(
-            "docsentinel.detectors eagerly imports contradictions->spacy, so the subprocess probe "
-            "cannot import the package without the deep extra; skip honestly rather than failing"
-        )
     probe = (
         "import sys\n"
         "from pathlib import Path\n"
@@ -1237,7 +1239,7 @@ def test_detect_import_path_pulls_no_standard_extras():
         "from docsentinel.detectors import path_boundaries\n"
         "assert path_boundaries.check_text('[x](../../secret.md)\\n', 'README.md', Path('/scanroot'), "
         "Config(root_escape_policy='error'))\n"
-        "heavy = sorted(m for m in ('sklearn', 'textstat', 'docsig') if m in sys.modules)\n"
+        "heavy = sorted(m for m in ('sklearn', 'textstat', 'docsig', 'spacy', 'textacy') if m in sys.modules)\n"
         "print(','.join(heavy))\n"
     )
     completed = subprocess.run(

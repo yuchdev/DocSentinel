@@ -39,7 +39,6 @@ file path.
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import socket
@@ -118,9 +117,13 @@ FAST_RULE_ORDER: tuple[str, ...] = (
     "DS108",
     "DS109",
     "DS110",
+    "DS112",
     "DS113",
+    "DS114",
+    "DS115",
     "DS116",
     "DS117",
+    "DS118",
 )
 
 
@@ -761,7 +764,8 @@ def test_cli_doctor_counts_ds108_among_the_fast_rules(capsys: pytest.CaptureFixt
     Scenario:
         Given the installed rule registry
         When the doctor command reports environment readiness
-        Then the fast-rule tally reads exactly "12 registered (1 opt-in, off unless configured: DS110)",
+        Then the fast-rule tally reads exactly
+            "16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)",
             so DS108 is one of the twelve registered always-active fast rules and is not an opt-in rule.
 
     Boundaries:
@@ -777,7 +781,7 @@ def test_cli_doctor_counts_ds108_among_the_fast_rules(capsys: pytest.CaptureFixt
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "DS108" in {rule.code for rule in rules_for_profile("fast")}
-    assert "fast rules: 12 registered (1 opt-in, off unless configured: DS110)" in captured.out
+    assert "fast rules: 16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)" in captured.out
 
 
 def test_crlf_line_numbers_point_at_the_offending_reference(tmp_path: Path):
@@ -943,28 +947,23 @@ def test_detect_import_path_pulls_no_standard_extras():
     Scenario:
         Given a fresh isolated interpreter that imports the DS108 detector and runs it
         When the loaded modules are inspected
-        Then none of the standard-profile extras (scikit-learn, textstat, docsig) are imported, proving
+        Then none of the optional heavy dependencies (scikit-learn, textstat, docsig, spacy, textacy) are imported, proving
             the fast DS108 path needs no optional heavy dependency.
 
     Boundaries:
         - Focus: fast-profile import isolation for DS108's own code path
-        - Non-goal: a pre-existing eager spacy import elsewhere is out of scope here
+        - Also asserted: spacy and textacy stay unimported now the deep analyzer loads them lazily
         - Fixtures/params: none
 
     On failure, first check:
         - Whether references or markdown_blocks gained a standard-extra import
         - The subprocess probe output listing the offending module
     """
-    if importlib.util.find_spec("spacy") is None:
-        pytest.skip(
-            "docsentinel.detectors eagerly imports contradictions->spacy, so the subprocess probe "
-            "cannot import the package without the deep extra; skip honestly rather than failing"
-        )
     probe = (
         "import sys\n"
         "from docsentinel.detectors import references\n"
         "assert references.check_text('[text][missing]\\n', 'README.md')\n"
-        "heavy = sorted(m for m in ('sklearn', 'textstat', 'docsig') if m in sys.modules)\n"
+        "heavy = sorted(m for m in ('sklearn', 'textstat', 'docsig', 'spacy', 'textacy') if m in sys.modules)\n"
         "print(','.join(heavy))\n"
     )
     completed = subprocess.run(

@@ -17,5 +17,6 @@ Deliver an objectively auditable stage-2 rule implementation with all scenario d
 ## Definition of done
 
 - 185 scenario assets actually committed, counted and exercised.
+  Amended 2026-10-23: the matrix now has 191 scenarios (185 specified + 6 DS116 close-gate fixtures; see status.md)
 - All 13 rules registered and correctly classified.
 - Security/compatibility/performance and docs validation completed; status truthfully updated.

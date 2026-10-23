@@ -1,0 +1,6 @@
+version = 1
+
+[[replacement]]
+old = "oldmod"
+new = "newmod"
+kind = "prose"

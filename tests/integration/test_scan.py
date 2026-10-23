@@ -658,7 +658,24 @@ def test_rules_command_lists_real_registry(capsys: pytest.CaptureFixture[str]):
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by scan
     """
-    expected_codes = ("DS101", "DS102", "DS103", "DS104", "DS105", "DS106", "DS108", "DS109", "DS110", "DS113", "DS116", "DS117")
+    expected_codes = (
+        "DS101",
+        "DS102",
+        "DS103",
+        "DS104",
+        "DS105",
+        "DS106",
+        "DS108",
+        "DS109",
+        "DS110",
+        "DS112",
+        "DS113",
+        "DS114",
+        "DS115",
+        "DS116",
+        "DS117",
+        "DS118",
+    )
     assert main(["rules"]) == 0
 
     output = capsys.readouterr().out
@@ -712,9 +729,13 @@ def test_doctor_command_reports_counts(capsys: pytest.CaptureFixture[str]):
         "DS108",
         "DS109",
         "DS110",
+        "DS112",
         "DS113",
+        "DS114",
+        "DS115",
         "DS116",
         "DS117",
+        "DS118",
         "DS201",
         "DS202",
         "DS203",
@@ -727,7 +748,7 @@ def test_doctor_command_reports_counts(capsys: pytest.CaptureFixture[str]):
     assert "Inventory: available" in output
     assert "standard profile: available" in output
     assert "deep profile:" in output
-    assert "fast rules: 12 registered (1 opt-in, off unless configured: DS110)" in output
+    assert "fast rules: 16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)" in output
     assert "standard rules: 4 registered" in output
     assert "deep rules: 1 registered" in output
     assert tuple(sorted(RULES)) == expected_codes

@@ -43,6 +43,7 @@ Out of scope: remaining DS2xx prose/NLP/corpus rules (DS206, DS209–215, DS220�
 ## Mandatory test corpus
 
 - **13 rules**, **15 stories**, **45 detailed story tasks** (3 per story), **185 named scenario directories**.
+  Amended 2026-10-23: the matrix now has 191 scenarios (185 specified + 6 DS116 close-gate fixtures; see status.md)
 - **At least three independent CLEAN and three FINDING scenarios per rule**; edge/unsupported/security cases additionally specified in `fixture-matrix.md`, `fixture-matrix.csv` and `fixture-matrix.json`.
 - Every directory MUST be created as `tests/assets/dsNNN/{two_to_four_word_snake_case_slug}/` and MUST have **at least one real `.md`**. One-file cases use `README.md`; multi-file cases use `a.md`/`b.md` or meaningful relative paths.
 - Support files (small local SVG/media, mapping TOML, symlinks generated at runtime) do not substitute for Markdown. Preserve deliberate broken text and exact line/byte boundaries.
@@ -67,6 +68,7 @@ Source-of-truth precedence: current repository implementation after rebase, `imp
 
 - [ ] 13 new stable rule codes `DS104`, `DS105`, `DS106`, `DS108`, `DS109`, `DS110`, `DS112`, `DS113`, `DS114`, `DS115`, `DS116`, `DS117`, `DS118` registered exactly once, correct severities, correct profile, no regression to DS101–103.
 - [ ] All **185 named** scenario directories exist, have Markdown contents, are tested by `asset_case`, assert specified CLEAN/FINDING/ERROR outcomes; >=3 CLEAN and >=3 FINDING in each `dsNNN` tree.
+  Amended 2026-10-23: the matrix now has 191 scenarios (185 specified + 6 DS116 close-gate fixtures; see status.md)
 - [ ] Shared scanner behavior and exact one-based line/path mapping validated on CRLF, no-newline, fences, escapes and Unicode.
 - [ ] Config loads both standalone `doc_sentinel.toml` and `[tool.doc_sentinel]` and preserves strict unknown-key checks; optional rules are honest when disabled.
 - [ ] Scan selection/ignore, deterministic order, JSON/text/github output and baselines remain compatible.

@@ -30,7 +30,6 @@ a cell in DS117, unlike GitHub's own table parser -- a documented limitation in
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import socket
 import subprocess
@@ -93,9 +92,13 @@ FAST_RULE_ORDER: tuple[str, ...] = (
     "DS108",
     "DS109",
     "DS110",
+    "DS112",
     "DS113",
+    "DS114",
+    "DS115",
     "DS116",
     "DS117",
+    "DS118",
 )
 
 #: The legitimate non-DS117 findings a full fast scan adds on these fixtures. On
@@ -509,8 +512,9 @@ def test_prefix_select_includes_ds117(asset_case: Callable[[str, str], AssetCase
     Scenario:
         Given a finding scenario scanned with a prefix selector
         When it is scanned with the genuine prefix ``DS11`` and then the whole-set prefix ``DS1``
-        Then ``DS11`` matches exactly the fast DS11x rules (DS110, DS116 and DS117 today) and ``DS1``
-        matches the entire fast set, DS117 staying active and reporting its finding in both.
+        Then ``DS11`` matches exactly the fast DS11x rules (DS110, DS112, DS113, DS114, DS115, DS116
+        and DS117 today) and ``DS1`` matches the entire fast set, DS117 staying active and reporting
+        its finding in both.
 
     Boundaries:
         - Focus: prefix selector matching for DS117, robust to future DS11x/DS12x registrations by
@@ -567,7 +571,7 @@ def test_prefix_ignore_semantics_for_ds117(asset_case: Callable[[str, str], Asse
     Scenario:
         Given a finding scenario scanned under the fast profile
         When it is ignored once by the prefix ``DS11``, once by ``DS1`` and once by ``DS2``
-        Then ``DS11`` drops exactly the fast DS11x rules (DS110, DS116 and DS117) so DS117 goes silent while
+        Then ``DS11`` drops exactly the fast DS11x rules (DS110, DS112, DS113, DS114, DS115, DS116 and DS117) so DS117 goes silent while
         the other fast rules survive; ``DS1`` matches every fast rule so the whole set drops; and
         ``DS2`` matches no fast rule so DS117 stays active and still reports its finding.
 
@@ -1202,28 +1206,23 @@ def test_detect_import_path_pulls_no_standard_extras():
     Scenario:
         Given a fresh isolated interpreter that imports the DS117 detector and runs it
         When the loaded modules are inspected
-        Then none of the standard-profile extras (scikit-learn, textstat, docsig) are imported,
+        Then none of the optional heavy dependencies (scikit-learn, textstat, docsig, spacy, textacy) are imported,
         proving the fast DS117 path needs no optional heavy dependency.
 
     Boundaries:
         - Focus: fast-profile import isolation for DS117's own code path
-        - Non-goal: a pre-existing eager spacy import elsewhere is out of scope here
+        - Also asserted: spacy and textacy stay unimported now the deep analyzer loads them lazily
         - Fixtures/params: none
 
     On failure, first check:
         - Whether tables or markdown_blocks gained a standard-extra import
         - The subprocess probe output listing the offending module
     """
-    if importlib.util.find_spec("spacy") is None:
-        pytest.skip(
-            "docsentinel.detectors eagerly imports contradictions->spacy, so the subprocess probe "
-            "cannot import the package without the deep extra; skip honestly rather than failing"
-        )
     probe = (
         "import sys\n"
         "from docsentinel.detectors import tables\n"
         "assert tables.check_text('| A | B |\\n| --- | --- |\\n| 1 | 2 | 3 |\\n', 'README.md')\n"
-        "heavy = sorted(m for m in ('sklearn', 'textstat', 'docsig') if m in sys.modules)\n"
+        "heavy = sorted(m for m in ('sklearn', 'textstat', 'docsig', 'spacy', 'textacy') if m in sys.modules)\n"
         "print(','.join(heavy))\n"
     )
     completed = subprocess.run(

@@ -12,14 +12,16 @@ Known limitations:
   a model upgrade may add, remove, or change candidate findings.
 """
 
+from __future__ import annotations
+
+import importlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from docsentinel import deep_support, models, rules
-from docsentinel.detectors._triples import Claim, extract_claims
 
 if TYPE_CHECKING:
-    pass
+    from docsentinel.detectors._triples import Claim
 
 DS301 = rules.register_rule(
     rules.Rule(
@@ -105,7 +107,15 @@ def detect(
     root: Path,
     documents: tuple[models.Document, ...],
 ) -> tuple[models.Finding, ...]:
-    """Extract claims and detect contradiction candidates across documents."""
+    """Extract claims and detect contradiction candidates across documents.
+
+    The spaCy-backed triple extractor is imported lazily here (first deep scan) via
+    :func:`importlib.import_module` so that importing :mod:`docsentinel` -- and every
+    fast or standard scan -- never pulls in spaCy/textacy. The DS301 rule metadata and
+    this analyzer are still registered eagerly at import time, so ``docsentinel rules``,
+    ``doctor``, ``enabled_rules`` and rule selection are unchanged.
+    """
+    extract_claims = importlib.import_module("docsentinel.detectors._triples").extract_claims
     pipeline = deep_support.load_pipeline()
     all_claims: list[Claim] = []
 

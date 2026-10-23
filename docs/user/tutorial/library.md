@@ -229,3 +229,67 @@ def main() -> int:
 if __name__ == "__main__":
     sys.exit(main())
 ```
+
+---
+
+## Fast-profile policy options in the Python API
+
+Milestone 0005 added typed policy options to `Config` for all fast-profile
+rules DS104–DS118. These can be set directly when constructing a `Config`.
+
+```python
+from docsentinel import Config, scan
+
+config = Config(
+    profile="fast",
+    # DS104 — anchor collisions
+    anchor_collision_policy="explicit",
+
+    # DS105 — heading hierarchy
+    heading_level_policy="no-skips",
+    first_heading_level=1,
+    multiple_h1_policy="warn",
+
+    # DS106 — contentless sections
+    empty_section_policy="leaf",
+
+    # DS108 — reference integrity
+    unused_reference_definitions=True,
+    duplicate_reference_definitions="error",
+
+    # DS110 — fence language labels (opt-in)
+    require_fence_languages=True,
+    allowed_fence_languages=("python", "bash", "yaml", "toml"),
+
+    # DS112 — navigation integrity (opt-in)
+    navigation_indexes=("docs/README.md",),
+    navigation_required=("docs/architecture/README.md",),
+
+    # DS113 — missing assets
+    missing_asset_policy="warn",
+
+    # DS115 — deprecated references (opt-in)
+    deprecated_references_file=".deprecated-names.toml",
+
+    # DS116 — path boundaries
+    root_escape_policy="warn",  # use "warn" in polyrepo docs
+
+    # DS117 — pipe tables
+    table_enable=True,
+
+    # DS118 — naming policy (opt-in)
+    documentation_naming="kebab",
+    documentation_naming_allow=("README.md", "index.md", "CHANGELOG.md"),
+)
+
+result = scan(".", config=config)
+```
+
+**Important:** constructing `Config(...)` directly bypasses `load_config`
+validation. The caller is responsible for passing valid values. Options that
+require path containment (such as `navigation_indexes` or
+`deprecated_references_file`) are validated by `load_config` when read from a
+config file, but a directly constructed `Config` is trusted as given.
+
+For the full list of options, valid values, and defaults, see the
+[Configuration Reference](../reference/configuration.md).
