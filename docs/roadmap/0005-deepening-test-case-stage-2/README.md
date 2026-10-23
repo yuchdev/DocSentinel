@@ -7,7 +7,7 @@
 - [Milestone plan](/docs/roadmap/0005-deepening-test-case-stage-2/plan.md) and [live completion status template](/docs/roadmap/0005-deepening-test-case-stage-2/status.md).
 - [Implementation contracts](/docs/roadmap/0005-deepening-test-case-stage-2/implementation-contracts.md) and [parser API design](/docs/roadmap/0005-deepening-test-case-stage-2/parser-contract.md).
 - [Execution guide](/docs/roadmap/0005-deepening-test-case-stage-2/execution-guide.md) for sequential GitHub agent PRs.
-- [Full 185-case Markdown fixture matrix](/docs/roadmap/0005-deepening-test-case-stage-2/fixture-matrix.md) with companion `.csv` and `.json` for catalog verification.
+- [Full 191-case Markdown fixture matrix](/docs/roadmap/0005-deepening-test-case-stage-2/fixture-matrix.md) (185 specified + 6 DS116 close-gate cases, see [status.md](/docs/roadmap/0005-deepening-test-case-stage-2/status.md)) with companion `.csv` and `.json` for catalog verification.
 - Fifteen story directories; each has README plus three separately implementable tasks = **45 story/task specs**.
 
 ## Scope

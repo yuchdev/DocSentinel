@@ -457,6 +457,33 @@ def test_document_id_field_must_be_nonempty(tmp_path: Path):
         load_config(tmp_path)
 
 
+def test_document_id_field_must_be_a_simple_key_name(tmp_path: Path):
+    """
+    [Unit] config: verifies document id field must be a simple identifier-like key name.
+
+    Scenario:
+        Given a TOML file whose document_id_field contains a space (not a simple key name)
+        When load_config validates the option
+        Then a ConfigError about a simple key name is raised, while a plain identifier-like value
+            such as "slug" is accepted.
+
+    Boundaries:
+        - Focus: identifier-like, bounded validation of document_id_field
+        - Fixtures/params: tmp_path
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - The _DOCUMENT_ID_FIELD_PATTERN check in _load_extra_options
+        - Whether a valid custom field name still loads
+    """
+    (tmp_path / "doc_sentinel.toml").write_text('document_id_field = "not a key"\n', encoding="utf-8")
+    with pytest.raises(ConfigError, match="document_id_field must be a simple key name"):
+        load_config(tmp_path)
+
+    (tmp_path / "doc_sentinel.toml").write_text('document_id_field = "slug"\n', encoding="utf-8")
+    assert load_config(tmp_path).document_id_field == "slug"
+
+
 def test_unknown_policy_key_still_rejected(tmp_path: Path):
     """
     [Unit] config: verifies unknown policy key still rejected.

@@ -43,7 +43,6 @@ the empty demonstration fences in ``empty_fence_exemption`` /
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import socket
 import subprocess
@@ -130,9 +129,13 @@ FAST_RULE_ORDER: tuple[str, ...] = (
     "DS108",
     "DS109",
     "DS110",
+    "DS112",
     "DS113",
+    "DS114",
+    "DS115",
     "DS116",
     "DS117",
+    "DS118",
 )
 
 #: The legitimate non-DS110 findings a full fast scan adds on these fixtures, each
@@ -277,10 +280,19 @@ def test_default_config_turns_the_policy_off_for_every_finding(asset_case: Calla
     assert off.pending == ()
     assert _ds110(off.findings) == ()  # the policy is off, so DS110 evaluates nothing
     # ... and the notice says so honestly: DS110 is excluded from the count and named as not enabled.
-    assert off.notice == "11 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages)."
+    assert (
+        off.notice
+        == "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
+    )
 
     on = scan(sample.root, config=Config(profile="fast", require_fence_languages=True))
-    assert on.notice == "12 fast rule(s) evaluated."  # the opt-in note disappears and DS110 is counted
+    # DS110's opt-in note disappears and it is counted; DS112, DS115 and DS118 (the other fast
+    # opt-in rules) stay off because navigation_indexes, deprecated_references_file and
+    # documentation_naming are unset, so they remain named and uncounted.
+    assert (
+        on.notice
+        == "13 fast rule(s) evaluated; opt-in rule(s) not enabled: DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
+    )
     assert [finding.line for finding in _ds110(on.findings)] == [3]
 
 
@@ -388,25 +400,27 @@ def test_prefix_select_semantics_for_ds110(asset_case: Callable[[str, str], Asse
 
     Scenario:
         Given a two-finding scenario scanned under the fast profile with the policy enabled
-        When it is selected by the genuine prefix ``DS11`` (which contains DS110, DS116 and DS117 but
-            not DS10x), by the whole-fast-set prefix ``DS1``, and by the non-matching prefix ``DS2``
-        Then ``DS11`` activates the DS11x rules (DS110, DS116 and DS117) and DS110 reports both lines,
+        When it is selected by the genuine prefix ``DS11`` (which contains DS110, DS112, DS113, DS114,
+            DS115, DS116 and DS117 but not DS10x), by the whole-fast-set prefix ``DS1``, and by the
+            non-matching prefix ``DS2``
+        Then ``DS11`` activates the DS11x rules (DS110, DS112, DS113, DS114, DS115, DS116 and DS117)
+            and DS110 reports both lines,
             ``DS1`` activates the entire fast set with DS110 among it still reporting both lines, and
             ``DS2`` matches no fast rule so the active set is empty.
 
     Boundaries:
         - Focus: prefix selector matching - DS110 does NOT start with DS10, so DS11 is the genuine
-          including prefix (matching DS110, DS116 and DS117) while DS1 is the whole-set prefix
+          including prefix (matching the DS11x rules) while DS1 is the whole-set prefix
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - matches_selector prefix logic for DS11/DS1 against DS110, DS116 and DS117
+        - matches_selector prefix logic for DS11/DS1 against the DS11x rules
         - Whether a non-matching prefix (DS2) wrongly activated any rule
     """
     case = asset_case("ds110", "multiple_unlabelled_blocks")
 
     ds11x = scan(case.root, config=Config(profile="fast", select=("DS11",), require_fence_languages=True))
-    assert ds11x.enabled_rules == ("DS110", "DS113", "DS116", "DS117")
+    assert ds11x.enabled_rules == ("DS110", "DS112", "DS113", "DS114", "DS115", "DS116", "DS117", "DS118")
     assert [finding.line for finding in _ds110(ds11x.findings)] == [3, 7]
 
     whole_fast = scan(case.root, config=Config(profile="fast", select=("DS1",), require_fence_languages=True))
@@ -452,7 +466,7 @@ def test_prefix_ignore_semantics_for_ds110(asset_case: Callable[[str, str], Asse
         Given a two-finding scenario scanned under the fast profile with the policy enabled
         When it is ignored by the genuine prefix ``DS11``, by the whole-set prefix ``DS1``, and by the
             non-matching prefix ``DS2``
-        Then ``DS11`` drops the DS11x rules DS110, DS116 and DS117 (leaving the DS10x rules active), ``DS1``
+        Then ``DS11`` drops the DS11x rules (leaving the DS10x rules active), ``DS1``
             drops the entire fast set, and ``DS2`` matches no fast rule so DS110 stays active and
             keeps reporting both lines.
 
@@ -466,7 +480,7 @@ def test_prefix_ignore_semantics_for_ds110(asset_case: Callable[[str, str], Asse
     """
     case = asset_case("ds110", "multiple_unlabelled_blocks")
 
-    # "DS11" is a prefix of DS110, DS116 and DS117, so every DS11x rule drops. Assert the remaining
+    # "DS11" is a prefix of every DS11x rule, so every DS11x rule drops. Assert the remaining
     # set is the full fast set minus the DS11x rules.
     only_dropped = scan(case.root, config=Config(profile="fast", ignore=("DS11",), require_fence_languages=True))
     assert "DS110" not in only_dropped.enabled_rules
@@ -1023,7 +1037,10 @@ def test_notice_does_not_name_an_ignored_off_opt_in_rule(asset_case: Callable[[s
         Given a fixture scanned with DS110 ignored while require_fence_languages stays off
         When the engine builds the scan notice
         Then DS110 is absent from the active set, so it is neither evaluated nor named as "not
-        enabled" - the user excluded it - and the notice reads exactly "11 fast rule(s) evaluated."
+        enabled" - the user excluded it. DS112, DS115 and DS118 (the other fast opt-in rules) are
+        still active and off, so the notice names only those and reads exactly
+        "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS112 (set navigation_indexes),
+        DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
 
     Boundaries:
         - Focus: only active-and-unmet opt-in rules are named; an ignored rule is never mentioned
@@ -1038,7 +1055,10 @@ def test_notice_does_not_name_an_ignored_off_opt_in_rule(asset_case: Callable[[s
     result = scan(case.root, config=Config(profile="fast", ignore=("DS110",)))
 
     assert "DS110" not in result.enabled_rules
-    assert result.notice == "11 fast rule(s) evaluated."
+    assert (
+        result.notice
+        == "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
+    )
     assert "DS110" not in result.notice
 
 
@@ -1199,30 +1219,25 @@ def test_detect_import_path_pulls_no_standard_extras():
     Scenario:
         Given a fresh isolated interpreter that imports the DS110 detector and runs it
         When the loaded modules are inspected
-        Then none of the standard-profile extras (scikit-learn, textstat, docsig) are imported,
+        Then none of the optional heavy dependencies (scikit-learn, textstat, docsig, spacy, textacy) are imported,
         proving the fast DS110 path needs no optional heavy dependency.
 
     Boundaries:
         - Focus: fast-profile import isolation for DS110's own code path
-        - Non-goal: a pre-existing eager spacy import elsewhere is out of scope here
+        - Also asserted: spacy and textacy stay unimported now the deep analyzer loads them lazily
         - Fixtures/params: none
 
     On failure, first check:
         - Whether fence_languages or markdown_blocks gained a standard-extra import
         - The subprocess probe output listing the offending module
     """
-    if importlib.util.find_spec("spacy") is None:
-        pytest.skip(
-            "docsentinel.detectors eagerly imports contradictions->spacy, so the subprocess probe "
-            "cannot import the package without the deep extra; skip honestly rather than failing"
-        )
     probe = (
         "import sys\n"
         "from docsentinel.config import Config\n"
         "from docsentinel.detectors import fence_languages\n"
         "assert fence_languages.check_text('```\\ncode\\n```\\n', 'README.md', "
         "Config(require_fence_languages=True))\n"
-        "heavy = sorted(m for m in ('sklearn', 'textstat', 'docsig') if m in sys.modules)\n"
+        "heavy = sorted(m for m in ('sklearn', 'textstat', 'docsig', 'spacy', 'textacy') if m in sys.modules)\n"
         "print(','.join(heavy))\n"
     )
     completed = subprocess.run(

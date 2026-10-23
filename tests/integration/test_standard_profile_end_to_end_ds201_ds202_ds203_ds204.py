@@ -185,12 +185,17 @@ def test_fast_profile_scan_ignores_standard_detectors(
         "DS108",
         "DS109",
         "DS110",
+        "DS112",
         "DS113",
+        "DS114",
+        "DS115",
         "DS116",
         "DS117",
+        "DS118",
     )
     assert (
-        result.notice == "11 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages)."
+        result.notice
+        == "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
     )
     assert "DS201" not in result.enabled_rules
     assert "DS204" not in result.enabled_rules

@@ -34,6 +34,11 @@ SCENARIOS = load_scenarios()
 SCENARIO_IDS = [f"{scenario.rule}-{scenario.case}" for scenario in SCENARIOS]
 
 
+#: Default-setup ERROR scenarios whose accepted safe handling is an explicit own finding rather than a raised
+#: ConfigError or a pending state. Explicit on purpose: any other error row must still raise or be pending.
+FINDING_SATISFIES_ERROR = frozenset({("DS114", "invalid_nested_metadata")})
+
+
 def test_manifest_matches_expected_totals():
     """
     [Integration] milestone 0005 fixture catalog: verifies the manifest matches the agreed totals.
@@ -272,4 +277,11 @@ def test_scenario_is_covered(scenario: Scenario, asset_case: Callable[[str, str]
     elif scenario.outcome == "finding":
         assert result.own_finding_count >= 1
     else:  # error
-        assert result.error is not None or result.pending
+        # An error-outcome scenario is satisfied by a raised ConfigError, a recorded readiness
+        # pending, or -- for a default-setup scenario the detector handles by explicitly flagging
+        # the offending document rather than aborting the whole scan -- at least one own finding
+        # (DS114's invalid_nested_metadata ruling: an unsupported id value shape is reported, not
+        # silently dropped and not escalated to exit 2). Non-default error scenarios exit above and
+        # are pinned by their own rule's task-03 test.
+        flagged_by_finding = (scenario.rule, scenario.case) in FINDING_SATISFIES_ERROR
+        assert result.error is not None or result.pending or (flagged_by_finding and result.own_finding_count >= 1)

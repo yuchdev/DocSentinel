@@ -17,7 +17,6 @@ CommonMark/GFM conformance.
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import socket
 import subprocess
@@ -187,9 +186,13 @@ def test_scan_isolates_ds109_from_other_fast_rules(case: str, asset_case: Callab
         "DS108",
         "DS109",
         "DS110",
+        "DS112",
         "DS113",
+        "DS114",
+        "DS115",
         "DS116",
         "DS117",
+        "DS118",
     )
     assert all(finding.rule == "DS109" for finding in result.findings), result.findings
     own = _ds109(result.findings)
@@ -612,28 +615,23 @@ def test_detect_import_path_pulls_no_standard_extras():
     Scenario:
         Given a fresh isolated interpreter that imports the DS109 detector and runs it
         When the loaded modules are inspected
-        Then none of the standard-profile extras (scikit-learn, textstat, docsig) are imported,
+        Then none of the optional heavy dependencies (scikit-learn, textstat, docsig, spacy, textacy) are imported,
         proving the fast DS109 path needs no optional heavy dependency.
 
     Boundaries:
         - Focus: fast-profile import isolation for DS109's own code path
-        - Non-goal: the pre-existing eager spacy import (Story 15.0 open item) is out of scope here
+        - Also asserted: spacy and textacy stay unimported now the deep analyzer loads them lazily
         - Fixtures/params: none
 
     On failure, first check:
         - Whether fences or markdown_blocks gained a standard-extra import
         - The subprocess probe output listing the offending module
     """
-    if importlib.util.find_spec("spacy") is None:
-        pytest.skip(
-            "docsentinel.detectors eagerly imports contradictions->spacy, so the subprocess probe "
-            "cannot import the package without the deep extra; skip honestly rather than failing"
-        )
     probe = (
         "import sys\n"
         "from docsentinel.detectors import fences\n"
         "assert fences.check_text('```\\ncode\\n', 'README.md')\n"
-        "heavy = sorted(m for m in ('sklearn', 'textstat', 'docsig') if m in sys.modules)\n"
+        "heavy = sorted(m for m in ('sklearn', 'textstat', 'docsig', 'spacy', 'textacy') if m in sys.modules)\n"
         "print(','.join(heavy))\n"
     )
     completed = subprocess.run(

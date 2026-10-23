@@ -1,0 +1,6 @@
+version = 1
+
+[[replacement]]
+old = "APIv1"
+new = "APIv2"
+kind = "prose"

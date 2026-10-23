@@ -40,13 +40,50 @@ docsentinel scan docs/README.md
 DocSentinel supports three distinct profiles via `--profile`:
 
 #### 1. Fast Profile (`--profile fast`) - Default
-Runs zero-dependency structural rules:
-- `DS101`: Dangling link target (missing target file)
-- `DS102`: Stray HTML comment (unwanted TODOs or raw HTML comments)
-- `DS103`: Unresolvable relative link anchor (missing `#section-heading`)
+
+Runs structural and reference rules. All rules use only the Python standard
+library. Sixteen rules are registered; twelve are evaluated by default (four are
+opt-in policies that are silent until their option is set):
+
+| Rule | Severity | Description | Opt-in option |
+|------|----------|-------------|---------------|
+| `DS101` | error | Dangling link or anchor (missing target file) | — |
+| `DS102` | warning | Stray HTML comment | — |
+| `DS103` | warning | Unresolvable path-like inline code span | — |
+| `DS104` | warning | Conflicting heading and explicit anchors | — |
+| `DS105` | warning | Heading-level skip or wrong first heading | — |
+| `DS106` | warning | Empty or contentless leaf section | — |
+| `DS108` | warning | Reference-style link definition integrity | — |
+| `DS109` | error | Malformed or unclosed fenced code block | — |
+| `DS110` | warning | Missing language label on a code fence | `require_fence_languages` |
+| `DS112` | warning | Declared documentation navigation integrity | `navigation_indexes` |
+| `DS113` | error | Missing local media or document asset | — |
+| `DS114` | error | Duplicate stable document identifier | — |
+| `DS115` | warning | Deprecated name or migrated reference | `deprecated_references_file` |
+| `DS116` | error | Reference escaping the documentation root | — |
+| `DS117` | warning | Malformed GFM pipe-table structure | — |
+| `DS118` | warning | Documentation file or directory naming violation | `documentation_naming` |
 
 ```bash
 docsentinel scan --profile fast
+```
+
+**Opt-in rules.** `DS110`, `DS112`, `DS115`, and `DS118` are inert until you set
+their enabling option. The scan notice reports exactly which ones are off:
+
+```
+12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming).
+```
+
+To enable an opt-in rule, set its option in `doc_sentinel.toml` (see
+[Configuration Reference](../reference/configuration.md)):
+
+```toml
+# Enable DS110: require a language label on every non-empty code fence.
+require_fence_languages = true
+
+# Enable DS118: enforce kebab-case file and directory names.
+documentation_naming = "kebab"
 ```
 
 #### 2. Standard Profile (`--profile standard`)
@@ -125,11 +162,19 @@ Example JSON payload:
       "line": 42
     }
   ],
-  "enabled_rules": ["DS101", "DS102", "DS103"],
+  "enabled_rules": [
+    "DS101", "DS102", "DS103", "DS104", "DS105", "DS106",
+    "DS108", "DS109", "DS110", "DS112", "DS113", "DS114",
+    "DS115", "DS116", "DS117", "DS118"
+  ],
   "pending": [],
-  "notice": "3 fast rule(s) evaluated."
+  "notice": "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
 }
 ```
+
+`enabled_rules` lists every rule selected in the active profile (selection is
+orthogonal to whether an opt-in policy fires). `notice` separately names the
+opt-in rules that are selected but currently silent.
 
 ### 3. GitHub Actions Annotations (`--format github`)
 
@@ -199,12 +244,19 @@ Example output:
 ```text
 Inventory: available
 standard profile: available
-deep profile: ready
+deep profile: not ready
   ✓ deep libraries installed (spacy, textacy)
-  ✓ deep model installed (en_core_web_sm)
-fast rules: 3 registered
+  ✗ deep model missing (en_core_web_sm): python -m spacy download en_core_web_sm
+fast rules: 16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)
 standard rules: 4 registered
 deep rules: 1 registered
+```
+
+The deep profile requires an additional model download even after
+`pip install "docsentinel[deep]"`:
+
+```bash
+python -m spacy download en_core_web_sm
 ```
 
 ---
@@ -234,4 +286,18 @@ include = ["*.md", "**/*.md"]
 exclude = [".git", ".venv", "node_modules"]
 select = []
 ignore = []
+
+# Standard profile thresholds (profile = "standard"); defaults shown.
+# max_grade_level = 14.0          # DS201: flag prose above this readability grade
+# duplicate_similarity = 0.85     # DS202: flag paragraph pairs at/above this cosine similarity
+# min_information_score = 0.15    # DS203: flag paragraphs scoring below this information score
+# docsig_paths = ["src"]          # DS204: Python source roots checked against docstrings
+#
+# Statistical size limits (standard profile); defaults shown.
+# min_document_words = 50         # DS201: skip documents with fewer prose words
+# min_paragraph_words = 5         # DS202/DS203: skip paragraphs with fewer words
+# min_paragraph_chars = 30        # DS202/DS203: skip paragraphs shorter than this
 ```
+
+For a comprehensive example of fast-profile policy options (DS104–DS118) with
+all defaults documented, see [examples/doc_sentinel.toml](/examples/doc_sentinel.toml).

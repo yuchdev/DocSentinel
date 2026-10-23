@@ -51,9 +51,13 @@ def test_importing_engine_registers_all_fast_analyzers():
         "DS108",
         "DS109",
         "DS110",
+        "DS112",
         "DS113",
+        "DS114",
+        "DS115",
         "DS116",
         "DS117",
+        "DS118",
     )
     assert tuple(rule.code for rule in rules_for_profile("fast")) == (
         "DS101",
@@ -65,9 +69,13 @@ def test_importing_engine_registers_all_fast_analyzers():
         "DS108",
         "DS109",
         "DS110",
+        "DS112",
         "DS113",
+        "DS114",
+        "DS115",
         "DS116",
         "DS117",
+        "DS118",
     )
 
 
@@ -130,7 +138,8 @@ def test_clean_tree_reports_zero_findings_with_evaluated_notice(
 
     assert result.findings == ()
     assert (
-        result.notice == "11 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages)."
+        result.notice
+        == "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
     )
     assert "not implemented" not in result.notice
     assert result.enabled_rules == (
@@ -143,9 +152,13 @@ def test_clean_tree_reports_zero_findings_with_evaluated_notice(
         "DS108",
         "DS109",
         "DS110",
+        "DS112",
         "DS113",
+        "DS114",
+        "DS115",
         "DS116",
         "DS117",
+        "DS118",
     )
 
 
@@ -185,9 +198,13 @@ def test_ignore_narrows_the_active_set(fast_profile_tree: tuple[Path, Path]):
         "DS108",
         "DS109",
         "DS110",
+        "DS112",
         "DS113",
+        "DS114",
+        "DS115",
         "DS116",
         "DS117",
+        "DS118",
     )
 
 

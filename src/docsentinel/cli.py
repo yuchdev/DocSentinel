@@ -13,7 +13,7 @@ from docsentinel.detectors.loader import ensure_standard_loaded
 from docsentinel.engine import scan
 from docsentinel.errors import ExtraNotInstalledError
 from docsentinel.models import ScanResult
-from docsentinel.reporting import render
+from docsentinel.reporting import neutralize_text, render
 from docsentinel.rules import Rule, rules_for_profile
 
 TEMPLATE = (
@@ -205,7 +205,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             result = scan(args.root, config=unbaselined_config)
             save_baseline(output_path, result.findings)
         except (ConfigError, ValueError, OSError) as exc:
-            print(f"Baseline generation failed: {exc}", file=sys.stderr)
+            print(f"Baseline generation failed: {neutralize_text(str(exc))}", file=sys.stderr)
             return 2
         print(f"Saved baseline: {output_path}")
         return 0
@@ -227,7 +227,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             settings = replace(settings, **changes)
         result = scan(args.root, config=settings)
     except (ConfigError, ValueError, OSError) as exc:
-        print(f"Scan failed: {exc}", file=sys.stderr)
+        print(f"Scan failed: {neutralize_text(str(exc))}", file=sys.stderr)
         return 2
     print(render(result, args.format))
     return _exit_code(result, strict=args.strict)

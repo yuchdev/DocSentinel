@@ -1,0 +1,11 @@
+version = 1
+
+[[replacement]]
+old = "dup"
+new = "first"
+kind = "prose"
+
+[[replacement]]
+old = "dup"
+new = "second"
+kind = "prose"
