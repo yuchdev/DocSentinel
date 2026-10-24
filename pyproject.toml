@@ -1,6 +1,6 @@
 [project]
 name = "docsentinel"
-version = "0.1.0"
+version = "1.0.0"
 description = "Deterministic-first documentation inventory and future QA framework"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -75,3 +75,6 @@ noqa_allowed = []
 # Blacklist: files/directories where `# noqa` is strictly forbidden (violations always fire).
 # Blacklist always wins over `noqa_allowed`.
 noqa_forbidden = []
+
+[tool.release-saga]
+s3_bucket = "packages-s3-useast1-any"
