@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from docsentinel import models, rules
-from docsentinel.detectors.path_boundaries import escapes_via_symlink, is_ds116_owned
+from docsentinel.detectors.path_boundaries import contained_path, is_ds116_owned
 
 DS101 = rules.register_rule(
     rules.Rule(
@@ -160,11 +160,12 @@ def check_document(root: Path, document: models.Document) -> tuple[models.Findin
                     )
                 continue
 
-            resolved = _lexical_target(file_part, source, root)
+            candidate = _lexical_target(file_part, source, root)
             # Never follow an in-root symlink whose target escapes the root, and
-            # never stat a lexical escape; DS116 owns both. Otherwise this is the
-            # unchanged legacy existence check on the in-root path.
-            if escapes_via_symlink(root, resolved):
+            # never stat a lexical escape; DS116 owns both. The returned path has
+            # symlinks and ``..`` safely resolved before any filesystem operation.
+            resolved = contained_path(root, candidate)
+            if resolved is None:
                 continue
             if not resolved.exists():
                 findings.append(
