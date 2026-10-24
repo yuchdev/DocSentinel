@@ -560,6 +560,36 @@ def test_broken_symlink_is_unresolvable(asset_case: Callable[[str, str], AssetCa
     )
 
 
+def test_symlink_followed_by_parent_component_never_checks_outside_file(tmp_path: Path):
+    """
+    [Integration] detectors paths ds103: verifies symlink and parent traversal stay contained.
+
+    Scenario:
+        Given an in-root symlink to an outside directory and a code span ``hop/../secret.md``
+        When DS103 checks the span before and after the outside file is created
+        Then it emits no finding and its result cannot reveal whether that outside file exists.
+
+    Boundaries:
+        - Focus: symlink-aware processing of the original path components
+        - Fixtures/params: tmp_path; skipped when symlinks are unavailable
+        - Scope: DS103 code-span existence check only
+
+    On failure, first check:
+        - Whether the symlink target was resolved before the following ``..``
+    """
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    (root / "docs").mkdir(parents=True)
+    (outside / "sub").mkdir(parents=True)
+    document = _write_document(root, "docs/README.md", "See `hop/../secret.md`.\n")
+    _symlink_or_skip(root / "docs" / "hop", Path("../../outside/sub"))
+
+    assert paths.detect(root, (document,)) == ()
+
+    (outside / "secret.md").write_text("outside\n", encoding="utf-8")
+    assert paths.detect(root, (document,)) == ()
+
+
 @pytest.mark.parametrize(
     "case_name",
     ("hostile_empty_span", "hostile_unterminated_span", "hostile_backticks_only", "hostile_newline_in_span"),

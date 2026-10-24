@@ -94,6 +94,7 @@ import os
 import re
 import stat
 from bisect import bisect_right
+from collections import deque
 from pathlib import Path
 from typing import Optional
 from urllib.parse import unquote
@@ -201,6 +202,77 @@ def _within(candidate: str, root: str) -> bool:
     :returns: ``True`` when ``candidate`` is contained in ``root``.
     """
     return candidate == root or candidate.startswith(root + os.sep)
+
+
+def contained_path(root: Path, candidate: Path, *, max_hops: int = _MAX_SYMLINK_HOPS) -> Optional[Path]:
+    """Return the validated in-root path, resolving symlinks before ``..`` components.
+
+    Unlike normalising the candidate first, this walks the original component order.
+    Symlink targets are expanded lexically and each resulting component is checked
+    without following it, so a ``link/..`` sequence cannot hide an outside traversal.
+    Missing components are preserved as lexical path components; callers may safely
+    perform their existence check on the returned path.
+
+    :param root: The trusted (already canonicalised) scan-root directory.
+    :param candidate: An absolute candidate path, possibly containing ``..``.
+    :param max_hops: Maximum symlink hops before failing closed.
+    :returns: A normalized path inside root, or ``None`` if containment is unproven.
+    """
+    root_str = os.path.normpath(str(root))
+    candidate_str = os.fspath(candidate)
+
+    def relative_parts(path: str) -> Optional[list[str]]:
+        """Return unnormalized path components relative to root when contained."""
+        if path == root_str:
+            return []
+        prefix = root_str if root_str.endswith(os.sep) else root_str + os.sep
+        if not path.startswith(prefix):
+            return None
+        return path[len(prefix) :].split(os.sep)
+
+    components = relative_parts(candidate_str)
+    if components is None:
+        return None
+    pending = deque(components)
+
+    parts: list[str] = []
+    hops = 0
+    while pending:
+        part = pending.popleft()
+        if part in ("", os.curdir):
+            continue
+        if part == os.pardir:
+            if not parts:
+                return None
+            parts.pop()
+            continue
+
+        current = Path(root_str).joinpath(*parts, part)
+        try:
+            info = os.lstat(current)
+        except (FileNotFoundError, NotADirectoryError):
+            parts.append(part)
+            continue
+
+        if not stat.S_ISLNK(info.st_mode):
+            parts.append(part)
+            continue
+
+        hops += 1
+        if hops > max_hops:
+            return None
+        target = os.readlink(current)
+
+        if os.path.isabs(target):
+            target_parts = relative_parts(target)
+            if target_parts is None:
+                return None
+            parts.clear()
+        else:
+            target_parts = target.split(os.sep)
+        pending.extendleft(reversed(target_parts))
+
+    return Path(root_str).joinpath(*parts)
 
 
 def escapes_via_symlink(root: Path, candidate: Path, *, max_hops: int = _MAX_SYMLINK_HOPS) -> bool:

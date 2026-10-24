@@ -136,7 +136,11 @@ def _csv_rows() -> tuple[tuple[str, str, str], ...]:
     :returns: One tuple per CSV data row, in file order.
     """
     with MATRIX_CSV.open(encoding="utf-8", newline="") as handle:
-        return tuple((row["rule"], row["case"], row["outcome"]) for row in csv.DictReader(handle))
+        reader = csv.DictReader(handle)
+        rows = tuple(reader)
+    assert reader.fieldnames is not None
+    assert all(None not in row and all(row[field] is not None for field in reader.fieldnames) for row in rows)
+    return tuple((row["rule"], row["case"], row["outcome"]) for row in rows)
 
 
 def _md_rows() -> tuple[tuple[str, str, str], ...]:

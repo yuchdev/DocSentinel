@@ -144,8 +144,8 @@ DS116,fast,11.0,finding,absolute_rooted_backslash,tests/assets/ds116/absolute_ro
 DS116,fast,11.0,clean,template_link_literal_skipped,tests/assets/ds116/template_link_literal_skipped/,README.md,,Templated path containing `{...}` is ignored by existing DS101 conventions.,default
 DS116,fast,11.0,finding,html_anchor_href_escape,tests/assets/ds116/html_anchor_href_escape/,README.md,,HTML `<a href>` with ../ traversal is extracted and reported (close-gate fix).,default
 DS116,fast,11.0,finding,html_img_srcset_escape,tests/assets/ds116/html_img_srcset_escape/,README.md,,HTML `srcset` candidate escaping the root is reported (close-gate fix).,default
-DS116,fast,11.0,finding,angle_bracket_destination_escape,tests/assets/ds116/angle_bracket_destination_escape/,README.md,,`[a](<../../x>)` and `[r]: <../../x>` destinations are unwrapped, then reported (close-gate fix).,default
-DS116,fast,11.0,finding,entity_encoded_destination_escape,tests/assets/ds116/entity_encoded_destination_escape/,README.md,,Entity-encoded `&#46;&#46;/` destination is decoded before resolving, then reported (close-gate fix).,default
+DS116,fast,11.0,finding,angle_bracket_destination_escape,tests/assets/ds116/angle_bracket_destination_escape/,README.md,,"`[a](<../../x>)` and `[r]: <../../x>` destinations are unwrapped, then reported (close-gate fix).",default
+DS116,fast,11.0,finding,entity_encoded_destination_escape,tests/assets/ds116/entity_encoded_destination_escape/,README.md,,"Entity-encoded `&#46;&#46;/` destination is decoded before resolving, then reported (close-gate fix).",default
 DS116,fast,11.0,finding,nested_image_link_escape,tests/assets/ds116/nested_image_link_escape/,README.md,,`[![alt](inner.png)](../../x)` reports the outer destination (close-gate fix).,default
 DS116,fast,11.0,finding,quoted_refdef_escape,tests/assets/ds116/quoted_refdef_escape/,README.md,,Reference definition inside a block quote with an escaping target is reported (close-gate fix).,default
 DS114,fast,12.0,clean,distinct_frontmatter_ids,tests/assets/ds114/distinct_frontmatter_ids/,a.md;b.md,,Two Markdown files carry different explicit frontmatter ids.,default

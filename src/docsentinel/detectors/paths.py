@@ -8,7 +8,7 @@ from pathlib import Path, PureWindowsPath
 from typing import Optional
 
 from docsentinel import models, rules
-from docsentinel.detectors.path_boundaries import escapes_via_symlink
+from docsentinel.detectors.path_boundaries import contained_path
 
 DS103 = rules.register_rule(
     rules.Rule(
@@ -149,18 +149,18 @@ def detect(root: Path, documents: tuple[models.Document, ...]) -> tuple[models.F
             if not _looks_path_like(candidate) or _is_excluded(candidate):
                 continue
 
-            resolved = _lexical_candidate(candidate, source, root)
+            lexical = _lexical_candidate(candidate, source, root)
             # Security skip (Story 11.0 code-span ruling): DS116 owns only a code
             # span that escapes the root or reaches outside through an in-root
             # symlink, so DS103 hands those two to DS116 and never stats a path
-            # outside the scan root (the existence oracle fixed in Story 11.0).
+            # outside the scan root. Symlinks are resolved before processing ``..``.
             # Drive/UNC/backslash/control spans are documented literals, not DS116
             # references, so DS103 keeps its exact legacy behaviour for them (a
             # Windows-anchored candidate yields ``resolved is None`` and is reported
-            # as before, with no filesystem access). The lexical containment inside
-            # escapes_via_symlink runs first, so a root escape is skipped with zero
-            # filesystem calls and only an in-root object is ever ``lstat``-ed.
-            if resolved is not None and escapes_via_symlink(root, resolved):
+            # as before, with no filesystem access). A root escape is skipped with
+            # zero filesystem calls and only the validated in-root path is stat-ed.
+            resolved = contained_path(root, lexical) if lexical is not None else None
+            if lexical is not None and resolved is None:
                 continue
             if resolved is not None and resolved.exists():
                 continue

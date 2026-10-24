@@ -523,6 +523,38 @@ def test_broken_symlink_is_dangling(asset_case: Callable[[str, str], AssetCase])
     )
 
 
+def test_symlink_followed_by_parent_component_never_checks_outside_file(tmp_path: Path):
+    """
+    [Integration] detectors links ds101: verifies symlink and parent traversal stay contained.
+
+    Scenario:
+        Given an in-root symlink to an outside directory and a link containing ``hop/../secret.md``
+        When DS101 checks the link before and after the outside file is created
+        Then it emits no finding and its result cannot reveal whether that outside file exists.
+
+    Boundaries:
+        - Focus: symlink-aware processing of the original path components
+        - Fixtures/params: tmp_path; skipped when symlinks are unavailable
+        - Scope: DS101 link existence and anchor checks only
+
+    On failure, first check:
+        - Whether the symlink target was resolved before the following ``..``
+    """
+    root = tmp_path / "root"
+    source = root / "docs" / "README.md"
+    outside = tmp_path / "outside"
+    (root / "docs").mkdir(parents=True)
+    (outside / "sub").mkdir(parents=True)
+    source.write_text("[x](hop/../secret.md#outside-anchor)\n", encoding="utf-8")
+    _symlink_or_skip(root / "docs" / "hop", Path("../../outside/sub"))
+    document = models.Document("docs/README.md", source.stat().st_size)
+
+    assert links.detect(root, (document,)) == ()
+
+    (outside / "secret.md").write_text("# different-anchor\n", encoding="utf-8")
+    assert links.detect(root, (document,)) == ()
+
+
 def test_non_markdown_documents_are_not_scanned(asset_case: Callable[[str, str], AssetCase]):
     """
     [Integration] detectors links ds101: verifies non markdown documents are not scanned.
