@@ -175,8 +175,28 @@ def test_fast_profile_scan_ignores_standard_detectors(
     root, _, _ = standard_profile_tree
     result = scan(root, config=Config(profile="fast"))
     assert result.findings == ()
-    assert result.enabled_rules == ("DS101", "DS102", "DS103")
-    assert result.notice == "3 fast rule(s) evaluated."
+    assert result.enabled_rules == (
+        "DS101",
+        "DS102",
+        "DS103",
+        "DS104",
+        "DS105",
+        "DS106",
+        "DS108",
+        "DS109",
+        "DS110",
+        "DS112",
+        "DS113",
+        "DS114",
+        "DS115",
+        "DS116",
+        "DS117",
+        "DS118",
+    )
+    assert (
+        result.notice
+        == "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
+    )
     assert "DS201" not in result.enabled_rules
     assert "DS204" not in result.enabled_rules
 

@@ -1,0 +1,7 @@
+version = 1
+
+[[replacement]]
+old = "legacymod"
+new = "newmod"
+kind = "prose"
+scope = ["!archive/*"]

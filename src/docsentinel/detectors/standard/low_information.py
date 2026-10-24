@@ -3,7 +3,10 @@
 DS203 flags paragraphs that are both lexically thin (low type-token ratio) and
 non-distinctive (low maximum TF-IDF weight). Both signals are combined via their
 geometric mean into an information score in [0, 1]. Paragraphs scoring below
-the configured `min_information_score` (default 0.15) are reported.
+the configured `min_information_score` (default 0.15) are reported. The paragraph
+size floors `min_paragraph_words` / `min_paragraph_chars` gate which paragraphs
+enter the corpus. The normalisation references `_TTR_REF` and `_TFIDF_REF` are
+fixed calibration internals and are not exposed as configuration.
 
 Tokenization consistency:
 The type-token ratio is computed using the same word token pattern as the shared
@@ -108,7 +111,12 @@ def detect(
 ) -> tuple[models.Finding, ...]:
     """Return DS203 findings for low-information paragraphs across documents."""
     config = config or load_config(root)
-    model = build_corpus_model(root, documents)
+    model = build_corpus_model(
+        root,
+        documents,
+        min_paragraph_chars=config.min_paragraph_chars,
+        min_paragraph_words=config.min_paragraph_words,
+    )
     flagged = low_information_chunks(model, config.min_information_score)
     findings: list[models.Finding] = []
     chunks = model.paragraphs

@@ -1,0 +1,6 @@
+version = 1
+
+[[replacement]]
+old = "obso"
+new = "fresh"
+kind = "prose"

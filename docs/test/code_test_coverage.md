@@ -1,5 +1,8 @@
 # Coverage Requirements Checklist
 
+> **Status for this repository (Milestone 0005).** This checklist is a generic template. In DocSentinel, coverage is opt-in and not part of the default `pytest` run: use `uv run --with pytest-cov pytest --cov=docsentinel` (without the `-p docsentinel.pytest_plugin` option). The measured figure is 96%, the configured gate is `fail_under = 90` in `[tool.coverage.report]` of `pyproject.toml`, and there is no `.coveragerc`, `dev` extra or automatic coverage failure. See [the test suite guide](README.md).
+
+
 ## Coverage Quick Start
 
 This project requires **85% test coverage** on all code. This is enforced automatically when running tests.

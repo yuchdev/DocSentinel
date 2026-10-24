@@ -13,8 +13,8 @@ from docsentinel.detectors.loader import ensure_standard_loaded
 from docsentinel.engine import scan
 from docsentinel.errors import ExtraNotInstalledError
 from docsentinel.models import ScanResult
-from docsentinel.reporting import render
-from docsentinel.rules import rules_for_profile
+from docsentinel.reporting import neutralize_text, render
+from docsentinel.rules import Rule, rules_for_profile
 
 TEMPLATE = (
     'profile = "fast"\n'
@@ -22,7 +22,28 @@ TEMPLATE = (
     'exclude = [".git", ".venv", "node_modules"]\n'
     "select = []\n"
     "ignore = []\n"
+    "\n"
+    '# Standard profile thresholds (profile = "standard"); defaults shown.\n'
+    "# max_grade_level = 14.0          # DS201: flag prose above this readability grade\n"
+    "# duplicate_similarity = 0.85     # DS202: flag paragraph pairs at/above this cosine similarity\n"
+    "# min_information_score = 0.15    # DS203: flag paragraphs scoring below this information score\n"
+    '# docsig_paths = ["src"]          # DS204: Python source roots checked against docstrings\n'
+    "#\n"
+    "# Statistical size limits (standard profile); defaults shown.\n"
+    "# min_document_words = 50         # DS201: skip documents with fewer prose words\n"
+    "# min_paragraph_words = 5         # DS202/DS203: skip paragraphs with fewer words\n"
+    "# min_paragraph_chars = 30        # DS202/DS203: skip paragraphs shorter than this\n"
 )
+
+
+def _opt_in_suffix(rule: Rule) -> str:
+    """Return the ``rules`` listing suffix marking an opt-in policy rule, else empty.
+
+    :param rule: A registered rule.
+    :returns: ``" [opt-in: set <option>]"`` for an opt-in policy rule, or ``""``
+        for an ordinary always-active rule.
+    """
+    return f" [opt-in: set {rule.opt_in_option}]" if rule.opt_in_option else ""
 
 
 def _standard_rule_lines() -> list[str]:
@@ -34,7 +55,7 @@ def _standard_rule_lines() -> list[str]:
         return missing_msg
     registered = rules_for_profile("standard")
     if registered:
-        return [f"  {rule.code}: {rule.title}" for rule in registered]
+        return [f"  {rule.code}: {rule.title}{_opt_in_suffix(rule)}" for rule in registered]
     return ["  (none registered)"]
 
 
@@ -142,7 +163,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 registered = rules_for_profile(profile)
                 if registered:
                     for rule in registered:
-                        print(f"  {rule.code}: {rule.title}")
+                        print(f"  {rule.code}: {rule.title}{_opt_in_suffix(rule)}")
                 else:
                     print("  (none registered)")
         return 0
@@ -156,7 +177,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         for line in _deep_doctor_lines():
             print(line)
         for profile in ("fast", "standard", "deep"):
-            print(f"{profile} rules: {len(rules_for_profile(profile))} registered")
+            registered = rules_for_profile(profile)
+            opt_in = tuple(rule for rule in registered if rule.opt_in_option)
+            summary = f"{profile} rules: {len(registered)} registered"
+            if opt_in:
+                codes = ", ".join(rule.code for rule in opt_in)
+                summary += f" ({len(opt_in)} opt-in, off unless configured: {codes})"
+            print(summary)
         return 0
     if args.command == "baseline":
         try:
@@ -178,7 +205,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             result = scan(args.root, config=unbaselined_config)
             save_baseline(output_path, result.findings)
         except (ConfigError, ValueError, OSError) as exc:
-            print(f"Baseline generation failed: {exc}", file=sys.stderr)
+            print(f"Baseline generation failed: {neutralize_text(str(exc))}", file=sys.stderr)
             return 2
         print(f"Saved baseline: {output_path}")
         return 0
@@ -200,7 +227,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             settings = replace(settings, **changes)
         result = scan(args.root, config=settings)
     except (ConfigError, ValueError, OSError) as exc:
-        print(f"Scan failed: {exc}", file=sys.stderr)
+        print(f"Scan failed: {neutralize_text(str(exc))}", file=sys.stderr)
         return 2
     print(render(result, args.format))
     return _exit_code(result, strict=args.strict)

@@ -1735,6 +1735,78 @@
       "setup": "default"
     },
     {
+      "rule": "DS116",
+      "profile": "fast",
+      "story": "11.0",
+      "outcome": "finding",
+      "case": "html_anchor_href_escape",
+      "asset_root": "tests/assets/ds116/html_anchor_href_escape/",
+      "markdown_assets": "README.md",
+      "companions": "",
+      "behavior": "HTML `<a href>` with ../ traversal is extracted and reported (close-gate fix).",
+      "setup": "default"
+    },
+    {
+      "rule": "DS116",
+      "profile": "fast",
+      "story": "11.0",
+      "outcome": "finding",
+      "case": "html_img_srcset_escape",
+      "asset_root": "tests/assets/ds116/html_img_srcset_escape/",
+      "markdown_assets": "README.md",
+      "companions": "",
+      "behavior": "HTML `srcset` candidate escaping the root is reported (close-gate fix).",
+      "setup": "default"
+    },
+    {
+      "rule": "DS116",
+      "profile": "fast",
+      "story": "11.0",
+      "outcome": "finding",
+      "case": "angle_bracket_destination_escape",
+      "asset_root": "tests/assets/ds116/angle_bracket_destination_escape/",
+      "markdown_assets": "README.md",
+      "companions": "",
+      "behavior": "`[a](<../../x>)` and `[r]: <../../x>` destinations are unwrapped, then reported (close-gate fix).",
+      "setup": "default"
+    },
+    {
+      "rule": "DS116",
+      "profile": "fast",
+      "story": "11.0",
+      "outcome": "finding",
+      "case": "entity_encoded_destination_escape",
+      "asset_root": "tests/assets/ds116/entity_encoded_destination_escape/",
+      "markdown_assets": "README.md",
+      "companions": "",
+      "behavior": "Entity-encoded `&#46;&#46;/` destination is decoded before resolving, then reported (close-gate fix).",
+      "setup": "default"
+    },
+    {
+      "rule": "DS116",
+      "profile": "fast",
+      "story": "11.0",
+      "outcome": "finding",
+      "case": "nested_image_link_escape",
+      "asset_root": "tests/assets/ds116/nested_image_link_escape/",
+      "markdown_assets": "README.md",
+      "companions": "",
+      "behavior": "`[![alt](inner.png)](../../x)` reports the outer destination (close-gate fix).",
+      "setup": "default"
+    },
+    {
+      "rule": "DS116",
+      "profile": "fast",
+      "story": "11.0",
+      "outcome": "finding",
+      "case": "quoted_refdef_escape",
+      "asset_root": "tests/assets/ds116/quoted_refdef_escape/",
+      "markdown_assets": "README.md",
+      "companions": "",
+      "behavior": "Reference definition inside a block quote with an escaping target is reported (close-gate fix).",
+      "setup": "default"
+    },
+    {
       "rule": "DS114",
       "profile": "fast",
       "story": "12.0",

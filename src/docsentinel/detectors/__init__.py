@@ -1,5 +1,41 @@
 """Importing this package registers every shipped detector's Rule and Analyzer."""
 
-from docsentinel.detectors import comments, contradictions, links, paths
+from docsentinel.detectors import (
+    anchors,
+    assets,
+    comments,
+    contradictions,
+    deprecated_refs,
+    document_ids,
+    fence_languages,
+    fences,
+    headings,
+    links,
+    naming,
+    navigation,
+    path_boundaries,
+    paths,
+    references,
+    sections,
+    tables,
+)
 
-__all__ = ["comments", "contradictions", "links", "paths"]
+__all__ = [
+    "anchors",
+    "assets",
+    "comments",
+    "contradictions",
+    "deprecated_refs",
+    "document_ids",
+    "fence_languages",
+    "fences",
+    "headings",
+    "links",
+    "naming",
+    "navigation",
+    "path_boundaries",
+    "paths",
+    "references",
+    "sections",
+    "tables",
+]
