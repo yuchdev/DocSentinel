@@ -1,0 +1,6 @@
+version = 1
+
+[[replacement]]
+old = "OldClass"
+new = "NewClass"
+kind = "prose"

@@ -5,6 +5,10 @@ Readability is evaluated using textstat's Flesch-Kincaid grade level metric.
 Note: textstat assumes English-language text.
 Note: Configured via a single global `max_grade_level`. Per-category thresholds
 are documented for future consideration.
+
+Documents with fewer prose words than `min_document_words` (default 50) are
+skipped so short notes are never scored. The Flesch-Kincaid grade level is a
+fixed calibration internal of this detector and is not configurable.
 """
 
 import re
@@ -25,8 +29,6 @@ DS201 = rules.register_rule(
         severity="warning",
     )
 )
-
-_MIN_WORDS = 50
 
 _FENCE_RE = re.compile(r"(`{3,}|~{3,}).*?\1", re.DOTALL)
 _INLINE_CODE_RE = re.compile(r"`+[^`\n]+`+")
@@ -66,13 +68,22 @@ def check_document(
     root: Path,
     doc: models.Document,
     max_grade: float = 14.0,
+    min_words: int = 50,
 ) -> tuple[models.Finding, ...]:
-    """Check a single document and return DS201 findings if grade level exceeds max_grade."""
+    """Check a single document and return DS201 findings if grade level exceeds max_grade.
+
+    :param root: The scan root the document path is resolved against.
+    :param doc: The Markdown document to score.
+    :param max_grade: Grade level above which the document is flagged.
+    :param min_words: Minimum prose-word count before the document is scored;
+        documents with fewer words are skipped.
+    :returns: A tuple holding one ``DS201`` finding, or empty when within policy.
+    """
     source = root / doc.path
     text = _read_text(source)
     prose = _strip_markdown(text)
     words = prose.split()
-    if len(words) < _MIN_WORDS:
+    if len(words) < min_words:
         return ()
 
     grade = compute_grade_level(prose)
@@ -99,7 +110,7 @@ def detect(
     for doc in documents:
         if not doc.path.endswith(".md"):
             continue
-        findings.extend(check_document(root, doc, config.max_grade_level))
+        findings.extend(check_document(root, doc, config.max_grade_level, config.min_document_words))
     return tuple(findings)
 
 

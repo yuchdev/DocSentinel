@@ -1,0 +1,6 @@
+version = 1
+
+[[replacement]]
+old = "OldWidget"
+new = "NewWidget"
+kind = "identifier"

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from docsentinel import models, rules
+from docsentinel.detectors.path_boundaries import contained_path, is_ds116_owned
 
 DS101 = rules.register_rule(
     rules.Rule(
@@ -89,6 +90,26 @@ def _resolve(target_path: str, source: Path, root: Path) -> Path:
     return (source.parent / target_path).resolve()
 
 
+def _lexical_target(target_path: str, source: Path, root: Path) -> Path:
+    """Join a link file part to its base **without** resolving symlinks or ``..``.
+
+    This mirrors :func:`_resolve`'s join rules but omits ``Path.resolve`` (which
+    follows symlinks out of root and was the existence oracle fixed in Story 11.0).
+    The ``..``-bearing result is lexically equivalent to the old resolved path for
+    every in-root, non-symlink target, so ``exists`` returns the same answer; the
+    path is handed to :func:`~docsentinel.detectors.path_boundaries.escapes_via_symlink`
+    first so a root escape or an in-root symlink pointing outside is never stat-ed.
+
+    :param target_path: The link file part (fragment already removed).
+    :param source: The absolute path of the referring document.
+    :param root: The scan root directory.
+    :returns: The unresolved join of the target against its base.
+    """
+    if target_path.startswith("/"):
+        return root / target_path.lstrip("/")
+    return source.parent / target_path
+
+
 def check_document(root: Path, document: models.Document) -> tuple[models.Finding, ...]:
     """Return dangling link and anchor findings for one Markdown document."""
     source = root / document.path
@@ -116,6 +137,14 @@ def check_document(root: Path, document: models.Document) -> tuple[models.Findin
             if _is_skippable(target):
                 continue
 
+            # Security skip (lexical, no filesystem access): a target that escapes
+            # the root or is an unsafe DS116-owned category (drive/UNC/backslash/
+            # control) is handed to DS116 so DS101 never stats a path outside the
+            # scan root (the existence oracle fixed in Story 11.0). Every other
+            # target keeps DS101's exact legacy behavior below.
+            if is_ds116_owned(root, document.path, target):
+                continue
+
             file_part, _, anchor = target.partition("#")
             if file_part == "":
                 anchors = anchor_cache.setdefault(source, heading_anchors(source))
@@ -131,7 +160,13 @@ def check_document(root: Path, document: models.Document) -> tuple[models.Findin
                     )
                 continue
 
-            resolved = _resolve(file_part, source, root)
+            candidate = _lexical_target(file_part, source, root)
+            # Never follow an in-root symlink whose target escapes the root, and
+            # never stat a lexical escape; DS116 owns both. The returned path has
+            # symlinks and ``..`` safely resolved before any filesystem operation.
+            resolved = contained_path(root, candidate)
+            if resolved is None:
+                continue
             if not resolved.exists():
                 findings.append(
                     models.Finding(

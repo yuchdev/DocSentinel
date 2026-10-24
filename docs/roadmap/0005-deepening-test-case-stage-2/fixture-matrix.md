@@ -2,7 +2,7 @@
 
 **Specification only.** The listed folders do not yet exist as committed test assets. The agent must write the Markdown and companion inputs, not merely reference these paths from unit tests.
 
-**Totals:** 185 named case directories across 13 rule IDs: **96 CLEAN**, **85 FINDING**, **4 ERROR**. Every rule has at least three CLEAN and at least three FINDING cases. ERROR means validation/readiness/security error, never a passing detector with no findings.
+**Totals:** 191 named case directories across 13 rule IDs: **96 CLEAN**, **91 FINDING**, **4 ERROR**. Every rule has at least three CLEAN and at least three FINDING cases. ERROR means validation/readiness/security error, never a passing detector with no findings.
 
 **Required path shape:** `tests/assets/dsNNN/{two_to_four_word_slug}/{README|a|b|index|guide}.md`; nested Markdown paths are allowed for realistic graphs and paths. Slugs are snake_case, 2–4 words.
 
@@ -198,6 +198,12 @@
 | **FINDING** | `tests/assets/ds116/encoded_double_decode_attack/` | `README.md` | Double-encoded traversal cannot trick detector into dereference; conservative reject or explicit unsupported state. | `default` |
 | **FINDING** | `tests/assets/ds116/absolute_rooted_backslash/` | `README.md` | Windows-rooted `\Windows\...` is not silently considered local. | `default` |
 | **CLEAN** | `tests/assets/ds116/template_link_literal_skipped/` | `README.md` | Templated path containing `{...}` is ignored by existing DS101 conventions. | `default` |
+| **FINDING** | `tests/assets/ds116/html_anchor_href_escape/` | `README.md` | HTML `<a href>` with ../ traversal is extracted and reported (close-gate fix). | `default` |
+| **FINDING** | `tests/assets/ds116/html_img_srcset_escape/` | `README.md` | HTML `srcset` candidate escaping the root is reported (close-gate fix). | `default` |
+| **FINDING** | `tests/assets/ds116/angle_bracket_destination_escape/` | `README.md` | `[a](<../../x>)` and `[r]: <../../x>` destinations are unwrapped, then reported (close-gate fix). | `default` |
+| **FINDING** | `tests/assets/ds116/entity_encoded_destination_escape/` | `README.md` | Entity-encoded `&#46;&#46;/` destination is decoded before resolving, then reported (close-gate fix). | `default` |
+| **FINDING** | `tests/assets/ds116/nested_image_link_escape/` | `README.md` | `[![alt](inner.png)](../../x)` reports the outer destination (close-gate fix). | `default` |
+| **FINDING** | `tests/assets/ds116/quoted_refdef_escape/` | `README.md` | Reference definition inside a block quote with an escaping target is reported (close-gate fix). | `default` |
 
 ## DS114 — Duplicate stable document identifiers
 

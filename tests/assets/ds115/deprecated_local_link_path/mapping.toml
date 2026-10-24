@@ -1,0 +1,6 @@
+version = 1
+
+[[replacement]]
+old = "docs/old-guide.md"
+new = "docs/new-guide.md"
+kind = "link"

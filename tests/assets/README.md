@@ -29,6 +29,10 @@ tests/assets/
   several single-rule cases into one `tmp_path`. Give files distinct names so cases do not overwrite each other.
 - **Shared substrate.** The corpus-model cases (`ds202/corpus_*`) back both DS202 and DS203, which share one
   fitted TF-IDF model.
+- **Byte-level Unicode cases.** `ds114/unicode_normalized_ids/` deliberately stores two NFC-equivalent ids as
+  genuinely different code point sequences: `a.md` uses the precomposed `U+00E9` (`café-guide`) and `b.md` uses
+  the decomposed `e` + combining `U+0301` (`cafe<U+0301>-guide`). They differ byte-for-byte but normalize to the
+  same NFC string, so DS114 reports the collision. Keep both encodings exactly as committed.
 - **Generated-at-runtime input stays in the test.** Pathological inputs such as 2,000 unclosed `<!--`
   openers, invalid UTF-8 bytes, symlinks, and TOML configuration are built in the test body, not stored here.
 

@@ -122,3 +122,72 @@ This assessment conducted an exhaustive STRIDE threat model and implementation v
 **Final Verdict:** `PASS_WITH_FOLLOWUP`
 
 The implementation satisfies all security criteria and project invariants. It robustly mitigates workflow command injection and property delimiter corruption, properly handles unknown severities without crashing, preserves data confidentiality, and ensures deterministic CI output. No blocking or critical vulnerabilities were identified.
+
+---
+
+## 7. Reporter control-character hardening (2026-10-23, Story 15.0 Task 02)
+
+**Scope:** tool-wide, all three output sinks — not limited to `--format github`.
+
+### 7.1 Finding
+
+A finding's `path`/`message` and a document's `path` come from scanned repository
+content (file names and detector-echoed excerpts), which is untrusted. Two sinks
+rendered that content with insufficient neutralisation:
+
+- **Text sink (`reporting.py` findings/documents lines):** printed `Finding.path`,
+  `Finding.message` and `Document.path` verbatim. A legally named file such as
+  `docs/evil\x1b[31m\r\n::error::spoofed.md` therefore reached the terminal/CI log with
+  a raw ANSI escape (colour/cursor control) and a raw CR+LF that forged a second log
+  line. Reproduced on disk: the finding line split, emitting a bare
+  `::error::spoofed.md` line.
+- **GitHub sink (`_escape_property`/`_escape_data`):** percent-encoded `%`, CR, LF (and
+  `:`,`,` for properties) correctly, but did **not** neutralise ESC / other C0 / C1 /
+  DEL. The ANSI escape reached the runner log raw inside the `file=` property.
+- **JSON sink:** already safe. `json.dumps` defaults to `ensure_ascii=True` and escapes
+  every control and non-ASCII code point (`\u001b`, `\r`, `\n`); the payload round-trips
+  losslessly to the raw strings. No change made.
+
+Severity: **MEDIUM** (log/terminal spoofing and display tampering; not RCE — the GitHub
+`\r\n` → `%0D%0A` escaping already blocked workflow-command injection per §3.1).
+
+### 7.2 Fix
+
+`reporting._neutralize_controls` replaces, with a visible ASCII backslash escape
+(`\xHH`/`\uHHHH`/`\UHHHHHHHH`), the code points: C0 `U+0000`–`U+001F` (incl. NUL, BEL,
+TAB, ESC, CR, LF), DEL `U+007F`, C1 `U+0080`–`U+009F`, the bidirectional formatting
+controls `U+061C`, `U+200E`–`U+200F`, `U+202A`–`U+202E`, `U+2066`–`U+2069` (Trojan-Source
+display reordering), the zero-width format characters `U+200B`–`U+200D`, `U+FEFF`, the
+line and paragraph separators `U+2028`/`U+2029`, and lone surrogates `U+D800`–`U+DFFF`
+(produced by `surrogateescape` for undecodable POSIX file names, which would otherwise
+make output un-encodable).
+
+Decision on bidi/zero-width: **neutralised.** They enable display spoofing in exactly the
+terminal/log/annotation sinks this hardening protects, they are not ordinary letters, and
+they are vanishingly rare in real documentation paths — so neutralising them costs no
+byte-identity for normal input while closing a genuine spoofing vector. Ordinary Unicode
+letters (accented, CJK, etc.) and the emoji variation selector `U+FE0F` are **not** in the
+set and pass through unchanged.
+
+- Text sink neutralises the full set (CR/LF → `\x0d`/`\x0a`).
+- GitHub sink neutralises the set **minus CR/LF**, which its existing escaper keeps
+  encoding as `%0D`/`%0A`; the `%`-first ordering and `:`/`,` property escaping (§3.1–3.2)
+  are preserved unchanged.
+- CLI error lines (`Scan failed: …` / `Baseline generation failed: …`) in `cli.py` also
+  pass through `reporting.neutralize_text` before printing to stderr, so exception
+  messages containing untrusted path text are neutralised in the same way.
+
+### 7.3 Invariants verified
+
+- **Byte-identical for normal input:** ASCII and ordinary-Unicode paths/messages render
+  exactly as before; the existing `test_reporting.py` suite (20 tests, incl. the Unicode
+  path/message case) passes unchanged.
+- **Baseline fingerprints unaffected:** `baseline.fingerprint` hashes the raw `Finding`
+  fields, never the rendered/escaped text (confirmed in code and pinned by a test), so no
+  committed baseline fingerprint changes.
+- **Tests:** `tests/unit/test_reporting_control_characters.py` (unit, all three sinks,
+  bidi/zero-width/C1/DEL, byte-identity, fingerprint independence) and
+  `tests/integration/test_reporter_hostile_filename.py` (real on-disk hostile name through
+  the CLI in text/github/json; skips with the allowlisted reason
+  `filesystem rejected the hostile file name` if the OS refuses it). Mutation check:
+  replacing `_neutralize_controls` with the identity turns 9 of these tests red.

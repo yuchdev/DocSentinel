@@ -1,6 +1,6 @@
 [project]
 name = "docsentinel"
-version = "0.1.0"
+version = "1.0.0"
 description = "Deterministic-first documentation inventory and future QA framework"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -25,11 +25,33 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# Unknown markers and unknown ini keys fail collection instead of being silently ignored.
+addopts = ["--strict-markers", "--strict-config"]
+# Fixture Markdown (deliberately broken documents) and frozen oracle sources are never test modules.
+norecursedirs = ["tests/assets", "tests/reference", ".venv", "dist", "build"]
 markers = [
     "unit: Unit tests exercising pure logic in isolation",
     "mock: Tests exercising units with mocked external collaborators",
     "integration: Integration tests exercising multiple real components",
     "e2e: End-to-end journey tests exercising complete entry points",
+]
+
+# Coverage is opt-in (pytest-cov is not a project dependency):
+#   uv run --with pytest-cov pytest --cov=docsentinel
+# Do NOT combine with `-p docsentinel.pytest_plugin`: the plugin imports the package before
+# coverage starts, so module-level lines of models.py/rules.py read as uncovered (76% vs the real 96%).
+[tool.coverage.run]
+source = ["docsentinel"]
+branch = false
+
+[tool.coverage.report]
+# Measured 96% at Milestone 0005 (10 of 15 stories); the gate leaves headroom for timing-test noise.
+fail_under = 90
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -53,3 +75,6 @@ noqa_allowed = []
 # Blacklist: files/directories where `# noqa` is strictly forbidden (violations always fire).
 # Blacklist always wins over `noqa_allowed`.
 noqa_forbidden = []
+
+[tool.release-saga]
+s3_bucket = "packages-s3-useast1-any"
