@@ -1,0 +1,20 @@
+{
+  "release": {
+    "download_link": "https://packages-s3-useast1-any.s3.amazonaws.com/{package_name_dash}/{package_name_dash}-{version}-py3-none-any.whl"
+  },
+  "releases": {
+    "1.0.0": {
+      "release_notes": [
+        "First stable release of DocSentinel, a deterministic-first documentation QA framework and Python library with one engine behind the CLI, the Python API and the pytest plugin.",
+        "Fast profile (stdlib only): DS101 dangling links/anchors, DS102 stray HTML comments, DS103 unresolvable path-like code spans, DS104 conflicting heading/explicit anchors, DS105 heading hierarchy, DS106 empty sections, DS108 reference-style link integrity, DS109 malformed/unclosed code fences, DS113 missing local assets, DS114 duplicate document identifiers, DS116 path traversal outside the documentation root, DS117 malformed GFM tables.",
+        "Opt-in policy rules, inert until configured: DS110 fence language labels (require_fence_languages), DS112 navigation integrity (navigation_indexes), DS115 deprecated names and migrated references (deprecated_references_file), DS118 file and directory naming (documentation_naming).",
+        "Standard profile (docsentinel[standard]): DS201 text complexity, DS202 duplicated text, DS203 low-information content, DS204 docstring-to-signature mismatch, with separate baseline and CI lanes and lazy loading of heavy dependencies.",
+        "Deep profile (docsentinel[deep]): DS301 fact-contradiction candidates; heuristic, advisory-only (exit code 0) and gated behind an explicit opt-in (deep_confirm, --i-understand-deep-is-heuristic or DOCSENTINEL_DEEP_CONFIRM=1).",
+        "Layered configuration via doc_sentinel.toml or [tool.doc_sentinel] in pyproject.toml, with typed and validated policy options, rule selection by code or prefix, and SHA-256 fingerprint baselines.",
+        "CLI commands scan, baseline, init, rules and doctor; text, JSON (schema v1) and GitHub Actions output; exit codes 0 (clean), 1 (blocking findings), 2 (config or scan failure); pre-commit hooks for the fast and standard profiles.",
+        "Security hardening: control, bidi and zero-width characters are neutralised in text and GitHub annotation output, and path handling is contained to the scan root with symlink-escape protection.",
+        "Packaging: release tooling (release-saga) and flakeforge are declared as dependencies; wheels and sdists are built with hatchling and requires Python 3.12+."
+      ]
+    }
+  }
+}
