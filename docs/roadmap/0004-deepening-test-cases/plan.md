@@ -16,7 +16,7 @@ This milestone is intentionally titled **Deepening Test Cases** rather than mere
 
 - M1 fast DS101–103, M2 standard DS201–204 and M3 deep DS301 are present in `src/docsentinel` on current master; `docs/roadmap/0001..0003/status.md` mark all done.
 - New test architecture exists: `tests/assets/README.md`, `tests/asset_helpers.py`, `tests/conftest.py`, `tests/integration/test_detectors_*_dsNNN.py`; fixtures are byte-exact and loaded through `asset_case`.
-- `python >=3.12`, `doc_sentinel.toml`, `[tool.doc_sentinel]`, `uv sync --extra ...`, strict known config options and exact profiles are the current contracts (earlier standalone naming suggestions must not supersede them).
+- `python >=3.12`, `docsentinel.toml`, `[tool.doc_sentinel]`, `uv sync --extra ...`, strict known config options and exact profiles are the current contracts (earlier standalone naming suggestions must not supersede them).
 - `engine.scan` dispatches 2 args for fast/deep, 3 args for standard; M4 must harmonize config forwarding for rules that need it.
 - The deep engine currently globally checks NLP readiness; M4 must distinguish DS301 model requirement from DS302/DS316 model-free capabilities while maintaining mandatory explicit deep confirmation.
 - The actual `tests/assets/` is excluded from repository self-scan and lint because it deliberately contains invalid documentation. Keep that exclusion.
@@ -84,5 +84,5 @@ Create one milestone titled `0004-deepening-test-cases`. Create **14 story-level
 ## Implementation notes and source of truth
 
 - The archive is a specification, **not a claimed successful implementation**. Tests/assets inside archive are *planned paths*; implementation must actually create them in GitHub.
-- Current source audited: `tests/assets/README.md`, `tests/asset_helpers.py`, `tests/conftest.py`, `src/docsentinel/{engine,config,rules,models,code_discovery}.py`, selected detectors, `docs/roadmap/README.md`, `CLAUDE.md`, `doc_sentinel.toml`, `pyproject.toml`.
+- Current source audited: `tests/assets/README.md`, `tests/asset_helpers.py`, `tests/conftest.py`, `src/docsentinel/{engine,config,rules,models,code_discovery}.py`, selected detectors, `docs/roadmap/README.md`, `CLAUDE.md`, `docsentinel.toml`, `pyproject.toml`.
 - Per-story test matrices are the prescriptive fixture set; additional edge cases found while coding should be added rather than silently substituted for named cases.

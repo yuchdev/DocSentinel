@@ -81,6 +81,8 @@ _CONFIG_OPTIONS = {
     "documentation_naming_directories",
     "documentation_naming_prefix_patterns",
 }
+# Standalone config file names accepted at the scan root: the preferred name first, then the alias.
+STANDALONE_CONFIG_NAMES = ("docsentinel.toml", "doc_sentinel.toml")
 _SELECTOR_PATTERN = re.compile(r"DS\d*")
 
 # A ``document_id_field`` (the frontmatter key DS114 reads) must be a simple,
@@ -457,9 +459,10 @@ def _load_toml_table(source: Path, *, wrapped: bool) -> dict[str, object]:
 def load_config(root: Path, path: Optional[Path] = None) -> Config:
     """Load an explicit config or discover root-level DocSentinel settings.
 
-    A standalone ``doc_sentinel.toml`` wins over ``[tool.doc_sentinel]`` in
-    ``pyproject.toml``; when neither exists, defaults are returned. An explicit
-    ``path`` bypasses discovery. A :class:`Config` injected directly by a
+    A standalone ``docsentinel.toml`` (or its alias ``doc_sentinel.toml``) wins
+    over ``[tool.doc_sentinel]`` in ``pyproject.toml``; when none exists,
+    defaults are returned. Both standalone names in one root is ambiguous and
+    raises :class:`ConfigError`. An explicit ``path`` bypasses discovery. A :class:`Config` injected directly by a
     library caller is used verbatim by the engine and never consults files.
 
     :param root: The scan root directory used for discovery.
@@ -470,10 +473,13 @@ def load_config(root: Path, path: Optional[Path] = None) -> Config:
         source = path
         wrapped = source.name == "pyproject.toml"
     else:
-        standalone = root / "doc_sentinel.toml"
+        standalones = [root / name for name in STANDALONE_CONFIG_NAMES if (root / name).exists()]
         pyproject = root / "pyproject.toml"
-        if standalone.exists():
-            source = standalone
+        if len(standalones) > 1:
+            names = " and ".join(path.name for path in standalones)
+            raise ConfigError(f"found both {names} in {root}; keep only one")
+        if standalones:
+            source = standalones[0]
             wrapped = False
         elif pyproject.exists():
             source = pyproject

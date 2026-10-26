@@ -30,7 +30,7 @@ backlog.
   re-captured) exactly when the underlying issue was looked at anyway, which is an acceptable
   prompt.
 - `Config.baseline: str | None = None` - a relative path to a baseline JSON file, resolved
-  against `root` the same way `docsentinel.toml`/`doc_sentinel.toml` is. Not set by default - a
+  against `root` the same way `docsentinel.toml`/`docsentinel.toml` is. Not set by default - a
   project must opt in explicitly.
 - `engine.scan()`: when `settings.baseline` is set and the file exists, load it and drop any
   `Finding` whose fingerprint is present from the returned `findings` tuple - **before** severity

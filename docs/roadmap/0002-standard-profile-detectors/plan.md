@@ -3,8 +3,9 @@
 **Package:** `docsentinel` | **Module root:** `src/docsentinel/` | **Config namespace:** `doc_sentinel`
 
 > Naming note (unchanged from Milestone 0001): the distributed package, CLI, and import path are
-> all `docsentinel` (one word). The **configuration namespace** - the `pyproject.toml` table and
-> the standalone config filename - is deliberately `doc_sentinel` (underscored). Two names for two
+> all `docsentinel` (one word). The **configuration namespace** - the `[tool.doc_sentinel]` table in `pyproject.toml` - is
+> deliberately `doc_sentinel` (underscored); the standalone config *file* was later renamed from
+> `doc_sentinel.toml` to `docsentinel.toml`. Two names for two
 > different things; do not "fix" one to match the other.
 
 ## Goal
@@ -79,7 +80,7 @@ implemented first):
 - `ANALYZERS` keyed by rule code, with `engine.scan()` resolving `active_codes` per profile +
   `select`/`ignore`, and the three `notice`/`pending` branches
   ([Story 01.0 Task 03](/docs/roadmap/0001-generic-implementation/01.0-rule-registry-and-config-conventions/03-selection-resolution.md)).
-- `Config.select` / `Config.ignore` and the `doc_sentinel.toml` / `[tool.doc_sentinel]`
+- `Config.select` / `Config.ignore` and the `docsentinel.toml` / `[tool.doc_sentinel]`
   convention ([Story 01.0 Task 02](/docs/roadmap/0001-generic-implementation/01.0-rule-registry-and-config-conventions/02-config-conventions.md)).
 - `Finding.severity` exit-code semantics (`error` fails the default build, `warning` does not;
   `--strict` makes warnings fail)

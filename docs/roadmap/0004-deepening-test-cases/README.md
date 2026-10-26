@@ -27,7 +27,7 @@ The companion `fixture-matrix.csv` next to `fixture-matrix.md` is a machine-read
 ## Verified repository starting point
 
 - GitHub `master` commit: `04a3eb337f7b75d1783cd4a7f45da2c68528113b` (October 14, 2026).
-- Python 3.12+, config file `doc_sentinel.toml`, exact three profiles, and `asset_case` from `tests/conftest.py` are actual checked contracts.
+- Python 3.12+, config file `docsentinel.toml`, exact three profiles, and `asset_case` from `tests/conftest.py` are actual checked contracts.
 
 ## Scope and completeness
 

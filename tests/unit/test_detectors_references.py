@@ -818,7 +818,7 @@ def test_reference_options_load_from_standalone_toml(tmp_path: Path):
     [Unit] config: verifies DS108 reference options load from standalone TOML.
 
     Scenario:
-        Given a doc_sentinel.toml setting all three DS108 reference options
+        Given a docsentinel.toml setting all three DS108 reference options
         When load_config reads the scan root
         Then the typed Config reflects each configured value.
 
@@ -830,7 +830,7 @@ def test_reference_options_load_from_standalone_toml(tmp_path: Path):
         - Whether the loader recognized each option name
         - Whether the enum and bool coercions applied
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         "unused_reference_definitions = true\n"
         'duplicate_reference_definitions = "error"\n'
         'reference_label_normalization = "commonmark"\n',
@@ -886,7 +886,7 @@ def test_invalid_duplicate_reference_policy_raises(tmp_path: Path, value: str):
         - Whether the enum allowlist still names off/warn/error
         - Whether the loader validated the option at all
     """
-    (tmp_path / "doc_sentinel.toml").write_text(f"duplicate_reference_definitions = {value}\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text(f"duplicate_reference_definitions = {value}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="duplicate_reference_definitions must be one of:"):
         load_config(tmp_path)
 
@@ -908,7 +908,7 @@ def test_invalid_reference_label_normalization_raises(tmp_path: Path):
         - Whether the enum allowlist still fixes 'commonmark'
         - Whether the loader validated the option
     """
-    (tmp_path / "doc_sentinel.toml").write_text('reference_label_normalization = "gfm"\n', encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text('reference_label_normalization = "gfm"\n', encoding="utf-8")
     with pytest.raises(ConfigError, match="reference_label_normalization must be one of: commonmark"):
         load_config(tmp_path)
 
@@ -931,6 +931,6 @@ def test_invalid_unused_reference_definitions_raises(tmp_path: Path, value: str)
         - Whether the option stayed in the boolean allowlist
         - Whether the loader coerced the value to bool
     """
-    (tmp_path / "doc_sentinel.toml").write_text(f"unused_reference_definitions = {value}\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text(f"unused_reference_definitions = {value}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="unused_reference_definitions must be true or false"):
         load_config(tmp_path)

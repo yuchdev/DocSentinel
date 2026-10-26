@@ -25,7 +25,7 @@ All three initial milestones are complete, providing a fully working command-lin
   * `DS201` prose readability complexity
   * `DS202` paragraph duplication
   * `DS203` low-information content
-  * `DS204` Python docstring-to-code signature mismatch)
+  * `DS204` Python docstring-to-code signature mismatch
 * **`deep` profile:** Semantic NLP contradiction candidate analysis via `docsentinel[deep]`. Gated by explicit opt-in confirmation with advisory-only exit codes.
   * `DS301` fact-contradiction candidates across documents 
 
@@ -34,27 +34,36 @@ All three initial milestones are complete, providing a fully working command-lin
 Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/) (or standard `pip`).
 
 ```sh
-# Core installation (fast profile)
+# Everything: fast, standard and deep profiles
 pip install docsentinel
 
 # or with uv
 uv add docsentinel
 
-# Standard profile (corpus stats & docstrings)
-pip install "docsentinel[standard]"
-
-# or with uv
-uv add --extra standard docsentinel
-
-# Deep profile (semantic contradiction detection)
-pip install "docsentinel[deep]"
+# The deep profile also needs its spaCy model (one-time download)
 python -m spacy download en_core_web_sm
 ```
+
+The profile extras `docsentinel[fast]`, `docsentinel[standard]` and `docsentinel[deep]` select a
+profile by name (for example `pip install "docsentinel[fast]"`). They are aliases: pip extras can
+only add dependencies, so they do **not** make the installation lighter - every profile's dependencies
+are already part of a plain `pip install docsentinel`.
+
+pip cannot run code after an installation, so the starter configuration is a separate, explicit step:
+
+```sh
+docsentinel init                  # create docsentinel.toml in the current directory
+docsentinel init path/to/dir      # ... or in a specific directory
+docsentinel init --project-root   # ... or next to the nearest uv.lock / pyproject.toml
+```
+
+In a terminal, `init` asks for confirmation first; pass `--yes` to skip the prompt. It never
+overwrites an existing file.
 
 ## Command-Line Usage
 
 ```sh
-# Initialize starter doc_sentinel.toml configuration
+# Initialize starter docsentinel.toml configuration
 uv run docsentinel init
 
 # Run deterministic fast-profile scan on the current repository
@@ -92,10 +101,10 @@ uv run docsentinel doctor
 
 ## Configuration
 
-DocSentinel loads configuration from `doc_sentinel.toml` at the scan root, or from the `[tool.doc_sentinel]` table in `pyproject.toml`:
+DocSentinel loads configuration from `docsentinel.toml` (or the equivalent alias `doc_sentinel.toml`) at the scan root, or from the `[tool.doc_sentinel]` table in `pyproject.toml`:
 
 ```toml
-# doc_sentinel.toml: keys at the top level, no table header.
+# docsentinel.toml: keys at the top level, no table header.
 # In pyproject.toml put the same keys under a [tool.doc_sentinel] table instead.
 profile = "fast"
 include = ["*.md", "**/*.md"]

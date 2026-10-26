@@ -812,7 +812,7 @@ def test_config_standalone_and_pyproject_load_deprecated_options(tmp_path: Path)
     [Unit] config: verifies the deprecated_* options load from standalone and pyproject TOML.
 
     Scenario:
-        Given a standalone doc_sentinel.toml and, separately, a pyproject [tool.doc_sentinel] table
+        Given a standalone docsentinel.toml and, separately, a pyproject [tool.doc_sentinel] table
             that set the mapping path and the three sub-option bools
         When load_config reads each
         Then the typed Config carries the configured path and bool values from both sources.
@@ -826,7 +826,7 @@ def test_config_standalone_and_pyproject_load_deprecated_options(tmp_path: Path)
     """
     standalone = tmp_path / "a"
     standalone.mkdir()
-    (standalone / "doc_sentinel.toml").write_text(
+    (standalone / "docsentinel.toml").write_text(
         'deprecated_references_file = "docs/dep.toml"\n'
         "deprecated_check_prose = false\n"
         "deprecated_check_links = false\n"
@@ -855,7 +855,7 @@ def test_config_rejects_non_bool_sub_option(tmp_path: Path):
     [Unit] config: verifies a non-boolean deprecated sub-option raises ConfigError.
 
     Scenario:
-        Given a standalone doc_sentinel.toml that sets deprecated_check_prose to a string
+        Given a standalone docsentinel.toml that sets deprecated_check_prose to a string
         When load_config reads it
         Then it raises ConfigError because the sub-option is boolean-typed.
 
@@ -866,7 +866,7 @@ def test_config_rejects_non_bool_sub_option(tmp_path: Path):
     On failure, first check:
         - Whether deprecated_check_prose is in the _BOOL_OPTIONS validator list
     """
-    (tmp_path / "doc_sentinel.toml").write_text('deprecated_check_prose = "yes"\n', encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text('deprecated_check_prose = "yes"\n', encoding="utf-8")
     with pytest.raises(ConfigError):
         load_config(tmp_path)
 

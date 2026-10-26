@@ -1,4 +1,4 @@
-# Task 02 - Config Conventions (`pyproject.toml` / `doc_sentinel.toml`, `select`/`ignore`)
+# Task 02 - Config Conventions (`pyproject.toml` / `docsentinel.toml`, `select`/`ignore`)
 
 **Story:** [01.0 - Rule Registry & Config Conventions](README.md)
 **Depends on:** [01 - Rule registry](01-rule-registry.md) (imports `rules.RULES` for shape
@@ -7,7 +7,7 @@ validation context, though cross-referencing live codes is Task 03's job, not th
 ## Purpose
 
 `CLAUDE.md` requires DocSentinel to configure like every Pythonic static analyzer: a
-`[tool.doc_sentinel]` table in `pyproject.toml`, **or** a separate `doc_sentinel.toml`, each
+`[tool.doc_sentinel]` table in `pyproject.toml`, **or** a separate `docsentinel.toml`, each
 document addressable via `include`/`exclude`, each rule addressable via `select`/`ignore`,
 defaulting to include-all/select-all/exclude-nothing/ignore-nothing. Today's `config.py` only
 reads a `docsentinel.toml` file with a `[docsentinel]` table and no `select`/`ignore` at all.
@@ -20,19 +20,19 @@ replaced outright, not kept alongside the new one.
 
 1. **Discovery order**, mirroring `ruff`'s own file-vs-pyproject precedent (the closest
    well-known "Pythonic static analyzer" to imitate):
-   - If `doc_sentinel.toml` exists at `root`, use it **and ignore `pyproject.toml` entirely**,
+   - If `docsentinel.toml` exists at `root`, use it **and ignore `pyproject.toml` entirely**,
      even if the latter also has a `[tool.doc_sentinel]` table.
    - Else, if `pyproject.toml` exists at `root` and has a `[tool.doc_sentinel]` table, use that.
    - Else, `Config()` defaults.
 2. **Shape of each file**:
-   - `doc_sentinel.toml` has its keys **at the top level** - no wrapper table - exactly like
+   - `docsentinel.toml` has its keys **at the top level** - no wrapper table - exactly like
      `ruff.toml` has `select = [...]` directly, not `[ruff]\nselect = [...]`.
    - `pyproject.toml`'s `[tool.doc_sentinel]` table has the same keys, nested one level under
      `[tool]`, per the standard `pyproject.toml` convention every other tool already in this
      repo's dependency tree (`ruff`, `pytest`, `hatchling`) uses.
 3. **An explicit `--config PATH`** (the existing `path` parameter) bypasses discovery: if
    `PATH.name == "pyproject.toml"`, parse the `[tool.doc_sentinel]` table; otherwise parse
-   top-level keys directly. This keeps `--config some/other/doc_sentinel.toml` and
+   top-level keys directly. This keeps `--config some/other/docsentinel.toml` and
    `--config some/other/pyproject.toml` both meaningful.
 4. **New fields**: `select: tuple[str, ...] = ()`, `ignore: tuple[str, ...] = ()`, alongside the
    existing `include`, `exclude`, `profile`.
@@ -78,10 +78,10 @@ replaced outright, not kept alongside the new one.
 `tests/test_config.py` (new):
 - `test_defaults_are_include_all_select_all_exclude_ignore_nothing` - `Config()` has
   `select == ()` and `ignore == ()`, and the existing `include`/`exclude` defaults.
-- `test_standalone_doc_sentinel_toml_top_level_keys` - a `doc_sentinel.toml` with top-level
+- `test_standalone_doc_sentinel_toml_top_level_keys` - a `docsentinel.toml` with top-level
   `select = ["DS1"]` (no wrapper table) loads correctly.
 - `test_pyproject_tool_doc_sentinel_table` - a `pyproject.toml` with `[tool.doc_sentinel]`
-  containing `ignore = ["DS101"]` loads correctly when no `doc_sentinel.toml` exists.
+  containing `ignore = ["DS101"]` loads correctly when no `docsentinel.toml` exists.
 - `test_standalone_file_wins_over_pyproject` - both files exist, with *different* `profile`
   values; assert the standalone file's value is the one returned.
 - `test_pyproject_without_tool_doc_sentinel_table_is_defaults` - a `pyproject.toml` present but
@@ -94,7 +94,7 @@ replaced outright, not kept alongside the new one.
   keys.
 
 `tests/test_scan.py` (modified): rename/rewrite the four tests currently keyed to
-`docsentinel.toml`/`[docsentinel]` (see Files above) to use `doc_sentinel.toml`/top-level-keys
+`docsentinel.toml`/`[docsentinel]` (see Files above) to use `docsentinel.toml`/top-level-keys
 instead, keeping their original intent (custom profile loads; malformed TOML, wrong profile
 value, non-list include, unknown key, and bad encoding all raise `ConfigError`).
 

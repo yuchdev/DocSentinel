@@ -1,7 +1,7 @@
 """End-to-end tests that the statistical size-limit keys change DS201/DS202/DS203 output.
 
 Driven through ``scan(...)`` with an explicit ``Config(profile="standard", ...)`` and
-through the CLI with a standalone ``doc_sentinel.toml``. Tiny inline documents written
+through the CLI with a standalone ``docsentinel.toml``. Tiny inline documents written
 to ``tmp_path``; no committed assets are used.
 """
 
@@ -89,10 +89,10 @@ def test_scan_repeats_in_one_process_without_stale_cache(tmp_path: Path):
 
 def test_cli_doc_sentinel_toml_applies_paragraph_floor(tmp_path: Path, capsys):
     """
-    [Integration] CLI: a doc_sentinel.toml paragraph floor reaches the standard scan.
+    [Integration] CLI: a docsentinel.toml paragraph floor reaches the standard scan.
 
     Scenario:
-        Given a doc_sentinel.toml lowering min_paragraph_words under the standard profile
+        Given a docsentinel.toml lowering min_paragraph_words under the standard profile
         When the scan CLI runs with JSON output
         Then a DS202 finding appears in the structured report.
 
@@ -106,7 +106,7 @@ def test_cli_doc_sentinel_toml_applies_paragraph_floor(tmp_path: Path, capsys):
         - That DS202 warnings keep the exit code at 0
     """
     (tmp_path / "dup.md").write_text(_DUPLICATE_DOC, encoding="utf-8")
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         'profile = "standard"\nmin_paragraph_words = 4\n',
         encoding="utf-8",
     )

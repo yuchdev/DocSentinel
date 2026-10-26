@@ -123,25 +123,25 @@ def build_symlink_escapes(root: Path):
 def build_config_docsentinel_header(root: Path):
     """Build a config that wrongly uses a ``[docsentinel]`` table header."""
     _write(root, "a.md", "# A\n\nprose\n")
-    (root / "doc_sentinel.toml").write_text('[docsentinel]\nprofile = "fast"\n', encoding="utf-8")
+    (root / "docsentinel.toml").write_text('[docsentinel]\nprofile = "fast"\n', encoding="utf-8")
 
 
 def build_config_unknown_key(root: Path):
     """Build a config carrying an unknown top-level key."""
     _write(root, "a.md", "# A\n\nprose\n")
-    (root / "doc_sentinel.toml").write_text('profile = "fast"\nbogus_key = 1\n', encoding="utf-8")
+    (root / "docsentinel.toml").write_text('profile = "fast"\nbogus_key = 1\n', encoding="utf-8")
 
 
 def build_missing_navigation_index(root: Path):
     """Build a config pointing at a navigation index that does not exist."""
     _write(root, "a.md", "# A\n\nprose\n")
-    (root / "doc_sentinel.toml").write_text('profile = "fast"\nnavigation_indexes = ["SUMMARY.md"]\n', encoding="utf-8")
+    (root / "docsentinel.toml").write_text('profile = "fast"\nnavigation_indexes = ["SUMMARY.md"]\n', encoding="utf-8")
 
 
 def build_missing_deprecated_mapping(root: Path):
     """Build a config pointing at a deprecated-references mapping that does not exist."""
     _write(root, "a.md", "# A\n\nprose\n")
-    (root / "doc_sentinel.toml").write_text(
+    (root / "docsentinel.toml").write_text(
         'profile = "fast"\ndeprecated_references_file = "mapping.toml"\n', encoding="utf-8"
     )
 

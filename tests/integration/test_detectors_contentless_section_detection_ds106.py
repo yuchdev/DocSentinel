@@ -7,7 +7,7 @@ emits). Coverage spans the pure ``detect`` entry point, the shared ``scan``
 engine, ``select``/``ignore`` (exact and prefix), baseline suppression, the
 text/json/github reports, the CLI exit-code mapping for a warning rule,
 cross-rule isolation from DS101-DS105/DS109, config propagation through both
-``doc_sentinel.toml`` and ``[tool.doc_sentinel]`` for all four DS106 options, and
+``docsentinel.toml`` and ``[tool.doc_sentinel]`` for all four DS106 options, and
 the linear-time requirement on adversarial (non-fenced, multi-line) input.
 
 Cross-rule overlaps are proven explicitly rather than hidden. DS106 legitimately
@@ -695,10 +695,10 @@ def test_empty_section_min_text_chars_positive_is_deferred(tmp_path: Path):
 
 def test_standalone_toml_empty_section_policy_propagates(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors contentless section detection ds106: verifies doc_sentinel.toml empty_section_policy.
+    [Integration] detectors contentless section detection ds106: verifies docsentinel.toml empty_section_policy.
 
     Scenario:
-        Given the parent_with_child_section fixture with a standalone doc_sentinel.toml setting
+        Given the parent_with_child_section fixture with a standalone docsentinel.toml setting
         empty_section_policy='all'
         When scan discovers that config (no injected Config)
         Then the loaded policy reaches DS106 and it flags both empty parents at lines 1 and 3.
@@ -708,11 +708,11 @@ def test_standalone_toml_empty_section_policy_propagates(asset_case: Callable[[s
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - Whether load_config reads empty_section_policy from doc_sentinel.toml
+        - Whether load_config reads empty_section_policy from docsentinel.toml
         - Whether the engine forwards the discovered Config to DS106
     """
     case = asset_case("ds106", "parent_with_child_section")
-    (case.root / "doc_sentinel.toml").write_text('profile = "fast"\nempty_section_policy = "all"\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text('profile = "fast"\nempty_section_policy = "all"\n', encoding="utf-8")
 
     result = scan(case.root)
 
@@ -721,10 +721,10 @@ def test_standalone_toml_empty_section_policy_propagates(asset_case: Callable[[s
 
 def test_standalone_toml_placeholder_content_policy_propagates(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors contentless section detection ds106: verifies doc_sentinel.toml placeholder policy.
+    [Integration] detectors contentless section detection ds106: verifies docsentinel.toml placeholder policy.
 
     Scenario:
-        Given the comment_only_section fixture with a standalone doc_sentinel.toml setting
+        Given the comment_only_section fixture with a standalone docsentinel.toml setting
         placeholder_content_policy='count'
         When scan discovers that config
         Then the comment now counts as content and DS106 reports nothing.
@@ -734,11 +734,11 @@ def test_standalone_toml_placeholder_content_policy_propagates(asset_case: Calla
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - Whether load_config reads placeholder_content_policy from doc_sentinel.toml
+        - Whether load_config reads placeholder_content_policy from docsentinel.toml
         - Whether the value reaches _visible_text
     """
     case = asset_case("ds106", "comment_only_section")
-    (case.root / "doc_sentinel.toml").write_text(
+    (case.root / "docsentinel.toml").write_text(
         'profile = "fast"\nplaceholder_content_policy = "count"\n', encoding="utf-8"
     )
 
@@ -747,10 +747,10 @@ def test_standalone_toml_placeholder_content_policy_propagates(asset_case: Calla
 
 def test_standalone_toml_image_content_counts_propagates(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors contentless section detection ds106: verifies doc_sentinel.toml image_content_counts.
+    [Integration] detectors contentless section detection ds106: verifies docsentinel.toml image_content_counts.
 
     Scenario:
-        Given the image_only_leaf_section fixture with a standalone doc_sentinel.toml setting
+        Given the image_only_leaf_section fixture with a standalone docsentinel.toml setting
         image_content_counts=false
         When scan discovers that config
         Then the image no longer counts and DS106 reports the contentless section at line 3.
@@ -760,22 +760,22 @@ def test_standalone_toml_image_content_counts_propagates(asset_case: Callable[[s
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - Whether load_config reads image_content_counts from doc_sentinel.toml
+        - Whether load_config reads image_content_counts from docsentinel.toml
         - Whether the value reaches _build_masks
     """
     case = asset_case("ds106", "image_only_leaf_section")
-    (case.root / "doc_sentinel.toml").write_text('profile = "fast"\nimage_content_counts = false\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text('profile = "fast"\nimage_content_counts = false\n', encoding="utf-8")
 
     assert [finding.line for finding in _ds106(scan(case.root).findings)] == [3]
 
 
 def test_standalone_toml_min_text_chars_propagates(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors contentless section detection ds106: verifies doc_sentinel.toml min_text_chars.
+    [Integration] detectors contentless section detection ds106: verifies docsentinel.toml min_text_chars.
 
     Scenario:
         Given the leaf_section_with_prose fixture (short one-line section bodies) with a standalone
-        doc_sentinel.toml setting a large empty_section_min_text_chars
+        docsentinel.toml setting a large empty_section_min_text_chars
         When scan discovers that config
         Then the raised threshold reclassifies every short leaf body as contentless, so DS106 reports
         the two leaf headings at lines 5 and 9 - proving the integer option reaches the rule.
@@ -785,13 +785,13 @@ def test_standalone_toml_min_text_chars_propagates(asset_case: Callable[[str, st
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - Whether load_config reads empty_section_min_text_chars from doc_sentinel.toml
+        - Whether load_config reads empty_section_min_text_chars from docsentinel.toml
         - Whether the value reaches the ``text_chars <= minimum`` comparison
     """
     case = asset_case("ds106", "leaf_section_with_prose")
     assert _ds106(scan(case.root, config=Config(profile="fast", select=("DS106",))).findings) == ()
 
-    (case.root / "doc_sentinel.toml").write_text(
+    (case.root / "docsentinel.toml").write_text(
         'profile = "fast"\nempty_section_min_text_chars = 500\n', encoding="utf-8"
     )
 
@@ -917,7 +917,7 @@ def test_invalid_ds106_option_raises_config_error(option: str, value: str, asset
     [Integration] detectors contentless section detection ds106: verifies invalid options are rejected.
 
     Scenario:
-        Given a doc_sentinel.toml that sets one DS106 option to an invalid value (unknown enum member,
+        Given a docsentinel.toml that sets one DS106 option to an invalid value (unknown enum member,
         non-boolean, or negative integer)
         When scan loads that config
         Then a ConfigError naming the offending option is raised rather than silently coercing it.
@@ -931,7 +931,7 @@ def test_invalid_ds106_option_raises_config_error(option: str, value: str, asset
         - Whether an invalid value was coerced instead of raising
     """
     case = asset_case("ds106", "empty_terminal_heading")
-    (case.root / "doc_sentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
 
     with pytest.raises(ConfigError, match=option):
         scan(case.root)

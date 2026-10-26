@@ -28,7 +28,7 @@ echoed target is bounded and ``repr``-escaped so no control byte or resolved abs
 path reaches a report sink.
 
 The file also exercises the ``missing_asset_policy`` off/warn/error ladder (``off``
-performing no ``stat``, proven with the recorder) through both ``doc_sentinel.toml``
+performing no ``stat``, proven with the recorder) through both ``docsentinel.toml``
 and ``[tool.doc_sentinel]``; the ``check_html_asset_tags``/``check_markdown_images``/
 ``check_srcset`` toggles; case-insensitive extension matching; select/ignore (exact
 and prefix); baseline round-trips; text/json/github report stability; the CLI exit
@@ -588,7 +588,7 @@ def test_missing_asset_policy_off_performs_no_stat(
     assert candidate not in recorder.touched
 
 
-@pytest.mark.parametrize("config_file", ["doc_sentinel.toml", "pyproject.toml"])
+@pytest.mark.parametrize("config_file", ["docsentinel.toml", "pyproject.toml"])
 @pytest.mark.parametrize(("policy", "expected_severity"), [("off", None), ("warn", "warning"), ("error", "error")])
 def test_missing_asset_policy_propagates_from_both_config_files(
     config_file: str,
@@ -600,7 +600,7 @@ def test_missing_asset_policy_propagates_from_both_config_files(
     [Integration] detectors missing local media assets ds113: verifies missing_asset_policy propagation.
 
     Scenario:
-        Given the missing_html_image fixture carrying a standalone doc_sentinel.toml or a
+        Given the missing_html_image fixture carrying a standalone docsentinel.toml or a
             [tool.doc_sentinel] table that sets missing_asset_policy to off, warn or error
         When scan discovers that config (no injected Config)
         Then ``off`` silences DS113 entirely, ``warn`` keeps the finding but downgrades its severity to
@@ -615,7 +615,7 @@ def test_missing_asset_policy_propagates_from_both_config_files(
         - Whether load_config reads missing_asset_policy from the given file form
     """
     case = asset_case("ds113", "missing_html_image")
-    if config_file == "doc_sentinel.toml":
+    if config_file == "docsentinel.toml":
         body = f'profile = "fast"\nmissing_asset_policy = "{policy}"\n'
     else:
         body = f'[tool.doc_sentinel]\nprofile = "fast"\nmissing_asset_policy = "{policy}"\n'
@@ -1065,7 +1065,7 @@ def test_cli_warn_policy_exits_zero_without_strict_and_one_with_strict(
     [Integration] detectors missing local media assets ds113: verifies the warn-policy exit codes.
 
     Scenario:
-        Given the missing_html_image scenario with a doc_sentinel.toml setting missing_asset_policy="warn"
+        Given the missing_html_image scenario with a docsentinel.toml setting missing_asset_policy="warn"
         When it is scanned via the CLI under the fast profile without and then with --strict
         Then the downgraded warning is non-blocking (exit 0) by default and becomes blocking (exit 1) under
             --strict, so the policy knob gives operators an advisory mode without losing the rule.
@@ -1079,7 +1079,7 @@ def test_cli_warn_policy_exits_zero_without_strict_and_one_with_strict(
         - The CLI exit-code mapping for a warning-only result, strict and non-strict
     """
     case = asset_case("ds113", "missing_html_image")
-    (case.root / "doc_sentinel.toml").write_text('profile = "fast"\nmissing_asset_policy = "warn"\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text('profile = "fast"\nmissing_asset_policy = "warn"\n', encoding="utf-8")
 
     exit_code = cli.main(["scan", str(case.root), "--format", "json"])
     captured = capsys.readouterr()
@@ -1190,7 +1190,7 @@ def test_invalid_ds113_option_raises_config_error(option: str, value: str, asset
     [Integration] detectors missing local media assets ds113: verifies invalid options are rejected.
 
     Scenario:
-        Given a doc_sentinel.toml that sets one DS113 option to an invalid value (an out-of-vocabulary enum
+        Given a docsentinel.toml that sets one DS113 option to an invalid value (an out-of-vocabulary enum
             string or a non-boolean)
         When scan loads that config
         Then a ConfigError naming the offending option is raised rather than silently coercing it.
@@ -1204,7 +1204,7 @@ def test_invalid_ds113_option_raises_config_error(option: str, value: str, asset
         - Whether an invalid value was coerced instead of raising
     """
     case = asset_case("ds113", "missing_html_image")
-    (case.root / "doc_sentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
 
     with pytest.raises(ConfigError, match=option):
         scan(case.root)

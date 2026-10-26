@@ -154,7 +154,7 @@ def test_threshold_is_configurable(asset_case: Callable[[str, str], AssetCase]):
     """
     case = asset_case("ds202", "near_duplicate_paragraphs")
     documents = case.documents("a.md", "b.md")
-    config_file = case.path("doc_sentinel.toml")
+    config_file = case.path("docsentinel.toml")
 
     # With high threshold (0.99), near-duplicate is not flagged
     config_file.write_text("duplicate_similarity = 0.99\n", encoding="utf-8")

@@ -272,7 +272,7 @@ it if a very large corpus ever matters.
   field cannot drive an unbounded per-line key comparison. The field is used only in
   plain string comparison (`content[:colon].strip() != field`) and is echoed through
   the bounded `_echo` - it never reaches a regex, so there is no injection surface
-  even before the validation. Invalid values from both `doc_sentinel.toml` and
+  even before the validation. Invalid values from both `docsentinel.toml` and
   `[tool.doc_sentinel]` raise `ConfigError` (integration `:623-662`).
 - **`document_id_scope` enum incl. injected Config - sound (fails closed).**
   `load_config` enum-validates the scope (`config.py:108`), and `check_documents`

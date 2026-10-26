@@ -76,7 +76,7 @@ result = scan("docs", config=config)
 
 ### 2. Loading Configuration from Disk
 
-`load_config` automatically searches for `doc_sentinel.toml` or `pyproject.toml` (under `[tool.doc_sentinel]`):
+`load_config` automatically searches for `docsentinel.toml` (or its alias `doc_sentinel.toml`) or `pyproject.toml` (under `[tool.doc_sentinel]`):
 
 ```python
 from pathlib import Path

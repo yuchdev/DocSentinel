@@ -1,13 +1,20 @@
 [project]
 name = "docsentinel"
-version = "1.0.0"
+version = "1.1.0"
 description = "Deterministic-first documentation inventory and future QA framework"
 readme = "README.md"
 requires-python = ">=3.12"
+# A plain `pip install docsentinel` installs all three profiles (fast, standard, deep).
 dependencies = [
     "flakeforge==1.1.0",
     "release-saga==1.2.0",
+    # standard profile
+    "scikit-learn>=1.4",
+    "textstat>=0.7",
+    "docsig>=0.96",
+    # deep profile
     "spacy>=3.8.16",
+    "textacy>=0.13",
 ]
 
 [project.scripts]
@@ -15,8 +22,12 @@ docsentinel = "docsentinel.cli:main"
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10"]
-standard = ["scikit-learn>=1.4", "textstat>=0.7", "docsig>=0.96"]
-deep = ["spacy>=3.7", "textacy>=0.13"]
+# Profile extras are aliases: pip extras can only add dependencies, so they select a profile by
+# name (docsentinel[fast], docsentinel[standard], docsentinel[deep]) without making the install
+# lighter. Their dependencies are already part of the base install above.
+fast = []
+standard = []
+deep = []
 
 [build-system]
 requires = ["hatchling>=1.32.4,<2"]

@@ -215,7 +215,7 @@ def test_cli_baseline_subcommand_honors_config_and_ignores(asset_case: Callable[
     """
     case = asset_case("ds101", "dangling_file_link")
     asset_case("ds102", "stray_comment_file")
-    case.path("doc_sentinel.toml").write_text('ignore = ["DS101"]\nbaseline = "cfg-baseline.json"\n', encoding="utf-8")
+    case.path("docsentinel.toml").write_text('ignore = ["DS101"]\nbaseline = "cfg-baseline.json"\n', encoding="utf-8")
 
     exit_code = main(["baseline", str(case.root)])
     assert exit_code == 0
@@ -286,7 +286,7 @@ def test_cli_scan_exit_code_zero_when_errors_are_baselined(asset_case: Callable[
     assert main(["scan", str(case.root), "--strict"]) == 1
 
     # Create baseline and config
-    case.path("doc_sentinel.toml").write_text('baseline = ".docsentinel-baseline.json"\n', encoding="utf-8")
+    case.path("docsentinel.toml").write_text('baseline = ".docsentinel-baseline.json"\n', encoding="utf-8")
     main(["baseline", str(case.root)])
 
     # With baseline: succeeds with exit code 0 even under --strict
@@ -314,7 +314,7 @@ def test_cli_scan_exit_code_with_new_findings_after_baseline(asset_case: Callabl
         - Recent changes in code paths exercised by baseline ds101 ds102
     """
     case = asset_case("ds101", "dangling_file_link")
-    case.path("doc_sentinel.toml").write_text('baseline = ".docsentinel-baseline.json"\n', encoding="utf-8")
+    case.path("docsentinel.toml").write_text('baseline = ".docsentinel-baseline.json"\n', encoding="utf-8")
     main(["baseline", str(case.root)])
 
     # Add a new warning (DS102)
@@ -352,7 +352,7 @@ def test_cli_baseline_failure_exits_two(tmp_path: Path):
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by baseline ds101 ds102
     """
-    (tmp_path / "doc_sentinel.toml").write_text("invalid = toml[\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text("invalid = toml[\n", encoding="utf-8")
 
     assert main(["baseline", str(tmp_path)]) == 2
 
@@ -381,7 +381,7 @@ def test_cli_baseline_profile_override_captures_requested_profile_and_preserves_
     case = asset_case("ds101", "dangling_file_link")
     asset_case("ds102", "stray_comment_file")
     asset_case("ds101", "second_dangling_link_file")
-    case.path("doc_sentinel.toml").write_text(
+    case.path("docsentinel.toml").write_text(
         'profile = "standard"\nbaseline = "custom-baseline.json"\nexclude = ["second.md"]\nignore = ["DS102"]\n',
         encoding="utf-8",
     )

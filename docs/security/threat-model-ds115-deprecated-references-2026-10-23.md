@@ -28,7 +28,7 @@ Task 02 `deprecated_local_link_path`).
 
 Two trust boundaries dominate this model. First, like DS112, DS115 is driven by
 **attacker-controlled configuration**: in CI and pre-commit DocSentinel runs on a
-contributor-controlled checkout, so `doc_sentinel.toml` /
+contributor-controlled checkout, so `docsentinel.toml` /
 `[tool.doc_sentinel]` (and therefore `deprecated_references_file`) and the mapping
 file it names are untrusted - a PR author chooses *which file DS115 opens* and
 *every byte of the mapping's `old`/`new`/`kind`/`scope` strings*. Second, unlike

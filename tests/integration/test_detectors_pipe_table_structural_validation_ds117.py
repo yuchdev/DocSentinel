@@ -7,7 +7,7 @@ emits). Coverage spans the pure ``detect`` entry point, the shared ``scan``
 engine, ``select``/``ignore`` (exact and prefix), baseline suppression, the
 text/json/github reports, the CLI exit-code mapping for a warning rule,
 cross-rule isolation from the rest of the fast profile, config propagation
-through both ``doc_sentinel.toml`` and ``[tool.doc_sentinel]`` for the three
+through both ``docsentinel.toml`` and ``[tool.doc_sentinel]`` for the three
 DS117 options (``table_enable``, ``table_strict_cells``, ``table_dialect``), the
 output-injection safety of its messages, and the linear-time requirement on
 adversarial single-line and multi-line pipe floods.
@@ -788,10 +788,10 @@ def test_cli_rules_lists_ds117_under_fast(capsys: pytest.CaptureFixture[str]):
 
 def test_standalone_toml_table_enable_false_silences_ds117(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors pipe table structural validation ds117: verifies doc_sentinel.toml table_enable.
+    [Integration] detectors pipe table structural validation ds117: verifies docsentinel.toml table_enable.
 
     Scenario:
-        Given a finding fixture with a standalone doc_sentinel.toml setting table_enable=false
+        Given a finding fixture with a standalone docsentinel.toml setting table_enable=false
         When scan discovers that config (no injected Config)
         Then the loaded flag reaches DS117 and it reports nothing, while the rule stays registered -
         proving a disabled policy does not masquerade as an evaluated clean result.
@@ -801,11 +801,11 @@ def test_standalone_toml_table_enable_false_silences_ds117(asset_case: Callable[
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - Whether load_config reads table_enable from doc_sentinel.toml
+        - Whether load_config reads table_enable from docsentinel.toml
         - Whether table_enable false short-circuits check_text before scanning
     """
     case = asset_case("ds117", "extra_body_cell")
-    (case.root / "doc_sentinel.toml").write_text('profile = "fast"\ntable_enable = false\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text('profile = "fast"\ntable_enable = false\n', encoding="utf-8")
 
     result = scan(case.root)
 
@@ -873,10 +873,10 @@ def test_table_strict_cells_false_relaxes_cell_counts_but_keeps_markers(asset_ca
 
 def test_standalone_toml_table_strict_cells_false_propagates(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors pipe table structural validation ds117: verifies doc_sentinel.toml table_strict_cells.
+    [Integration] detectors pipe table structural validation ds117: verifies docsentinel.toml table_strict_cells.
 
     Scenario:
-        Given the missing_body_cell fixture with a standalone doc_sentinel.toml setting
+        Given the missing_body_cell fixture with a standalone docsentinel.toml setting
         table_strict_cells=false
         When scan discovers that config
         Then the relaxed policy reaches DS117 and the short body row is no longer flagged.
@@ -886,11 +886,11 @@ def test_standalone_toml_table_strict_cells_false_propagates(asset_case: Callabl
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - Whether load_config reads table_strict_cells from doc_sentinel.toml
+        - Whether load_config reads table_strict_cells from docsentinel.toml
         - Whether the value reaches the strict gate in check_text
     """
     case = asset_case("ds117", "missing_body_cell")
-    (case.root / "doc_sentinel.toml").write_text('profile = "fast"\ntable_strict_cells = false\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text('profile = "fast"\ntable_strict_cells = false\n', encoding="utf-8")
 
     assert _ds117(scan(case.root).findings) == ()
 
@@ -981,7 +981,7 @@ def test_unsupported_table_dialect_rejected_at_load_time(asset_case: Callable[[s
     [Integration] detectors pipe table structural validation ds117: verifies an unsupported dialect is rejected.
 
     Scenario:
-        Given a doc_sentinel.toml naming a table_dialect outside the supported vocabulary
+        Given a docsentinel.toml naming a table_dialect outside the supported vocabulary
         When scan loads that config
         Then a ConfigError naming table_dialect is raised rather than silently falling back, because the
         loader allowlist fixes the single supported 'gfm-subset' value.
@@ -995,7 +995,7 @@ def test_unsupported_table_dialect_rejected_at_load_time(asset_case: Callable[[s
         - Whether an invalid value was coerced instead of raising
     """
     case = asset_case("ds117", "extra_body_cell")
-    (case.root / "doc_sentinel.toml").write_text('profile = "fast"\ntable_dialect = "commonmark"\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text('profile = "fast"\ntable_dialect = "commonmark"\n', encoding="utf-8")
 
     with pytest.raises(ConfigError, match="table_dialect"):
         scan(case.root)
@@ -1032,7 +1032,7 @@ def test_invalid_non_bool_table_option_raises_config_error(option: str, asset_ca
     [Integration] detectors pipe table structural validation ds117: verifies non-bool options are rejected.
 
     Scenario:
-        Given a doc_sentinel.toml that sets a boolean DS117 option to a non-boolean value
+        Given a docsentinel.toml that sets a boolean DS117 option to a non-boolean value
         When scan loads that config
         Then a ConfigError naming the offending option is raised rather than silently coercing it.
 
@@ -1045,7 +1045,7 @@ def test_invalid_non_bool_table_option_raises_config_error(option: str, asset_ca
         - Whether a non-boolean value was coerced instead of raising
     """
     case = asset_case("ds117", "extra_body_cell")
-    (case.root / "doc_sentinel.toml").write_text(f'profile = "fast"\n{option} = "yes"\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text(f'profile = "fast"\n{option} = "yes"\n', encoding="utf-8")
 
     with pytest.raises(ConfigError, match=option):
         scan(case.root)

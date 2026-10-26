@@ -119,7 +119,7 @@ def test_threshold_is_configurable(asset_case: Callable[[str, str], AssetCase]):
     """
     case = asset_case("ds203", "borderline_paragraph")
     documents = case.documents("a.md", "b.md", "borderline.md")
-    config_file = case.path("doc_sentinel.toml")
+    config_file = case.path("docsentinel.toml")
 
     # With higher threshold (0.40), borderline paragraph is flagged
     config_file.write_text("min_information_score = 0.40\n", encoding="utf-8")

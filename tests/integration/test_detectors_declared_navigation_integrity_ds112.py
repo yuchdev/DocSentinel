@@ -37,7 +37,7 @@ absolute path reaches a report sink.
 The file also exercises ``select``/``ignore`` (exact and the ``DS11``/``DS1``/``DS2``
 prefixes); baseline round-trips; text/json/github report stability; the CLI warning
 exit paths; ``docsentinel rules``/``doctor`` surfacing of the opt-in marker; the four
-navigation options through both ``doc_sentinel.toml`` and ``[tool.doc_sentinel]``
+navigation options through both ``docsentinel.toml`` and ``[tool.doc_sentinel]``
 including invalid values; CRLF line fidelity; invalid UTF-8 and an unreadable index
 surfacing rather than a false clean; determinism across repeated scans; the fast
 stdlib-only import with no network or content execution; and the linear-time
@@ -418,7 +418,7 @@ def test_cli_readiness_error_exits_two_without_report_or_absolute_path(
     [Integration] detectors declared navigation integrity ds112: verifies the CLI maps the readiness error to exit 2.
 
     Scenario:
-        Given the missing_index_is_error scenario carrying a doc_sentinel.toml that configures the absent
+        Given the missing_index_is_error scenario carrying a docsentinel.toml that configures the absent
             navigation index, scanned via the CLI with --profile fast --format json
         When the command runs
         Then it returns exit code 2, prints a "Scan failed" line to stderr with the bounded configured path
@@ -433,7 +433,7 @@ def test_cli_readiness_error_exits_two_without_report_or_absolute_path(
         - Whether a JSON report was printed before the exception, or an absolute path leaked into stderr
     """
     case = asset_case("ds112", ERROR_CASE)
-    (case.root / "doc_sentinel.toml").write_text(
+    (case.root / "docsentinel.toml").write_text(
         'profile = "fast"\nnavigation_indexes = ["docs/missing.md"]\n', encoding="utf-8"
     )
 
@@ -558,7 +558,7 @@ def test_cli_fast_json_scan_reports_ds112_warning_and_exits_zero(
 
     Scenario:
         Given the duplicate_with_fragments fixture (a DS112-only defect with no error sibling) carrying a
-            doc_sentinel.toml that configures the index, scanned via the CLI with --profile fast --format json
+            docsentinel.toml that configures the index, scanned via the CLI with --profile fast --format json
             and no --strict
         When the command runs
         Then it prints a JSON report containing the DS112 warning at line 6 and exits 0, because a bare
@@ -570,10 +570,10 @@ def test_cli_fast_json_scan_reports_ds112_warning_and_exits_zero(
 
     On failure, first check:
         - The CLI exit-code mapping for warning-severity findings
-        - Whether the discovered doc_sentinel.toml configured navigation_indexes
+        - Whether the discovered docsentinel.toml configured navigation_indexes
     """
     case = asset_case("ds112", "duplicate_with_fragments")
-    (case.root / "doc_sentinel.toml").write_text(
+    (case.root / "docsentinel.toml").write_text(
         'profile = "fast"\nnavigation_indexes = ["README.md"]\n', encoding="utf-8"
     )
 
@@ -1170,7 +1170,7 @@ def test_hostile_targets_and_index_are_bounded_and_repr_escaped(tmp_path: Path):
     assert error_message.endswith("...")
 
 
-@pytest.mark.parametrize("config_file", ["doc_sentinel.toml", "pyproject.toml"])
+@pytest.mark.parametrize("config_file", ["docsentinel.toml", "pyproject.toml"])
 def test_navigation_options_propagate_from_both_config_files(
     config_file: str,
     asset_case: Callable[[str, str], AssetCase],
@@ -1179,7 +1179,7 @@ def test_navigation_options_propagate_from_both_config_files(
     [Integration] detectors declared navigation integrity ds112: verifies the four options load from both files.
 
     Scenario:
-        Given the duplicate_navigation_target fixture carrying either a standalone doc_sentinel.toml or a
+        Given the duplicate_navigation_target fixture carrying either a standalone docsentinel.toml or a
             [tool.doc_sentinel] table that sets navigation_indexes and then, in a second run, also turns
             navigation_unique_targets off
         When scan discovers each config (no injected Config)
@@ -1196,7 +1196,7 @@ def test_navigation_options_propagate_from_both_config_files(
         - Whether the engine forwards the discovered Config to DS112
     """
     case = asset_case("ds112", "duplicate_navigation_target")
-    prefix = "" if config_file == "doc_sentinel.toml" else "[tool.doc_sentinel]\n"
+    prefix = "" if config_file == "docsentinel.toml" else "[tool.doc_sentinel]\n"
 
     (case.root / config_file).write_text(
         f'{prefix}profile = "fast"\nnavigation_indexes = ["README.md"]\n', encoding="utf-8"
@@ -1213,7 +1213,7 @@ def test_navigation_options_propagate_from_both_config_files(
     assert _ds112(scan(case.root).findings) == ()
 
 
-@pytest.mark.parametrize("config_file", ["doc_sentinel.toml", "pyproject.toml"])
+@pytest.mark.parametrize("config_file", ["docsentinel.toml", "pyproject.toml"])
 def test_navigation_required_and_check_missing_propagate_from_both_config_files(
     config_file: str,
     asset_case: Callable[[str, str], AssetCase],
@@ -1222,7 +1222,7 @@ def test_navigation_required_and_check_missing_propagate_from_both_config_files(
     [Integration] detectors declared navigation integrity ds112: verifies the remaining two options load from both files.
 
     Scenario:
-        Given the missing_navigation_destination fixture carrying either a standalone doc_sentinel.toml or a
+        Given the missing_navigation_destination fixture carrying either a standalone docsentinel.toml or a
             [tool.doc_sentinel] table that sets navigation_indexes plus navigation_required for an unlisted doc,
             and then, in a second run, also turns navigation_check_missing off
         When scan discovers each config
@@ -1239,7 +1239,7 @@ def test_navigation_required_and_check_missing_propagate_from_both_config_files(
         - Whether the navigation_check_missing guard still gates the os.stat probe
     """
     case = asset_case("ds112", "missing_navigation_destination")
-    prefix = "" if config_file == "doc_sentinel.toml" else "[tool.doc_sentinel]\n"
+    prefix = "" if config_file == "docsentinel.toml" else "[tool.doc_sentinel]\n"
 
     (case.root / config_file).write_text(
         f'{prefix}profile = "fast"\nnavigation_indexes = ["README.md"]\nnavigation_required = ["docs/extra.md"]\n',
@@ -1279,7 +1279,7 @@ def test_invalid_navigation_option_raises_config_error(
     [Integration] detectors declared navigation integrity ds112: verifies invalid options are rejected.
 
     Scenario:
-        Given a doc_sentinel.toml that sets one navigation option to an invalid value (a bare string where a
+        Given a docsentinel.toml that sets one navigation option to an invalid value (a bare string where a
             path list is required, or a non-boolean for a flag)
         When scan loads that config
         Then a ConfigError naming the offending option is raised rather than silently coercing it.
@@ -1293,7 +1293,7 @@ def test_invalid_navigation_option_raises_config_error(
         - Whether an invalid value was coerced instead of raising
     """
     case = asset_case("ds112", "required_pages_all_listed")
-    (case.root / "doc_sentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
 
     with pytest.raises(ConfigError, match=option):
         scan(case.root)

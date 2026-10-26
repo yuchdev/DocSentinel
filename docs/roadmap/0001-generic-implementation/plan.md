@@ -4,8 +4,9 @@
 
 > Naming note: the distributed package, CLI, and import path are all `docsentinel` (one word,
 > no underscore) - that is what `pyproject.toml`, `src/`, and every test already use, and
-> changing it is out of scope here. The **configuration namespace** - the `pyproject.toml`
-> table and the standalone config filename - is deliberately `doc_sentinel` (underscored) per
+> changing it is out of scope here. The **configuration namespace** - the `[tool.doc_sentinel]` table in `pyproject.toml` - is
+> deliberately `doc_sentinel` (underscored); the standalone config *file* was later renamed from
+> `doc_sentinel.toml` to `docsentinel.toml`, matching the package name, per
 > `CLAUDE.md`'s explicit convention. These are two different names for two different things;
 > do not "fix" one to match the other.
 

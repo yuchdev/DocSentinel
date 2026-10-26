@@ -60,7 +60,7 @@ def test_standalone_toml_loads_policy_options(tmp_path: Path):
     [Unit] config: verifies standalone toml loads policy options.
 
     Scenario:
-        Given a standalone doc_sentinel.toml setting several policy options
+        Given a standalone docsentinel.toml setting several policy options
         When load_config reads the scan root
         Then the typed Config reflects each configured policy value.
 
@@ -74,7 +74,7 @@ def test_standalone_toml_loads_policy_options(tmp_path: Path):
         - The _load_extra_options validation path
         - Recent changes to the standalone loader
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         'multiple_h1_policy = "warn"\n'
         "first_heading_level = 2\n"
         "require_fence_languages = true\n"
@@ -131,7 +131,7 @@ def test_ds113_asset_options_load_from_standalone_and_pyproject(tmp_path: Path):
     [Unit] config: verifies DS113 asset options load from standalone and pyproject TOML.
 
     Scenario:
-        Given a standalone doc_sentinel.toml and, separately, a [tool.doc_sentinel] pyproject table each
+        Given a standalone docsentinel.toml and, separately, a [tool.doc_sentinel] pyproject table each
             setting the DS113 asset options (asset_extensions, the three check_* toggles, and
             missing_asset_policy)
         When load_config reads each scan root
@@ -148,7 +148,7 @@ def test_ds113_asset_options_load_from_standalone_and_pyproject(tmp_path: Path):
     """
     standalone_root = tmp_path / "standalone"
     standalone_root.mkdir()
-    (standalone_root / "doc_sentinel.toml").write_text(
+    (standalone_root / "docsentinel.toml").write_text(
         'asset_extensions = ["pdf", "png"]\n'
         "check_html_asset_tags = false\n"
         "check_markdown_images = false\n"
@@ -179,7 +179,7 @@ def test_injected_config_wins_over_discovered_file(tmp_path: Path):
     [Unit] config: verifies injected config wins over discovered file.
 
     Scenario:
-        Given an on-disk doc_sentinel.toml selecting the standard profile
+        Given an on-disk docsentinel.toml selecting the standard profile
         When scan runs with a library-supplied fast-profile Config
         Then the injected Config is used and the result profile is fast.
 
@@ -193,7 +193,7 @@ def test_injected_config_wins_over_discovered_file(tmp_path: Path):
         - The config-selection branch in engine.scan
         - Recent changes to load_config invocation
     """
-    (tmp_path / "doc_sentinel.toml").write_text('profile = "standard"\n', encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text('profile = "standard"\n', encoding="utf-8")
     (tmp_path / "README.md").write_text("# Title\n\nBody.\n", encoding="utf-8")
 
     result = scan(tmp_path, config=Config(profile="fast"))
@@ -229,7 +229,7 @@ def test_invalid_enum_option_raises(tmp_path: Path, option: str, value: str, mes
         - The _require_enum helper and _ENUM_OPTIONS map
         - Recent changes to enum allowlists
     """
-    (tmp_path / "doc_sentinel.toml").write_text(f"{option} = {value}\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text(f"{option} = {value}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match=message):
         load_config(tmp_path)
 
@@ -254,7 +254,7 @@ def test_invalid_bool_option_raises(tmp_path: Path, value: str):
         - The _require_bool helper
         - Recent changes to _BOOL_OPTIONS
     """
-    (tmp_path / "doc_sentinel.toml").write_text(f"table_enable = {value}\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text(f"table_enable = {value}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="table_enable must be true or false"):
         load_config(tmp_path)
 
@@ -279,7 +279,7 @@ def test_first_heading_level_out_of_range_raises(tmp_path: Path, value: str):
         - The first_heading_level branch in _load_extra_options
         - Recent changes to range validation
     """
-    (tmp_path / "doc_sentinel.toml").write_text(f"first_heading_level = {value}\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text(f"first_heading_level = {value}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="first_heading_level must be an integer between 1 and 6"):
         load_config(tmp_path)
 
@@ -304,7 +304,7 @@ def test_empty_section_min_text_chars_negative_raises(tmp_path: Path, value: str
         - The empty_section_min_text_chars branch in _load_extra_options
         - Recent changes to range validation
     """
-    (tmp_path / "doc_sentinel.toml").write_text(f"empty_section_min_text_chars = {value}\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text(f"empty_section_min_text_chars = {value}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="empty_section_min_text_chars must be a non-negative integer"):
         load_config(tmp_path)
 
@@ -329,7 +329,7 @@ def test_invalid_string_list_option_raises(tmp_path: Path, value: str):
         - The _require_str_list helper
         - Recent changes to _STR_LIST_OPTIONS
     """
-    (tmp_path / "doc_sentinel.toml").write_text(f"allowed_fence_languages = {value}\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text(f"allowed_fence_languages = {value}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="allowed_fence_languages must be a list of nonempty strings"):
         load_config(tmp_path)
 
@@ -355,7 +355,7 @@ def test_allowed_fence_language_with_whitespace_raises(tmp_path: Path, entry: st
         - The _require_fence_language_list whitespace guard
         - That other string-list options still use the plain _require_str_list validator
     """
-    (tmp_path / "doc_sentinel.toml").write_text(f"allowed_fence_languages = [{entry}]\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text(f"allowed_fence_languages = [{entry}]\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="allowed_fence_languages entries must be single tokens without whitespace"):
         load_config(tmp_path)
 
@@ -380,7 +380,7 @@ def test_allowed_fence_language_punctuation_tokens_accepted(tmp_path: Path, entr
         - That _require_fence_language_list rejects only whitespace, not every non-word character
         - That the accepted token round-trips into Config.allowed_fence_languages
     """
-    (tmp_path / "doc_sentinel.toml").write_text(f'allowed_fence_languages = ["{entry}"]\n', encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text(f'allowed_fence_languages = ["{entry}"]\n', encoding="utf-8")
     assert load_config(tmp_path).allowed_fence_languages == (entry,)
 
 
@@ -404,7 +404,7 @@ def test_navigation_index_outside_root_raises(tmp_path: Path, value: str):
         - The _is_within_root and _require_root_path_list helpers
         - Recent changes to _ROOT_PATH_LIST_OPTIONS
     """
-    (tmp_path / "doc_sentinel.toml").write_text(f"navigation_indexes = {value}\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text(f"navigation_indexes = {value}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="navigation_indexes"):
         load_config(tmp_path)
 
@@ -428,7 +428,7 @@ def test_deprecated_references_file_outside_root_raises(tmp_path: Path):
         - The deprecated_references_file branch in _load_extra_options
         - Recent changes to _is_within_root
     """
-    (tmp_path / "doc_sentinel.toml").write_text('deprecated_references_file = "../secrets.toml"\n', encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text('deprecated_references_file = "../secrets.toml"\n', encoding="utf-8")
     with pytest.raises(ConfigError, match="deprecated_references_file must stay within the scan root"):
         load_config(tmp_path)
 
@@ -452,7 +452,7 @@ def test_document_id_field_must_be_nonempty(tmp_path: Path):
         - The document_id_field branch in _load_extra_options
         - Recent changes to nonempty-string validation
     """
-    (tmp_path / "doc_sentinel.toml").write_text('document_id_field = ""\n', encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text('document_id_field = ""\n', encoding="utf-8")
     with pytest.raises(ConfigError, match="document_id_field must be a nonempty string"):
         load_config(tmp_path)
 
@@ -476,11 +476,11 @@ def test_document_id_field_must_be_a_simple_key_name(tmp_path: Path):
         - The _DOCUMENT_ID_FIELD_PATTERN check in _load_extra_options
         - Whether a valid custom field name still loads
     """
-    (tmp_path / "doc_sentinel.toml").write_text('document_id_field = "not a key"\n', encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text('document_id_field = "not a key"\n', encoding="utf-8")
     with pytest.raises(ConfigError, match="document_id_field must be a simple key name"):
         load_config(tmp_path)
 
-    (tmp_path / "doc_sentinel.toml").write_text('document_id_field = "slug"\n', encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text('document_id_field = "slug"\n', encoding="utf-8")
     assert load_config(tmp_path).document_id_field == "slug"
 
 
@@ -503,6 +503,6 @@ def test_unknown_policy_key_still_rejected(tmp_path: Path):
         - The _CONFIG_OPTIONS allowlist and _load_toml_table
         - Recent changes to the known-options set
     """
-    (tmp_path / "doc_sentinel.toml").write_text("navigation_index = []\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text("navigation_index = []\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="Unknown config options: navigation_index"):
         load_config(tmp_path)

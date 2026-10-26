@@ -35,7 +35,7 @@ path-recording recorder from ``tests/mock/test_detectors_document_ids_oracle.py`
 The file also exercises ``select``/``ignore`` (exact and the ``DS11``/``DS1``/``DS2``
 prefixes); baseline round-trips; text/json/github report stability; the CLI warning and
 strict exit paths; ``docsentinel rules``/``doctor`` surfacing of the opt-in marker; the
-four naming options through both ``doc_sentinel.toml`` and ``[tool.doc_sentinel]``
+four naming options through both ``docsentinel.toml`` and ``[tool.doc_sentinel]``
 including invalid values; the injected-``Config`` fail-closed defences (invalid style,
 pattern count/length bounds); the exemptions (README.md/index.md, allow exact and
 full-path, the ``?``/``*`` glob subset with regex metacharacters matched literally); the
@@ -532,7 +532,7 @@ def test_cli_fast_json_scan_reports_ds118_warning_and_exits_zero(
     [Integration] detectors documentation path naming ds118: verifies the CLI fast json warning path.
 
     Scenario:
-        Given the camelcase_path_diagnostic fixture carrying a doc_sentinel.toml that selects the kebab style,
+        Given the camelcase_path_diagnostic fixture carrying a docsentinel.toml that selects the kebab style,
             scanned via the CLI with --profile fast --format json and no --strict
         When the command runs
         Then it prints a JSON report containing the DS118 warning with line null and the api-client.md
@@ -544,10 +544,10 @@ def test_cli_fast_json_scan_reports_ds118_warning_and_exits_zero(
 
     On failure, first check:
         - The CLI exit-code mapping for warning-severity findings
-        - Whether the discovered doc_sentinel.toml configured documentation_naming
+        - Whether the discovered docsentinel.toml configured documentation_naming
     """
     loaded = asset_case("ds118", "camelcase_path_diagnostic")
-    (loaded.root / "doc_sentinel.toml").write_text(
+    (loaded.root / "docsentinel.toml").write_text(
         'profile = "fast"\ndocumentation_naming = "kebab"\n', encoding="utf-8"
     )
 
@@ -604,7 +604,7 @@ def test_cli_clean_case_without_strict_exits_zero(
     [Integration] detectors documentation path naming ds118: verifies a clean kebab tree exits 0.
 
     Scenario:
-        Given the lower_kebab_docs_paths fixture carrying a doc_sentinel.toml selecting the kebab style,
+        Given the lower_kebab_docs_paths fixture carrying a docsentinel.toml selecting the kebab style,
             scanned via the CLI under the fast profile without --strict
         When the command runs
         Then it exits 0 with no DS118 finding, proving a conformant tree is not flagged under an active style.
@@ -618,7 +618,7 @@ def test_cli_clean_case_without_strict_exits_zero(
         - The CLI exit-code mapping when no findings are produced
     """
     loaded = asset_case("ds118", "lower_kebab_docs_paths")
-    (loaded.root / "doc_sentinel.toml").write_text(
+    (loaded.root / "docsentinel.toml").write_text(
         'profile = "fast"\ndocumentation_naming = "kebab"\n', encoding="utf-8"
     )
 
@@ -705,7 +705,7 @@ def test_prefix_select_and_ignore_semantics_for_ds118(asset_case: Callable[[str,
     assert [finding.path for finding in _ds118(unaffected.findings)] == ["docs/apiClient.md"]
 
 
-@pytest.mark.parametrize("config_file", ["doc_sentinel.toml", "pyproject.toml"])
+@pytest.mark.parametrize("config_file", ["docsentinel.toml", "pyproject.toml"])
 def test_style_and_directories_options_propagate_from_both_config_files(
     config_file: str,
     asset_case: Callable[[str, str], AssetCase],
@@ -714,7 +714,7 @@ def test_style_and_directories_options_propagate_from_both_config_files(
     [Integration] detectors documentation path naming ds118: verifies style and directories load from both files.
 
     Scenario:
-        Given the uppercase_directory_violation fixture carrying either a standalone doc_sentinel.toml or a
+        Given the uppercase_directory_violation fixture carrying either a standalone docsentinel.toml or a
             [tool.doc_sentinel] table that selects the kebab style, and then, in a second run, also turns
             documentation_naming_directories off
         When scan discovers each config (no injected Config)
@@ -731,7 +731,7 @@ def test_style_and_directories_options_propagate_from_both_config_files(
         - Whether the engine forwards the discovered Config to DS118
     """
     loaded = asset_case("ds118", "uppercase_directory_violation")
-    prefix = "" if config_file == "doc_sentinel.toml" else "[tool.doc_sentinel]\n"
+    prefix = "" if config_file == "docsentinel.toml" else "[tool.doc_sentinel]\n"
 
     (loaded.root / config_file).write_text(
         f'{prefix}profile = "fast"\ndocumentation_naming = "kebab"\n', encoding="utf-8"
@@ -748,7 +748,7 @@ def test_style_and_directories_options_propagate_from_both_config_files(
     assert _ds118(scan(loaded.root).findings) == ()
 
 
-@pytest.mark.parametrize("config_file", ["doc_sentinel.toml", "pyproject.toml"])
+@pytest.mark.parametrize("config_file", ["docsentinel.toml", "pyproject.toml"])
 def test_allow_and_prefix_options_propagate_from_both_config_files(
     config_file: str,
     asset_case: Callable[[str, str], AssetCase],
@@ -757,7 +757,7 @@ def test_allow_and_prefix_options_propagate_from_both_config_files(
     [Integration] detectors documentation path naming ds118: verifies allow and prefix patterns load from both files.
 
     Scenario:
-        Given the uppercase_filename_violation fixture carrying either a standalone doc_sentinel.toml or a
+        Given the uppercase_filename_violation fixture carrying either a standalone docsentinel.toml or a
             [tool.doc_sentinel] table selecting the kebab style, then adding documentation_naming_allow with
             the exact file name, then instead adding documentation_naming_prefix_patterns with a matching glob
         When scan discovers each config (no injected Config)
@@ -774,7 +774,7 @@ def test_allow_and_prefix_options_propagate_from_both_config_files(
         - Whether the allowlist and prefix patterns reach the DS118 policy
     """
     loaded = asset_case("ds118", "uppercase_filename_violation")
-    prefix = "" if config_file == "doc_sentinel.toml" else "[tool.doc_sentinel]\n"
+    prefix = "" if config_file == "docsentinel.toml" else "[tool.doc_sentinel]\n"
 
     (loaded.root / config_file).write_text(
         f'{prefix}profile = "fast"\ndocumentation_naming = "kebab"\n', encoding="utf-8"
@@ -814,7 +814,7 @@ def test_invalid_naming_option_raises_config_error(
     [Integration] detectors documentation path naming ds118: verifies invalid options are rejected.
 
     Scenario:
-        Given a doc_sentinel.toml that sets one naming option to an invalid value (a style outside
+        Given a docsentinel.toml that sets one naming option to an invalid value (a style outside
             off|kebab|snake, a bare string where a list is required for allow or prefix patterns, or a
             non-boolean for the directories flag)
         When scan loads that config
@@ -829,7 +829,7 @@ def test_invalid_naming_option_raises_config_error(
         - Whether an invalid value was coerced instead of raising
     """
     loaded = asset_case("ds118", "lower_kebab_docs_paths")
-    (loaded.root / "doc_sentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
+    (loaded.root / "docsentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
 
     with pytest.raises(ConfigError, match=option):
         scan(loaded.root)

@@ -14,7 +14,7 @@ Convert the milestone-wide asset requirement into a repository-checkable guarant
 2. Assert at least three `expected=clean` and three `expected=finding` per newly introduced rule, independent cases, and check every enumerated edge.
 3. Traverse test parametrizations or a `scenario_registry` to check every asset directory is exercised and every expected case exists. Do not count one multi-doc fixture as three independent passes merely because it contains three files.
 4. Extend `tests/assets/README.md` with the two-to-four-word naming rule, suggested `README.md` for one-file cases and a canonical `asset_case` loading example for source companion files.
-5. Ensure `tests/assets/*` stays out of `doc_sentinel.toml` exclusions and all format/lint/self-scan lanes; never reformat deliberately malformed source documents.
+5. Ensure `tests/assets/*` stays out of `docsentinel.toml` exclusions and all format/lint/self-scan lanes; never reformat deliberately malformed source documents.
 6. Validate asset file names do not accidentally collide under `load_asset_case`'s `dirs_exist_ok=True` semantics when composing cases into a shared tmp path.
 
 ## Acceptance

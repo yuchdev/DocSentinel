@@ -71,7 +71,7 @@ for point-in-time reviews.
 >
 > **Mitigations and open gaps**
 > - Existing controls:
->   - Strict config schema: top-level keys in `doc_sentinel.toml` or the `[tool.doc_sentinel]` table in `pyproject.toml` (never a `[docsentinel]` table header, which the loader rejects as an unknown key), known keys only, non-empty string patterns, and an enumerated `profile`.
+>   - Strict config schema: top-level keys in `docsentinel.toml` or the `[tool.doc_sentinel]` table in `pyproject.toml` (never a `[docsentinel]` table header, which the loader rejects as an unknown key), known keys only, non-empty string patterns, and an enumerated `profile`.
 >   - Symlink refusal.
 >   - Walk errors propagate instead of being swallowed.
 >   - CI uses `--locked` dependency sync and `contents: read` workflow permissions.

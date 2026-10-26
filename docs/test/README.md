@@ -1,6 +1,6 @@
 # DocSentinel test suite guide
 
-This guide documents how the tests are organised, configured, run and extended. The configuration lives in `pyproject.toml` (`[tool.pytest.ini_options]`, `[tool.coverage.*]`, `[tool.flakeforge]`) and in `doc_sentinel.toml` (the repository's own documentation scan).
+This guide documents how the tests are organised, configured, run and extended. The configuration lives in `pyproject.toml` (`[tool.pytest.ini_options]`, `[tool.coverage.*]`, `[tool.flakeforge]`) and in `docsentinel.toml` (the repository's own documentation scan).
 
 ## Running the tests
 

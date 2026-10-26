@@ -74,7 +74,7 @@ inside the deterministic-first premise while still being too heavy for `fast`.
 | Symbol | Change |
 |--------|--------|
 | `Config.max_grade_level: float = 14.0` | New field, appended after the existing fields (keyword construction everywhere, per Milestone 0001 Story 01.0 Task 02's note on not relying on positional field order). |
-| validation in `load_config` | `max_grade_level`, if present, must be a number (`int`/`float`, not `bool`) and `> 0`; otherwise `ConfigError`. Accept it as a top-level key in `doc_sentinel.toml` and under `[tool.doc_sentinel]`, same as every other key. |
+| validation in `load_config` | `max_grade_level`, if present, must be a number (`int`/`float`, not `bool`) and `> 0`; otherwise `ConfigError`. Accept it as a top-level key in `docsentinel.toml` and under `[tool.doc_sentinel]`, same as every other key. |
 
 ## Validators (raise `ConfigError`)
 
@@ -100,7 +100,7 @@ inside the deterministic-first premise while still being too heavy for `fast`.
 - `test_threshold_is_configurable` - the same dense document is flagged at `max_grade_level=10` and
   clean at `max_grade_level=25`.
 - `test_non_markdown_documents_are_not_scanned` - a `.txt` `Document` produces no `DS201` findings.
-- `test_detect_reads_max_grade_from_config` - a `doc_sentinel.toml` with `max_grade_level = 10` in
+- `test_detect_reads_max_grade_from_config` - a `docsentinel.toml` with `max_grade_level = 10` in
   `tmp_path` causes `detect(tmp_path, docs)` to use `10`, not the `14.0` default.
 
 `tests/test_config.py` additions:

@@ -103,6 +103,79 @@ def _exit_code(result: ScanResult, *, strict: bool = False) -> int:
     return 1 if any(finding.severity == "error" for finding in result.findings) else 0
 
 
+PROJECT_ROOT_MARKERS = ("uv.lock", "pyproject.toml")
+
+
+def find_project_root(start: Path) -> Optional[Path]:
+    """Find the nearest directory at or above ``start`` that marks a project root.
+
+    Parameters
+    ----------
+    start : Path
+        Directory to begin the upward search from.
+
+    Returns
+    -------
+    Optional[Path]
+        The first directory holding ``uv.lock`` or ``pyproject.toml``, or ``None`` when
+        the search reaches the filesystem root without finding either.
+    """
+    current = start.resolve()
+    for candidate in (current, *current.parents):
+        if any((candidate / marker).is_file() for marker in PROJECT_ROOT_MARKERS):
+            return candidate
+    return None
+
+
+def _run_init(root: Path, *, project_root: bool, assume_yes: bool) -> int:
+    """Create a starter ``docsentinel.toml``.
+
+    Parameters
+    ----------
+    root : Path
+        Directory to create the file in, or to start the project-root search from.
+    project_root : bool
+        When true, use the nearest ancestor of ``root`` holding ``uv.lock`` or ``pyproject.toml``.
+    assume_yes : bool
+        When true, never ask for confirmation. Without it, confirmation is requested only
+        when standard input is an interactive terminal, so scripts and CI never block.
+
+    Returns
+    -------
+    int
+        0 when the file was created or the user declined, 2 on failure.
+    """
+    directory = root
+    if project_root:
+        found = find_project_root(root)
+        if found is None:
+            names = " or ".join(PROJECT_ROOT_MARKERS)
+            print(f"No {names} found at or above {root.resolve()}", file=sys.stderr)
+            return 2
+        directory = found
+    target = directory / "docsentinel.toml"
+    legacy = directory / "doc_sentinel.toml"
+    if legacy.exists():
+        print(f"{legacy} already configures DocSentinel; not creating a second config file", file=sys.stderr)
+        return 2
+    if not assume_yes and sys.stdin.isatty():
+        try:
+            answer = input(f"Create {target}? [Y/n] ").strip().lower()
+        except EOFError:
+            answer = "n"
+        if answer not in ("", "y", "yes"):
+            print("Aborted: no file created")
+            return 0
+    try:
+        with target.open("x", encoding="utf-8") as stream:
+            stream.write(TEMPLATE)
+    except OSError as exc:
+        print(f"Cannot create {target}: {neutralize_text(str(exc))}", file=sys.stderr)
+        return 2
+    print(f"Created {target}")
+    return 0
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     """Run the DocSentinel command line interface.
 
@@ -139,20 +212,22 @@ def main(argv: Optional[list[str]] = None) -> int:
     baseline_parser.add_argument("--output", type=Path)
     baseline_parser.add_argument("--profile", choices=("fast", "standard", "deep"))
     init_parser = commands.add_parser("init", help="Create a starter config")
-    init_parser.add_argument("root", nargs="?", default=".")
+    init_parser.add_argument(
+        "root", nargs="?", default=".", help="Directory for docsentinel.toml (default: current directory)"
+    )
+    init_parser.add_argument(
+        "--project-root",
+        action="store_true",
+        help="Create the file at the nearest ancestor of ROOT that holds uv.lock or pyproject.toml",
+    )
+    init_parser.add_argument(
+        "--yes", "-y", action="store_true", help="Do not ask for confirmation when running in a terminal"
+    )
     commands.add_parser("rules", help="List active detection rules")
     commands.add_parser("doctor", help="Show M0 capabilities")
     args = parser.parse_args(argv)
     if args.command == "init":
-        target = Path(args.root) / "doc_sentinel.toml"
-        try:
-            with target.open("x", encoding="utf-8") as stream:
-                stream.write(TEMPLATE)
-        except OSError as exc:
-            print(f"Cannot create {target}: {exc}", file=sys.stderr)
-            return 2
-        print(f"Created {target}")
-        return 0
+        return _run_init(Path(args.root), project_root=args.project_root, assume_yes=args.yes)
     if args.command == "rules":
         for profile in ("fast", "standard", "deep"):
             print(f"{profile}:")

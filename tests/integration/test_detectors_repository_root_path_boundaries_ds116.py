@@ -29,7 +29,7 @@ contains DS110/DS112/DS113/DS114/DS115/DS116/DS117 today, the whole-fast-set ``D
 negative ``DS2``), baseline round-trips, text/json/github report stability, the
 three CLI exit paths, ``docsentinel rules``/``doctor`` surfacing, the engine
 notice, config propagation for ``root_escape_policy`` / ``decode_percent_paths`` /
-``windows_path_policy`` through both ``doc_sentinel.toml`` and ``[tool.doc_sentinel]``
+``windows_path_policy`` through both ``docsentinel.toml`` and ``[tool.doc_sentinel]``
 (invalid values raising :class:`ConfigError`), hostile-target output safety
 (bounded, repr-escaped echo; exactly one ``::error`` line per finding), and the
 edge dimensions required by the task (CRLF lines, invalid UTF-8, unreadable file,
@@ -752,7 +752,7 @@ def test_notice_names_only_the_off_opt_in_rule(asset_case: Callable[[str, str], 
     )
 
 
-@pytest.mark.parametrize("config_file", ["doc_sentinel.toml", "pyproject.toml"])
+@pytest.mark.parametrize("config_file", ["docsentinel.toml", "pyproject.toml"])
 @pytest.mark.parametrize(("policy", "expected_severity"), [("off", None), ("warn", "warning"), ("error", "error")])
 def test_root_escape_policy_propagates_from_both_config_files(
     config_file: str,
@@ -764,7 +764,7 @@ def test_root_escape_policy_propagates_from_both_config_files(
     [Integration] detectors repository root path boundaries ds116: verifies root_escape_policy propagation.
 
     Scenario:
-        Given the parent_escape_from_root fixture carrying a standalone doc_sentinel.toml or a
+        Given the parent_escape_from_root fixture carrying a standalone docsentinel.toml or a
             [tool.doc_sentinel] table that sets root_escape_policy to off, warn or error
         When scan discovers that config (no injected Config)
         Then ``off`` silences DS116 entirely, ``warn`` keeps the finding but downgrades its severity to
@@ -780,7 +780,7 @@ def test_root_escape_policy_propagates_from_both_config_files(
         - Whether load_config reads root_escape_policy from the given file form
     """
     case = asset_case("ds116", "parent_escape_from_root")
-    if config_file == "doc_sentinel.toml":
+    if config_file == "docsentinel.toml":
         body = f'profile = "fast"\nroot_escape_policy = "{policy}"\n'
     else:
         body = f'[tool.doc_sentinel]\nprofile = "fast"\nroot_escape_policy = "{policy}"\n'
@@ -801,7 +801,7 @@ def test_decode_percent_paths_false_keeps_raw_traversal_but_not_encoded(asset_ca
     [Integration] detectors repository root path boundaries ds116: verifies decode_percent_paths=false behaviour.
 
     Scenario:
-        Given decode_percent_paths=false supplied through doc_sentinel.toml for a raw parent escape and
+        Given decode_percent_paths=false supplied through docsentinel.toml for a raw parent escape and
             for a percent-encoded parent escape
         When each is scanned
         Then the raw ``../../`` traversal is still reported (decoding is irrelevant to it) while the
@@ -817,11 +817,11 @@ def test_decode_percent_paths_false_keeps_raw_traversal_but_not_encoded(asset_ca
         - Whether the residual-encoding check wrongly ran while decoding was off
     """
     raw = asset_case("ds116", "parent_escape_from_root")
-    (raw.root / "doc_sentinel.toml").write_text('profile = "fast"\ndecode_percent_paths = false\n', encoding="utf-8")
+    (raw.root / "docsentinel.toml").write_text('profile = "fast"\ndecode_percent_paths = false\n', encoding="utf-8")
     assert [finding.line for finding in _ds116(scan(raw.root).findings)] == [3]
 
     encoded = asset_case("ds116", "percent_encoded_parent_escape")
-    (encoded.root / "doc_sentinel.toml").write_text(
+    (encoded.root / "docsentinel.toml").write_text(
         'profile = "fast"\ndecode_percent_paths = false\n', encoding="utf-8"
     )
     assert _ds116(scan(encoded.root).findings) == ()
@@ -872,7 +872,7 @@ def test_invalid_ds116_option_raises_config_error(option: str, value: str, asset
     [Integration] detectors repository root path boundaries ds116: verifies invalid options are rejected.
 
     Scenario:
-        Given a doc_sentinel.toml that sets one DS116 option to an invalid value (an out-of-vocabulary
+        Given a docsentinel.toml that sets one DS116 option to an invalid value (an out-of-vocabulary
             enum string or a non-boolean)
         When scan loads that config
         Then a ConfigError naming the offending option is raised rather than silently coercing it.
@@ -886,7 +886,7 @@ def test_invalid_ds116_option_raises_config_error(option: str, value: str, asset
         - Whether an invalid value was coerced instead of raising
     """
     case = asset_case("ds116", "parent_escape_from_root")
-    (case.root / "doc_sentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
 
     with pytest.raises(ConfigError, match=option):
         scan(case.root)
