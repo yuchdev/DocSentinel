@@ -2,7 +2,7 @@
 
 Covers ``min_document_words`` (DS201), ``min_paragraph_words`` and
 ``min_paragraph_chars`` (DS202/DS203): defaults, loading from a standalone
-``doc_sentinel.toml`` and a ``[tool.doc_sentinel]`` table, and strict
+``docsentinel.toml`` and a ``[tool.doc_sentinel]`` table, and strict
 validation of every rejected value shape. Tiny inline TOML only; no assets.
 """
 
@@ -42,7 +42,7 @@ def test_standalone_toml_loads_statistical_size_limits(tmp_path: Path):
     [Unit] config: verifies standalone toml loads statistical size limits.
 
     Scenario:
-        Given a standalone doc_sentinel.toml setting the three keys
+        Given a standalone docsentinel.toml setting the three keys
         When load_config reads the scan root
         Then the Config carries the configured integers.
 
@@ -55,7 +55,7 @@ def test_standalone_toml_loads_statistical_size_limits(tmp_path: Path):
         - _load_extra_options validation block
         - _CONFIG_OPTIONS membership of the three keys
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         "min_document_words = 10\nmin_paragraph_words = 2\nmin_paragraph_chars = 0\n",
         encoding="utf-8",
     )
@@ -119,7 +119,7 @@ def test_min_words_keys_reject_invalid_shapes(tmp_path: Path, option: str, messa
         - _require_bounded_int for the ``minimum = 1`` path
         - That booleans and integral floats are both rejected
     """
-    (tmp_path / "doc_sentinel.toml").write_text(f"{option} = {value}\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text(f"{option} = {value}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match=message):
         load_config(tmp_path)
 
@@ -143,7 +143,7 @@ def test_min_paragraph_chars_rejects_invalid_shapes(tmp_path: Path, value: str):
         - _require_bounded_int for the ``minimum = 0`` path
         - That ``0`` is accepted (covered elsewhere) but ``-1`` is not
     """
-    (tmp_path / "doc_sentinel.toml").write_text(f"min_paragraph_chars = {value}\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text(f"min_paragraph_chars = {value}\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="min_paragraph_chars must be a non-negative integer"):
         load_config(tmp_path)
 
@@ -165,5 +165,5 @@ def test_min_paragraph_chars_accepts_zero(tmp_path: Path):
     On failure, first check:
         - The ``minimum = 0`` branch of _require_bounded_int
     """
-    (tmp_path / "doc_sentinel.toml").write_text("min_paragraph_chars = 0\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text("min_paragraph_chars = 0\n", encoding="utf-8")
     assert load_config(tmp_path).min_paragraph_chars == 0

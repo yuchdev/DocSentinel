@@ -164,7 +164,7 @@ def test_detect_respects_docsig_paths(asset_case: Callable[[str, str], AssetCase
         - Recent changes in code paths exercised by detectors signatures ds204
     """
     case = asset_case("ds204", "docsig_paths_selection")
-    case.path("doc_sentinel.toml").write_text('docsig_paths = ["lib"]\n', encoding="utf-8")
+    case.path("docsentinel.toml").write_text('docsig_paths = ["lib"]\n', encoding="utf-8")
 
     findings = signatures.detect(case.root, ())
 

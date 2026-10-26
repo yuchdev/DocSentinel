@@ -57,7 +57,7 @@ def test_standalone_doc_sentinel_toml_top_level_keys(tmp_path: Path) :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text('select = ["DS1"]\n', encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text('select = ["DS1"]\n', encoding="utf-8")
 
     assert load_config(tmp_path).select == ("DS1",)
 
@@ -108,6 +108,32 @@ def test_standalone_file_wins_over_pyproject(tmp_path: Path) :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
+    (tmp_path / "docsentinel.toml").write_text('profile = "deep"\n', encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.doc_sentinel]\nprofile = "standard"\n',
+        encoding="utf-8",
+    )
+
+    assert load_config(tmp_path).profile == "deep"
+
+
+def test_underscored_doc_sentinel_toml_alias_is_discovered(tmp_path: Path) :
+    """
+    [Unit] config: verifies the doc_sentinel.toml alias is discovered and wins over pyproject.
+
+    Scenario:
+        Given only doc_sentinel.toml (and a pyproject.toml) at the scan root
+        When load_config discovers the configuration
+        Then the alias file is used exactly like docsentinel.toml.
+
+    Boundaries:
+        - Focus: legacy filename alias
+        - Fixtures/params: tmp_path
+        - Scope: discovery in config only
+
+    On failure, first check:
+        - STANDALONE_CONFIG_NAMES in docsentinel.config
+    """
     (tmp_path / "doc_sentinel.toml").write_text('profile = "deep"\n', encoding="utf-8")
     (tmp_path / "pyproject.toml").write_text(
         '[tool.doc_sentinel]\nprofile = "standard"\n',
@@ -115,6 +141,30 @@ def test_standalone_file_wins_over_pyproject(tmp_path: Path) :
     )
 
     assert load_config(tmp_path).profile == "deep"
+
+
+def test_both_standalone_config_names_is_ambiguous(tmp_path: Path) :
+    """
+    [Unit] config: verifies two standalone config files in one root fail closed.
+
+    Scenario:
+        Given both docsentinel.toml and doc_sentinel.toml at the scan root
+        When load_config discovers the configuration
+        Then ConfigError names both files instead of silently choosing one.
+
+    Boundaries:
+        - Focus: ambiguity between the preferred name and its alias
+        - Fixtures/params: tmp_path
+        - Scope: discovery in config only
+
+    On failure, first check:
+        - The both-files check in load_config
+    """
+    (tmp_path / "docsentinel.toml").write_text('profile = "deep"\n', encoding="utf-8")
+    (tmp_path / "doc_sentinel.toml").write_text('profile = "standard"\n', encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="docsentinel.toml and doc_sentinel.toml"):
+        load_config(tmp_path)
 
 
 def test_pyproject_without_tool_doc_sentinel_table_is_defaults(tmp_path: Path) :
@@ -167,7 +217,7 @@ def test_malformed_select_entry_raises(tmp_path: Path, selector: str) :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         f"select = [{selector}]\n",
         encoding="utf-8",
     )
@@ -195,7 +245,7 @@ def test_select_entry_for_unregistered_rule_still_loads(tmp_path: Path) :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text('select = ["DS999"]\n', encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text('select = ["DS999"]\n', encoding="utf-8")
 
     assert load_config(tmp_path).select == ("DS999",)
 
@@ -306,7 +356,7 @@ def test_standalone_doc_sentinel_toml_baseline_setting(tmp_path: Path) :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text('baseline = ".docsentinel-baseline.json"\n', encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text('baseline = ".docsentinel-baseline.json"\n', encoding="utf-8")
     assert load_config(tmp_path).baseline == ".docsentinel-baseline.json"
 
 
@@ -359,7 +409,7 @@ def test_invalid_baseline_setting_raises(tmp_path: Path, invalid_baseline: str) 
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         f"baseline = {invalid_baseline}\n",
         encoding="utf-8",
     )
@@ -408,7 +458,7 @@ def test_standalone_doc_sentinel_toml_max_grade_level_setting(tmp_path: Path) :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text("max_grade_level = 10.5\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text("max_grade_level = 10.5\n", encoding="utf-8")
     assert load_config(tmp_path).max_grade_level == 10.5
 
 
@@ -461,7 +511,7 @@ def test_invalid_max_grade_level_setting_raises(tmp_path: Path, invalid_grade: s
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         f"max_grade_level = {invalid_grade}\n",
         encoding="utf-8",
     )
@@ -510,7 +560,7 @@ def test_standalone_doc_sentinel_toml_duplicate_similarity_setting(tmp_path: Pat
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text("duplicate_similarity = 0.9\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text("duplicate_similarity = 0.9\n", encoding="utf-8")
     assert load_config(tmp_path).duplicate_similarity == 0.9
 
 
@@ -560,7 +610,7 @@ def test_duplicate_similarity_out_of_range_raises(tmp_path: Path, invalid_simila
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         f"duplicate_similarity = {invalid_similarity}\n",
         encoding="utf-8",
     )
@@ -591,7 +641,7 @@ def test_duplicate_similarity_non_number_raises(tmp_path: Path, invalid_similari
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         f"duplicate_similarity = {invalid_similarity}\n",
         encoding="utf-8",
     )
@@ -640,7 +690,7 @@ def test_standalone_doc_sentinel_toml_min_information_score_setting(tmp_path: Pa
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text("min_information_score = 0.25\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text("min_information_score = 0.25\n", encoding="utf-8")
     assert load_config(tmp_path).min_information_score == 0.25
 
 
@@ -690,7 +740,7 @@ def test_min_information_score_out_of_range_raises(tmp_path: Path, invalid_score
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         f"min_information_score = {invalid_score}\n",
         encoding="utf-8",
     )
@@ -721,7 +771,7 @@ def test_min_information_score_non_number_raises(tmp_path: Path, invalid_score: 
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         f"min_information_score = {invalid_score}\n",
         encoding="utf-8",
     )
@@ -770,7 +820,7 @@ def test_standalone_doc_sentinel_toml_docsig_paths_setting(tmp_path: Path) :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text('docsig_paths = ["lib", "scripts"]\n', encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text('docsig_paths = ["lib", "scripts"]\n', encoding="utf-8")
     assert load_config(tmp_path).docsig_paths == ("lib", "scripts")
 
 
@@ -823,7 +873,7 @@ def test_docsig_paths_non_list_raises(tmp_path: Path, invalid_paths: str) :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         f"docsig_paths = {invalid_paths}\n",
         encoding="utf-8",
     )
@@ -854,7 +904,7 @@ def test_docsig_paths_empty_string_entry_raises(tmp_path: Path, empty_entry: str
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         f"docsig_paths = {empty_entry}\n",
         encoding="utf-8",
     )
@@ -885,7 +935,7 @@ def test_docsig_paths_non_string_entry_raises(tmp_path: Path, non_string_entry: 
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         f"docsig_paths = {non_string_entry}\n",
         encoding="utf-8",
     )
@@ -934,7 +984,7 @@ def test_standalone_doc_sentinel_toml_deep_confirm_setting(tmp_path: Path) :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text("deep_confirm = true\n", encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text("deep_confirm = true\n", encoding="utf-8")
     assert load_config(tmp_path).deep_confirm is True
 
 
@@ -987,7 +1037,7 @@ def test_deep_confirm_non_bool_raises(tmp_path: Path, invalid_confirm: str) :
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by config
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         f"deep_confirm = {invalid_confirm}\n",
         encoding="utf-8",
     )

@@ -640,7 +640,7 @@ def test_cli_scan_maps_readiness_error_to_exit_two(tmp_path: Path, monkeypatch: 
     [Unit] detectors navigation: verifies the CLI maps the readiness error to exit 2 (R3).
 
     Scenario:
-        Given DS112 temporarily registered and a standalone doc_sentinel.toml configuring a
+        Given DS112 temporarily registered and a standalone docsentinel.toml configuring a
             missing navigation index
         When the scan CLI command runs with JSON output
         Then it returns exit code 2 and prints a "Scan failed" line, with no resolved absolute
@@ -658,7 +658,7 @@ def test_cli_scan_maps_readiness_error_to_exit_two(tmp_path: Path, monkeypatch: 
     monkeypatch.setitem(rules.RULES, "DS112", nav.DS112)
     monkeypatch.setitem(rules.ANALYZERS, "DS112", nav.detect)
     _write(tmp_path, "README.md", "# docs\n")
-    _write(tmp_path, "doc_sentinel.toml", 'profile = "fast"\nnavigation_indexes = ["docs/missing.md"]\n')
+    _write(tmp_path, "docsentinel.toml", 'profile = "fast"\nnavigation_indexes = ["docs/missing.md"]\n')
     code = cli.main(["scan", str(tmp_path), "--format", "json"])
     captured = capsys.readouterr()
     assert code == 2

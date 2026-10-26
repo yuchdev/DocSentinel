@@ -16,17 +16,22 @@ Options are set in the same places as all other DocSentinel keys:
 
 1. A `Config` object passed directly to `scan()` in the Python API (bypasses
    `load_config` validation; the caller is responsible for valid values).
-2. `doc_sentinel.toml` at the scan root (keys at the top level — no table
-   header).
+2. `docsentinel.toml` at the scan root (keys at the top level — no table
+   header). `doc_sentinel.toml` is accepted as an equivalent alias.
 3. `[tool.doc_sentinel]` in `pyproject.toml` at the scan root.
 
-When both `doc_sentinel.toml` and `pyproject.toml` exist, `doc_sentinel.toml`
-wins and `pyproject.toml` is ignored. All options are validated on every
+When a standalone file (`docsentinel.toml` or `doc_sentinel.toml`) and
+`pyproject.toml` both exist, the standalone file wins and `pyproject.toml` is
+ignored. Having both `docsentinel.toml` and `doc_sentinel.toml` in the same
+root is ambiguous: the load fails with exit code 2 and names both files, so
+keep only one. New projects should use `docsentinel.toml`, which is what
+`docsentinel init` creates (it refuses to run next to an existing
+`doc_sentinel.toml`). All options are validated on every
 config load regardless of the active profile; an invalid value makes even a
 fast scan fail with exit code 2.
 
 For a working annotated example of every option in this page, see
-[examples/doc_sentinel.toml](/examples/doc_sentinel.toml).
+[examples/docsentinel.toml](/examples/docsentinel.toml).
 
 ---
 

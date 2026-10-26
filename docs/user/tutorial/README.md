@@ -101,7 +101,7 @@ For complete CLI options and workflows, see the [CLI Tutorial](cli.md).
 
 ### 1. Initialize Configuration
 
-Generate a starter configuration file (`doc_sentinel.toml`):
+Generate a starter configuration file (`docsentinel.toml`):
 
 ```bash
 docsentinel init
@@ -226,9 +226,9 @@ print(f"Pending/Notices: {result.pending or result.notice}")
 
 ## Configuration
 
-DocSentinel loads configuration from either `doc_sentinel.toml` or `pyproject.toml` (under `[tool.doc_sentinel]`).
+DocSentinel loads configuration from either `docsentinel.toml` (the alias `doc_sentinel.toml` is also accepted; do not keep both in one directory) or `pyproject.toml` (under `[tool.doc_sentinel]`).
 
-### Example `doc_sentinel.toml`
+### Example `docsentinel.toml`
 
 ```toml
 profile = "fast"
@@ -276,7 +276,7 @@ docsentinel baseline --output .docsentinel-baseline.json
 
 ### 2. Subsequent Scans Filter Known Findings
 
-Configure `baseline = ".docsentinel-baseline.json"` in `doc_sentinel.toml` or pass `--baseline`:
+Configure `baseline = ".docsentinel-baseline.json"` in `docsentinel.toml` or pass `--baseline`:
 
 ```bash
 docsentinel scan --baseline .docsentinel-baseline.json

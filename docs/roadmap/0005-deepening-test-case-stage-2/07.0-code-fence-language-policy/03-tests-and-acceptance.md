@@ -32,7 +32,7 @@ uv run docsentinel rules
 uv run docsentinel scan . --profile fast --format json
 ```
 
-**Do not** force optional policy on repo-wide self-scan merely to obtain findings. Test opt-in policy with injected Config or per-case `doc_sentinel.toml`, maintaining existing app defaults.
+**Do not** force optional policy on repo-wide self-scan merely to obtain findings. Test opt-in policy with injected Config or per-case `docsentinel.toml`, maintaining existing app defaults.
 
 ## Acceptance
 

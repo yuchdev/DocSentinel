@@ -3,6 +3,14 @@
     "download_link": "https://packages-s3-useast1-any.s3.amazonaws.com/{package_name_dash}/{package_name_dash}-{version}-py3-none-any.whl"
   },
   "releases": {
+    "1.1.0": {
+      "release_notes": [
+        "Configuration discovery now accepts both docsentinel.toml and doc_sentinel.toml as the standalone config file; docsentinel.toml remains the preferred name.",
+        "Having both standalone files in one scan root is ambiguous and fails closed with a ConfigError (exit code 2) naming both files.",
+        "`docsentinel init` still creates docsentinel.toml but refuses to run next to an existing doc_sentinel.toml.",
+        "Documentation updated (configuration reference, tutorials, architecture, README) and new unit, integration and mock tests cover both names."
+      ]
+    },
     "1.0.0": {
       "release_notes": [
         "First stable release of DocSentinel, a deterministic-first documentation QA framework and Python library with one engine behind the CLI, the Python API and the pytest plugin.",

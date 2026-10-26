@@ -16,7 +16,7 @@ code task, so it has no "Symbols / fields" table.
 | Path | Action |
 |------|--------|
 | `.docsentinel-baseline.json` | Create (repo root) |
-| `doc_sentinel.toml` | Create (repo root) - `baseline = ".docsentinel-baseline.json"`, plus whatever `include`/`exclude` this repo's own scan needs (see Decision) |
+| `docsentinel.toml` | Create (repo root) - `baseline = ".docsentinel-baseline.json"`, plus whatever `include`/`exclude` this repo's own scan needs (see Decision) |
 | `docs/adr/0001-config-loading-via-layered-settings.md` | Modify - fix, don't baseline, its three already-known dangling links (see Decision) |
 | `.github/workflows/ci.yml` | Modify - the self-scan step becomes a real gate |
 | `docs/README.md` | Modify - add rows for the two new root files |
@@ -38,7 +38,7 @@ code task, so it has no "Symbols / fields" table.
   rather than fixed in this task - this task's job is to turn the gate on safely, not to do a
   full documentation audit in passing. Note the baseline's entry count in this task's own
   completion note in `status.md` so the backlog size is visible.
-- **Scan scope for this repo's own `doc_sentinel.toml`**: default `include`/`exclude` are
+- **Scan scope for this repo's own `docsentinel.toml`**: default `include`/`exclude` are
   probably already adequate (`*.md`/`**/*.md`, excluding `.git`/`.venv`/`node_modules`) - add
   `dist` to `exclude` (this repo's own `dist/` holds a built wheel/sdist, not docs) if discovery
   would otherwise descend into it. Verify by running the scan once before finalizing the file.
@@ -57,7 +57,7 @@ code task, so it has no "Symbols / fields" table.
    02.0-03.0 land, with no config file yet, to see raw findings.
 2. Fix the ADR 0001 dangling links per the Decision above.
 3. Re-run; confirm the only remaining findings are ones worth baselining rather than fixing now.
-4. Create `doc_sentinel.toml` per the Decision's scan-scope note.
+4. Create `docsentinel.toml` per the Decision's scan-scope note.
 5. Run `docsentinel baseline .` (Task 02's subcommand) to produce `.docsentinel-baseline.json`.
 6. Re-run `docsentinel scan .` and confirm exit code `0` (everything remaining is baselined).
 7. Update `.github/workflows/ci.yml` per the Decision.
@@ -81,5 +81,5 @@ code task, so it has no "Symbols / fields" table.
 - This task must not silently widen `exclude` to make inconvenient findings disappear instead of
   baselining them - `exclude` changes are for genuinely out-of-scope content (build artifacts,
   vendored files), baselining is for everything else.
-- Keep `doc_sentinel.toml` minimal - only the fields this repo's own scan actually needs
+- Keep `docsentinel.toml` minimal - only the fields this repo's own scan actually needs
   non-default values for; do not pre-populate `select`/`ignore` speculatively.

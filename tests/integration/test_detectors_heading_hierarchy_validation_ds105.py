@@ -6,7 +6,7 @@ checked-in expectation table (never against whatever the analyzer currently
 emits). Coverage spans the pure ``detect`` entry point, the shared ``scan``
 engine, ``select``/``ignore``, baseline suppression, the text/json/github
 reports, the CLI exit-code mapping for a warning rule, cross-rule isolation from
-DS101-DS103/DS109, config propagation through both ``doc_sentinel.toml`` and
+DS101-DS103/DS109, config propagation through both ``docsentinel.toml`` and
 ``[tool.doc_sentinel]``, and the linear-time requirement on adversarial
 (non-fenced) heading input.
 
@@ -592,10 +592,10 @@ def test_cli_rules_lists_ds105_under_fast(capsys: pytest.CaptureFixture[str]):
 
 def test_standalone_toml_warn_policy_propagates(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors heading hierarchy validation ds105: verifies doc_sentinel.toml multiple_h1_policy.
+    [Integration] detectors heading hierarchy validation ds105: verifies docsentinel.toml multiple_h1_policy.
 
     Scenario:
-        Given the two-H1 fixture with a standalone doc_sentinel.toml enabling multiple_h1_policy='warn'
+        Given the two-H1 fixture with a standalone docsentinel.toml enabling multiple_h1_policy='warn'
         When scan discovers that config (no injected Config)
         Then the loaded policy reaches DS105 and it reports the second H1 at line 5.
 
@@ -604,11 +604,11 @@ def test_standalone_toml_warn_policy_propagates(asset_case: Callable[[str, str],
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - Whether load_config reads multiple_h1_policy from doc_sentinel.toml
+        - Whether load_config reads multiple_h1_policy from docsentinel.toml
         - Whether the engine forwards the discovered Config to DS105
     """
     case = asset_case("ds105", "optional_multiple_h1_warning")
-    (case.root / "doc_sentinel.toml").write_text('profile = "fast"\nmultiple_h1_policy = "warn"\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text('profile = "fast"\nmultiple_h1_policy = "warn"\n', encoding="utf-8")
 
     result = scan(case.root)
 
@@ -619,10 +619,10 @@ def test_standalone_toml_warn_policy_propagates(asset_case: Callable[[str, str],
 
 def test_standalone_toml_first_heading_level_propagates(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors heading hierarchy validation ds105: verifies doc_sentinel.toml first_heading_level.
+    [Integration] detectors heading hierarchy validation ds105: verifies docsentinel.toml first_heading_level.
 
     Scenario:
-        Given the non-root-start fixture with a standalone doc_sentinel.toml setting first_heading_level=2
+        Given the non-root-start fixture with a standalone docsentinel.toml setting first_heading_level=2
         When scan discovers that config
         Then the H2 opening is accepted and DS105 reports nothing.
 
@@ -631,11 +631,11 @@ def test_standalone_toml_first_heading_level_propagates(asset_case: Callable[[st
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - Whether load_config reads first_heading_level from doc_sentinel.toml
+        - Whether load_config reads first_heading_level from docsentinel.toml
         - Whether the discovered level reaches the first-heading comparison
     """
     case = asset_case("ds105", "optional_nonroot_start")
-    (case.root / "doc_sentinel.toml").write_text('profile = "fast"\nfirst_heading_level = 2\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text('profile = "fast"\nfirst_heading_level = 2\n', encoding="utf-8")
 
     result = scan(case.root)
 

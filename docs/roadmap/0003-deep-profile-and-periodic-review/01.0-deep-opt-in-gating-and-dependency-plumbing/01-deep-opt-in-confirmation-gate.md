@@ -22,7 +22,7 @@ analyzers until it is set.
    1. CLI flag `--i-understand-deep-is-heuristic` on the `scan` subcommand (`action="store_true"`).
    2. Environment variable `DOCSENTINEL_DEEP_CONFIRM` set to a truthy value (`"1"`, `"true"`,
       `"yes"`, case-insensitive; anything else, including unset/empty, is not confirmed).
-   3. Config field `deep_confirm: bool = False` in `doc_sentinel.toml` / `[tool.doc_sentinel]`.
+   3. Config field `deep_confirm: bool = False` in `docsentinel.toml` / `[tool.doc_sentinel]`.
 2. **The gate only matters for `profile == "deep"`.** For `fast`/`standard`, `deep_confirm` and the
    flag/env are inert (parsed, allowed, ignored) - they never change a non-deep run. Setting the
    flag on a `fast` run is not an error; it simply has no effect.
@@ -83,7 +83,7 @@ analyzers until it is set.
 
 `tests/test_config.py` additions:
 - `test_deep_confirm_defaults_false` - `Config().deep_confirm is False`.
-- `test_deep_confirm_true_loads` - `doc_sentinel.toml` with `deep_confirm = true` → `True`.
+- `test_deep_confirm_true_loads` - `docsentinel.toml` with `deep_confirm = true` → `True`.
 - `test_deep_confirm_non_bool_raises` - `deep_confirm = "true"` (string) → `ConfigError`.
 - `test_deep_confirm_accepted_on_fast_profile` - `profile = "fast"` + `deep_confirm = true` loads
   without error (inert, not rejected).

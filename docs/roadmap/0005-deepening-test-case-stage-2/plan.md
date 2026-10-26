@@ -70,7 +70,7 @@ Source-of-truth precedence: current repository implementation after rebase, `imp
 - [ ] All **185 named** scenario directories exist, have Markdown contents, are tested by `asset_case`, assert specified CLEAN/FINDING/ERROR outcomes; >=3 CLEAN and >=3 FINDING in each `dsNNN` tree.
   Amended 2026-10-23: the matrix now has 191 scenarios (185 specified + 6 DS116 close-gate fixtures; see status.md)
 - [ ] Shared scanner behavior and exact one-based line/path mapping validated on CRLF, no-newline, fences, escapes and Unicode.
-- [ ] Config loads both standalone `doc_sentinel.toml` and `[tool.doc_sentinel]` and preserves strict unknown-key checks; optional rules are honest when disabled.
+- [ ] Config loads both standalone `docsentinel.toml` and `[tool.doc_sentinel]` and preserves strict unknown-key checks; optional rules are honest when disabled.
 - [ ] Scan selection/ignore, deterministic order, JSON/text/github output and baselines remain compatible.
 - [ ] Real unsafe paths and symlinks never accessed outside scan root; HTML/image refs do not cause network fetches or code execution.
 - [ ] CI runs the new rule fixture catalog plus unit/mock/integration/E2E; self-scan excludes intentionally invalid fixtures; standard/deep regressions remain green.

@@ -3,7 +3,7 @@
 ## Grounded baseline (master at planning time)
 
 - Repository: `yuchdev/DocSentinel`; master merge SHA: `04a3eb337f7b75d1783cd4a7f45da2c68528113b` (2026-10-14).
-- Python **3.12+**, `uv`, Hatchling. Config file is **`doc_sentinel.toml`**, pyproject namespace **`[tool.doc_sentinel]`**, import and CLI name **`docsentinel`**.
+- Python **3.12+**, `uv`, Hatchling. Config file is **`docsentinel.toml`**, pyproject namespace **`[tool.doc_sentinel]`**, import and CLI name **`docsentinel`**.
 - Rules already shipped: fast `DS101`, `DS102`, `DS103`; standard `DS201`–`DS204`; deep `DS301`. Milestones 0001–0003 marked complete.
 - Profiles are **exact, not cumulative**. `scan(profile=standard)` does not execute fast rules. Rule `select` / `ignore` uses existing prefix-or-exact resolution.
 - `Rule`, `RULES`, `ANALYZERS`, `Finding`, `ScanResult` are the shared contracts; status is not the same as zero findings. `Finding` currently includes `rule`, `path`, `message`, `severity`, `line`.
@@ -59,7 +59,7 @@ Decide one internal calling contract in Story 01.0 before writing detectors. Pre
 
 ## D. Config conventions
 
-- Add new flat validated config options to the existing `Config` dataclass and `_CONFIG_OPTIONS` allowlist; update `_load_toml_table`, standalone root config and `[tool.doc_sentinel]` parsing, README, and `examples/doc_sentinel.toml`.
+- Add new flat validated config options to the existing `Config` dataclass and `_CONFIG_OPTIONS` allowlist; update `_load_toml_table`, standalone root config and `[tool.doc_sentinel]` parsing, README, and `examples/docsentinel.toml`.
 - Reject unknown options (existing contract). Do not silently swallow syntax errors.
 - New optional checks that require a dictionary, explicit mapping or entrypoint must expose an honest *not evaluated* status when such prerequisites are absent; do not force a new setup burden on all existing users.
 - Use repo-relative paths resolved under scan root; prohibit `..` escapes, absolute external targets and symlink traversal for source/config mapping. Project code should be parsed, never imported or executed for analysis.

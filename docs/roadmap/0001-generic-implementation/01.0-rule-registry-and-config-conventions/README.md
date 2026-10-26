@@ -12,7 +12,7 @@ registers real detectors) - it is pure plumbing that Story 02.0 plugs into.
 | # | Task | Output |
 |---|------|--------|
 | 01 | [Rule registry](01-rule-registry.md) | `docsentinel/rules.py`: `Rule`, `RULES`, `register_rule` |
-| 02 | [Config conventions](02-config-conventions.md) | `pyproject.toml` `[tool.doc_sentinel]` / standalone `doc_sentinel.toml`, `select`/`ignore` fields |
+| 02 | [Config conventions](02-config-conventions.md) | `pyproject.toml` `[tool.doc_sentinel]` / standalone `docsentinel.toml`, `select`/`ignore` fields |
 | 03 | [Selection resolution](03-selection-resolution.md) | `effective_rules()`; `engine.scan()` filters `ANALYZERS` by it; `ANALYZERS` keyed by rule code |
 | 04 | [CLI & docs](04-cli-and-docs.md) | `--select`/`--ignore` flags, real `rules`/`init`/`doctor` output, docs refresh |
 

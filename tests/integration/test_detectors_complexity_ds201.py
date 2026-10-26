@@ -192,10 +192,10 @@ def test_detect_respects_custom_threshold_from_config(asset_case: Callable[[str,
     case = asset_case("ds201", "dense_document")
     documents = case.documents("dense.md")
 
-    case.path("doc_sentinel.toml").write_text("max_grade_level = 50.0\n", encoding="utf-8")
+    case.path("docsentinel.toml").write_text("max_grade_level = 50.0\n", encoding="utf-8")
     assert complexity.detect(case.root, documents) == ()
 
-    case.path("doc_sentinel.toml").write_text("max_grade_level = 10.0\n", encoding="utf-8")
+    case.path("docsentinel.toml").write_text("max_grade_level = 10.0\n", encoding="utf-8")
     findings = complexity.detect(case.root, documents)
     assert len(findings) == 1
     assert "exceeds threshold 10.0" in findings[0].message

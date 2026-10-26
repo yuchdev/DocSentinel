@@ -25,7 +25,7 @@ Coverage spans the pure ``detect``/``check_text`` entry points, the shared
 contains DS110, the ``DS1`` whole-fast-set prefix, and the negative ``DS2``),
 baseline suppression, the text/json/github reports, the CLI exit-code mapping for
 a warning rule, cross-rule isolation from DS101-DS106/DS109, config propagation
-through both ``doc_sentinel.toml`` and ``[tool.doc_sentinel]`` for all three DS110
+through both ``docsentinel.toml`` and ``[tool.doc_sentinel]`` for all three DS110
 options (including a multi-entry allowlist, label case sensitivity, and invalid
 values raising :class:`ConfigError`), a hostile-info-string output-injection
 regression, and the linear-time requirement on both single-line and multi-line
@@ -579,7 +579,7 @@ def test_cli_fast_json_scan_reports_ds110_warning_and_exit_zero(
     [Integration] detectors code fence language policy ds110: verifies the CLI fast json warning path.
 
     Scenario:
-        Given a finding scenario carrying a doc_sentinel.toml that enables the policy, scanned via
+        Given a finding scenario carrying a docsentinel.toml that enables the policy, scanned via
         the CLI with --profile fast --format json
         When the command runs without --strict
         Then it prints a JSON report containing the DS110 warning at line 3 and exits 0,
@@ -591,10 +591,10 @@ def test_cli_fast_json_scan_reports_ds110_warning_and_exit_zero(
 
     On failure, first check:
         - The CLI exit-code mapping for warning-severity findings
-        - Whether the discovered doc_sentinel.toml enabled require_fence_languages
+        - Whether the discovered docsentinel.toml enabled require_fence_languages
     """
     case = asset_case("ds110", "unlabelled_python_example")
-    (case.root / "doc_sentinel.toml").write_text('profile = "fast"\nrequire_fence_languages = true\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text('profile = "fast"\nrequire_fence_languages = true\n', encoding="utf-8")
 
     exit_code = cli.main(["scan", str(case.root), "--profile", "fast", "--format", "json"])
 
@@ -650,7 +650,7 @@ def test_cli_fast_scan_on_clean_case_exits_zero(
     [Integration] detectors code fence language policy ds110: verifies a clean case exits zero.
 
     Scenario:
-        Given a clean scenario with the policy enabled via doc_sentinel.toml scanned via the CLI
+        Given a clean scenario with the policy enabled via docsentinel.toml scanned via the CLI
         When the command runs under the fast profile
         Then no finding is reported and the process exits 0.
 
@@ -663,7 +663,7 @@ def test_cli_fast_scan_on_clean_case_exits_zero(
         - The CLI exit-code mapping when no finding exists
     """
     case = asset_case("ds110", "python_fence_label")
-    (case.root / "doc_sentinel.toml").write_text('profile = "fast"\nrequire_fence_languages = true\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text('profile = "fast"\nrequire_fence_languages = true\n', encoding="utf-8")
 
     exit_code = cli.main(["scan", str(case.root), "--profile", "fast"])
 
@@ -697,11 +697,11 @@ def test_cli_rules_lists_ds110_under_fast(capsys: pytest.CaptureFixture[str]):
 
 def test_standalone_toml_require_fence_languages_propagates(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors code fence language policy ds110: verifies doc_sentinel.toml require_fence_languages.
+    [Integration] detectors code fence language policy ds110: verifies docsentinel.toml require_fence_languages.
 
     Scenario:
         Given the unlabelled_python_example fixture scanned first with no config and then with a
-        standalone doc_sentinel.toml setting require_fence_languages=true
+        standalone docsentinel.toml setting require_fence_languages=true
         When scan discovers that config (no injected Config)
         Then the default scan reports nothing (policy off) while the opt-in config reaches DS110 and
         it flags the unlabelled fence at line 3.
@@ -711,13 +711,13 @@ def test_standalone_toml_require_fence_languages_propagates(asset_case: Callable
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - Whether load_config reads require_fence_languages from doc_sentinel.toml
+        - Whether load_config reads require_fence_languages from docsentinel.toml
         - Whether the engine forwards the discovered Config to DS110
     """
     case = asset_case("ds110", "unlabelled_python_example")
     assert _ds110(scan(case.root).findings) == ()
 
-    (case.root / "doc_sentinel.toml").write_text('profile = "fast"\nrequire_fence_languages = true\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text('profile = "fast"\nrequire_fence_languages = true\n', encoding="utf-8")
 
     assert [finding.line for finding in _ds110(scan(case.root).findings)] == [3]
 
@@ -751,11 +751,11 @@ def test_pyproject_table_require_fence_languages_propagates(asset_case: Callable
 
 def test_standalone_toml_allow_unlabelled_empty_fences_propagates(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors code fence language policy ds110: verifies doc_sentinel.toml empty-fence exemption.
+    [Integration] detectors code fence language policy ds110: verifies docsentinel.toml empty-fence exemption.
 
     Scenario:
         Given the empty_fence_exemption fixture (a closed empty fence) with a standalone
-        doc_sentinel.toml enabling the policy and then turning the empty-fence exemption off
+        docsentinel.toml enabling the policy and then turning the empty-fence exemption off
         When scan discovers each config
         Then the default exemption leaves the empty fence clean, while allow_unlabelled_empty_fences
         =false reclassifies it as an unlabelled fence and DS110 reports it at line 3.
@@ -765,14 +765,14 @@ def test_standalone_toml_allow_unlabelled_empty_fences_propagates(asset_case: Ca
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - Whether load_config reads allow_unlabelled_empty_fences from doc_sentinel.toml
+        - Whether load_config reads allow_unlabelled_empty_fences from docsentinel.toml
         - Whether the value reaches the empty-fence branch of _fence_finding
     """
     case = asset_case("ds110", "empty_fence_exemption")
-    (case.root / "doc_sentinel.toml").write_text('profile = "fast"\nrequire_fence_languages = true\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text('profile = "fast"\nrequire_fence_languages = true\n', encoding="utf-8")
     assert _ds110(scan(case.root).findings) == ()
 
-    (case.root / "doc_sentinel.toml").write_text(
+    (case.root / "docsentinel.toml").write_text(
         'profile = "fast"\nrequire_fence_languages = true\nallow_unlabelled_empty_fences = false\n',
         encoding="utf-8",
     )
@@ -809,11 +809,11 @@ def test_pyproject_table_allow_unlabelled_empty_fences_propagates(asset_case: Ca
 
 def test_standalone_toml_allowed_fence_languages_allowlist_propagates(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors code fence language policy ds110: verifies doc_sentinel.toml multi-entry allowlist.
+    [Integration] detectors code fence language policy ds110: verifies docsentinel.toml multi-entry allowlist.
 
     Scenario:
         Given the custom_language_allowed fixture (a `mermaid` fence) and the unknown_language_optin
-        fixture (a `ruby` fence), each with a standalone doc_sentinel.toml declaring a multi-entry
+        fixture (a `ruby` fence), each with a standalone docsentinel.toml declaring a multi-entry
         allowlist that lists mermaid but not ruby
         When scan discovers each config
         Then the mermaid fence passes the allowlist (clean) and the ruby fence is flagged at line 3,
@@ -824,7 +824,7 @@ def test_standalone_toml_allowed_fence_languages_allowlist_propagates(asset_case
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - Whether load_config parses allowed_fence_languages as a string list from doc_sentinel.toml
+        - Whether load_config parses allowed_fence_languages as a string list from docsentinel.toml
         - Whether allowlist membership reaches _fence_finding
     """
     allowed = (
@@ -832,11 +832,11 @@ def test_standalone_toml_allowed_fence_languages_allowlist_propagates(asset_case
     )
 
     permitted = asset_case("ds110", "custom_language_allowed")
-    (permitted.root / "doc_sentinel.toml").write_text(allowed, encoding="utf-8")
+    (permitted.root / "docsentinel.toml").write_text(allowed, encoding="utf-8")
     assert _ds110(scan(permitted.root).findings) == ()
 
     rejected = asset_case("ds110", "unknown_language_optin")
-    (rejected.root / "doc_sentinel.toml").write_text(allowed, encoding="utf-8")
+    (rejected.root / "docsentinel.toml").write_text(allowed, encoding="utf-8")
     flagged = _ds110(scan(rejected.root).findings)
     assert [finding.line for finding in flagged] == [3]
     assert "'ruby'" in flagged[0].message
@@ -915,7 +915,7 @@ def test_invalid_ds110_option_raises_config_error(option: str, value: str, asset
     [Integration] detectors code fence language policy ds110: verifies invalid options are rejected.
 
     Scenario:
-        Given a doc_sentinel.toml that sets one DS110 option to an invalid value (a non-boolean for
+        Given a docsentinel.toml that sets one DS110 option to an invalid value (a non-boolean for
         the two flags or a bare string where an allowlist list is required)
         When scan loads that config
         Then a ConfigError naming the offending option is raised rather than silently coercing it.
@@ -929,13 +929,13 @@ def test_invalid_ds110_option_raises_config_error(option: str, value: str, asset
         - Whether an invalid value was coerced instead of raising
     """
     case = asset_case("ds110", "unlabelled_python_example")
-    (case.root / "doc_sentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
 
     with pytest.raises(ConfigError, match=option):
         scan(case.root)
 
 
-@pytest.mark.parametrize("config_file", ["doc_sentinel.toml", "pyproject.toml"])
+@pytest.mark.parametrize("config_file", ["docsentinel.toml", "pyproject.toml"])
 def test_allowlist_entry_with_whitespace_is_rejected_through_config_files(
     config_file: str,
     asset_case: Callable[[str, str], AssetCase],
@@ -944,7 +944,7 @@ def test_allowlist_entry_with_whitespace_is_rejected_through_config_files(
     [Integration] detectors code fence language policy ds110: verifies whitespace allowlist entries are rejected.
 
     Scenario:
-        Given a committed fixture whose config (a standalone doc_sentinel.toml or a
+        Given a committed fixture whose config (a standalone docsentinel.toml or a
         [tool.doc_sentinel] table) declares an allowed_fence_languages entry containing a space
         When scan loads that config
         Then a ConfigError about single-token entries is raised through both config-file forms,
@@ -960,7 +960,7 @@ def test_allowlist_entry_with_whitespace_is_rejected_through_config_files(
         - Whether the table/standalone loaders route allowed_fence_languages through that validator
     """
     case = asset_case("ds110", "unlabelled_python_example")
-    if config_file == "doc_sentinel.toml":
+    if config_file == "docsentinel.toml":
         body = 'profile = "fast"\nrequire_fence_languages = true\nallowed_fence_languages = ["python bash"]\n'
     else:
         body = (

@@ -42,7 +42,7 @@ resolved absolute path reaches a report sink (R6).
 The file also exercises ``select``/``ignore`` (exact and the ``DS11``/``DS1``/``DS2``
 prefixes); baseline round-trips; text/json/github report stability; the CLI warning and
 readiness exit paths; ``docsentinel rules``/``doctor`` surfacing of the opt-in marker; the
-four deprecated options through both ``doc_sentinel.toml`` and ``[tool.doc_sentinel]``
+four deprecated options through both ``docsentinel.toml`` and ``[tool.doc_sentinel]``
 including invalid values; token boundaries, inline-code/comment masking, multi-word
 adjacency, NFC equivalence, regex-metacharacter literalness and the archive ``scope``
 exemption through the engine; CRLF line fidelity; an invalid-UTF-8 and an unreadable
@@ -428,7 +428,7 @@ def test_cli_readiness_error_exits_two_without_report_or_absolute_path(
     [Integration] detectors deprecated references ds115: verifies the CLI maps each ERROR to exit 2.
 
     Scenario:
-        Given an ERROR ds115 scenario carrying a doc_sentinel.toml that configures the offending mapping,
+        Given an ERROR ds115 scenario carrying a docsentinel.toml that configures the offending mapping,
             scanned via the CLI with --profile fast --format json
         When the command runs
         Then it returns exit code 2, prints a "Scan failed" line to stderr with no resolved absolute root and
@@ -444,7 +444,7 @@ def test_cli_readiness_error_exits_two_without_report_or_absolute_path(
     """
     loaded = asset_case("ds115", case)
     mapping_value = SETUP[case]["deprecated_references_file"]
-    (loaded.root / "doc_sentinel.toml").write_text(
+    (loaded.root / "docsentinel.toml").write_text(
         f'profile = "fast"\ndeprecated_references_file = "{mapping_value}"\n', encoding="utf-8"
     )
 
@@ -584,7 +584,7 @@ def test_cli_fast_json_scan_reports_ds115_warning_and_exits_zero(
     [Integration] detectors deprecated references ds115: verifies the CLI fast json warning path.
 
     Scenario:
-        Given the deprecated_module_in_prose fixture carrying a doc_sentinel.toml that configures the mapping,
+        Given the deprecated_module_in_prose fixture carrying a docsentinel.toml that configures the mapping,
             scanned via the CLI with --profile fast --format json and no --strict
         When the command runs
         Then it prints a JSON report containing the DS115 warning at line 3 and exits 0, because a bare warning
@@ -596,10 +596,10 @@ def test_cli_fast_json_scan_reports_ds115_warning_and_exits_zero(
 
     On failure, first check:
         - The CLI exit-code mapping for warning-severity findings
-        - Whether the discovered doc_sentinel.toml configured deprecated_references_file
+        - Whether the discovered docsentinel.toml configured deprecated_references_file
     """
     loaded = asset_case("ds115", "deprecated_module_in_prose")
-    (loaded.root / "doc_sentinel.toml").write_text(
+    (loaded.root / "docsentinel.toml").write_text(
         'profile = "fast"\ndeprecated_references_file = "mapping.toml"\n', encoding="utf-8"
     )
 
@@ -1087,7 +1087,7 @@ def test_chain_and_cycle_are_inert_through_detect(tmp_path: Path):
     assert sorted(finding.message.split("'")[1] for finding in findings) == ["alpha", "beta"]
 
 
-@pytest.mark.parametrize("config_file", ["doc_sentinel.toml", "pyproject.toml"])
+@pytest.mark.parametrize("config_file", ["docsentinel.toml", "pyproject.toml"])
 def test_deprecated_options_propagate_from_both_config_files(
     config_file: str,
     asset_case: Callable[[str, str], AssetCase],
@@ -1096,7 +1096,7 @@ def test_deprecated_options_propagate_from_both_config_files(
     [Integration] detectors deprecated references ds115: verifies the four options load from both files.
 
     Scenario:
-        Given the deprecated_casefolded_optin fixture carrying either a standalone doc_sentinel.toml or a
+        Given the deprecated_casefolded_optin fixture carrying either a standalone docsentinel.toml or a
             [tool.doc_sentinel] table that sets deprecated_references_file plus deprecated_case_sensitive=false,
             and then, in a second run, also turns deprecated_check_prose off
         When scan discovers each config (no injected Config)
@@ -1113,7 +1113,7 @@ def test_deprecated_options_propagate_from_both_config_files(
         - Whether the engine forwards the discovered Config to DS115
     """
     loaded = asset_case("ds115", "deprecated_casefolded_optin")
-    prefix = "" if config_file == "doc_sentinel.toml" else "[tool.doc_sentinel]\n"
+    prefix = "" if config_file == "docsentinel.toml" else "[tool.doc_sentinel]\n"
 
     (loaded.root / config_file).write_text(
         f'{prefix}profile = "fast"\ndeprecated_references_file = "mapping.toml"\ndeprecated_case_sensitive = false\n',
@@ -1151,7 +1151,7 @@ def test_invalid_deprecated_option_raises_config_error(
     [Integration] detectors deprecated references ds115: verifies invalid options are rejected.
 
     Scenario:
-        Given a doc_sentinel.toml that sets one deprecated option to an invalid value (a non-string or an
+        Given a docsentinel.toml that sets one deprecated option to an invalid value (a non-string or an
             escaping path for the file, or a non-boolean for a sub-check flag)
         When scan loads that config
         Then a ConfigError naming the offending option is raised rather than silently coercing it.
@@ -1165,7 +1165,7 @@ def test_invalid_deprecated_option_raises_config_error(
         - Whether an invalid value was coerced instead of raising
     """
     loaded = asset_case("ds115", "deprecated_module_in_prose")
-    (loaded.root / "doc_sentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
+    (loaded.root / "docsentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
 
     with pytest.raises(ConfigError, match="deprecated"):
         scan(loaded.root)
@@ -1749,7 +1749,7 @@ def test_cli_unknown_key_readiness_error_is_bounded_and_escaped(
 
     Scenario:
         Given a committed mapping carrying an unknown top-level TOML key whose unicode escapes decode to raw
-            ESC/BEL/CR/LF/NUL bytes and 10,000 characters, configured via doc_sentinel.toml and scanned via the
+            ESC/BEL/CR/LF/NUL bytes and 10,000 characters, configured via docsentinel.toml and scanned via the
             CLI under the fast profile with --format github
         When the command runs
         Then it returns exit 2, prints a single bounded "Scan failed" line to stderr with no raw control byte
@@ -1767,7 +1767,7 @@ def test_cli_unknown_key_readiness_error_is_bounded_and_escaped(
     hostile_key = r'"\u001b]0;PWNED\u0007\r\n::error::forged\u0000 ' + ("A" * 10_000) + r'" = true'
     (root / "mapping.toml").write_text(f"version = 1\n{hostile_key}\n", encoding="utf-8")
     (root / "README.md").write_text("# doc\n", encoding="utf-8")
-    (root / "doc_sentinel.toml").write_text(
+    (root / "docsentinel.toml").write_text(
         'profile = "fast"\ndeprecated_references_file = "mapping.toml"\n', encoding="utf-8"
     )
 
@@ -1813,7 +1813,7 @@ def test_deeply_nested_toml_mapping_fails_closed_through_scan_and_cli(
     with pytest.raises(ConfigError, match="could not be parsed"):
         scan(root, config=Config(profile="fast", select=("DS115",), deprecated_references_file="mapping.toml"))
 
-    (root / "doc_sentinel.toml").write_text(
+    (root / "docsentinel.toml").write_text(
         'profile = "fast"\ndeprecated_references_file = "mapping.toml"\n', encoding="utf-8"
     )
     exit_code = cli.main(["scan", str(root), "--profile", "fast", "--format", "json"])

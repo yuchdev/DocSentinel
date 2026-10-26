@@ -28,7 +28,7 @@ DS114 is a ``fast``-profile always-active rule at ``error`` severity with no opt
 marker, so a single collision makes the CLI exit 1 even without ``--strict``. The file
 also exercises the four typed options (``document_id_field``, ``document_id_scope``,
 ``document_id_case_sensitive``, ``document_id_required``) through both
-``doc_sentinel.toml`` and ``[tool.doc_sentinel]`` including invalid values; the
+``docsentinel.toml`` and ``[tool.doc_sentinel]`` including invalid values; the
 config-injection trust boundary (an injected invalid ``document_id_scope`` fails closed
 with a ``ConfigError`` rather than degrading to ``corpus``); ``select``/``ignore``
 (exact and the ``DS11``/``DS1``/``DS2`` prefixes); baseline round-trips;
@@ -576,7 +576,7 @@ def test_injected_invalid_scope_fails_closed_with_a_config_error(tmp_path: Path)
         document_ids.detect(tmp_path, (models.Document("a.md", 0),), Config(document_id_scope="sideways"))
 
 
-@pytest.mark.parametrize("config_file", ["doc_sentinel.toml", "pyproject.toml"])
+@pytest.mark.parametrize("config_file", ["docsentinel.toml", "pyproject.toml"])
 def test_case_sensitive_option_propagates_from_both_config_files(
     config_file: str,
     asset_case: Callable[[str, str], AssetCase],
@@ -586,7 +586,7 @@ def test_case_sensitive_option_propagates_from_both_config_files(
 
     Scenario:
         Given the casefold_ids_optin fixture (ids Alpha and alpha) carrying either a standalone
-            doc_sentinel.toml or a [tool.doc_sentinel] table that sets document_id_case_sensitive=false
+            docsentinel.toml or a [tool.doc_sentinel] table that sets document_id_case_sensitive=false
         When scan discovers that config (no injected Config)
         Then the case-insensitive policy collapses Alpha and alpha into one identity and flags b.md at line 6,
         proving the option loads and reaches DS114 through each config-file form, while the shipped
@@ -601,7 +601,7 @@ def test_case_sensitive_option_propagates_from_both_config_files(
         - The casefold branch selecting the comparison key in check_documents
     """
     case = asset_case("ds114", "casefold_ids_optin")
-    prefix = "" if config_file == "doc_sentinel.toml" else "[tool.doc_sentinel]\n"
+    prefix = "" if config_file == "docsentinel.toml" else "[tool.doc_sentinel]\n"
 
     (case.root / config_file).write_text(f'{prefix}profile = "fast"\n', encoding="utf-8")
     assert _ds114(scan(case.root).findings) == ()
@@ -613,7 +613,7 @@ def test_case_sensitive_option_propagates_from_both_config_files(
     assert _triples(flagged) == [(2, "b.md", 'duplicate document id "alpha" (already declared in a.md)')]
 
 
-@pytest.mark.parametrize("config_file", ["doc_sentinel.toml", "pyproject.toml"])
+@pytest.mark.parametrize("config_file", ["docsentinel.toml", "pyproject.toml"])
 def test_required_option_propagates_from_both_config_files(
     config_file: str,
     asset_case: Callable[[str, str], AssetCase],
@@ -623,7 +623,7 @@ def test_required_option_propagates_from_both_config_files(
 
     Scenario:
         Given the missing_ids_required fixture (a.md declares no id, b.md declares one) carrying either a
-            standalone doc_sentinel.toml or a [tool.doc_sentinel] table that sets document_id_required=true
+            standalone docsentinel.toml or a [tool.doc_sentinel] table that sets document_id_required=true
         When scan discovers that config
         Then the required policy flags a.md alone with a no-identity finding (line None) and leaves b.md
         clean, proving the option loads through each config-file form, while the shipped default reports
@@ -638,7 +638,7 @@ def test_required_option_propagates_from_both_config_files(
         - The ABSENT + required branch in check_documents
     """
     case = asset_case("ds114", "missing_ids_required")
-    prefix = "" if config_file == "doc_sentinel.toml" else "[tool.doc_sentinel]\n"
+    prefix = "" if config_file == "docsentinel.toml" else "[tool.doc_sentinel]\n"
 
     (case.root / config_file).write_text(f'{prefix}profile = "fast"\n', encoding="utf-8")
     assert _ds114(scan(case.root).findings) == ()
@@ -648,14 +648,14 @@ def test_required_option_propagates_from_both_config_files(
     assert _triples(flagged) == [(None, "a.md", 'document declares no "id" identity')]
 
 
-@pytest.mark.parametrize("config_file", ["doc_sentinel.toml", "pyproject.toml"])
+@pytest.mark.parametrize("config_file", ["docsentinel.toml", "pyproject.toml"])
 def test_scope_option_propagates_from_both_config_files(config_file: str, tmp_path: Path):
     """
     [Integration] detectors document identity uniqueness ds114: verifies document_id_scope loads from both files.
 
     Scenario:
         Given a tree with the same id in x/a.md, x/b.md and y/c.md carrying either a standalone
-            doc_sentinel.toml or a [tool.doc_sentinel] table that selects DS114 and sets
+            docsentinel.toml or a [tool.doc_sentinel] table that selects DS114 and sets
             document_id_scope="directory"
         When scan discovers that config
         Then only x/b.md is reported (its directory namespace), proving document_id_scope loads through each
@@ -673,7 +673,7 @@ def test_scope_option_propagates_from_both_config_files(config_file: str, tmp_pa
     (tmp_path / "y").mkdir()
     for relative in ("x/a.md", "x/b.md", "y/c.md"):
         (tmp_path / relative).write_text("---\nid: shared\n---\n", encoding="utf-8")
-    prefix = "" if config_file == "doc_sentinel.toml" else "[tool.doc_sentinel]\n"
+    prefix = "" if config_file == "docsentinel.toml" else "[tool.doc_sentinel]\n"
 
     (tmp_path / config_file).write_text(f'{prefix}profile = "fast"\nselect = ["DS114"]\n', encoding="utf-8")
     assert [finding.path for finding in _ds114(scan(tmp_path).findings)] == ["x/b.md", "y/c.md"]
@@ -684,14 +684,14 @@ def test_scope_option_propagates_from_both_config_files(config_file: str, tmp_pa
     assert [finding.path for finding in _ds114(scan(tmp_path).findings)] == ["x/b.md"]
 
 
-@pytest.mark.parametrize("config_file", ["doc_sentinel.toml", "pyproject.toml"])
+@pytest.mark.parametrize("config_file", ["docsentinel.toml", "pyproject.toml"])
 def test_field_option_propagates_from_both_config_files(config_file: str, tmp_path: Path):
     """
     [Integration] detectors document identity uniqueness ds114: verifies document_id_field loads from both files.
 
     Scenario:
         Given two documents keyed by a custom slug frontmatter field with the same value, carrying either a
-            standalone doc_sentinel.toml or a [tool.doc_sentinel] table that selects DS114 and sets
+            standalone docsentinel.toml or a [tool.doc_sentinel] table that selects DS114 and sets
             document_id_field="slug"
         When scan discovers that config
         Then b.md is reported as a slug duplicate of a.md, proving the configured field name loads through
@@ -707,7 +707,7 @@ def test_field_option_propagates_from_both_config_files(config_file: str, tmp_pa
     """
     (tmp_path / "a.md").write_text("---\nslug: shared\n---\n", encoding="utf-8")
     (tmp_path / "b.md").write_text("---\nslug: shared\n---\n", encoding="utf-8")
-    prefix = "" if config_file == "doc_sentinel.toml" else "[tool.doc_sentinel]\n"
+    prefix = "" if config_file == "docsentinel.toml" else "[tool.doc_sentinel]\n"
 
     (tmp_path / config_file).write_text(f'{prefix}profile = "fast"\nselect = ["DS114"]\n', encoding="utf-8")
     assert _ds114(scan(tmp_path).findings) == ()
@@ -718,7 +718,7 @@ def test_field_option_propagates_from_both_config_files(config_file: str, tmp_pa
     assert [finding.path for finding in _ds114(scan(tmp_path).findings)] == ["b.md"]
 
 
-@pytest.mark.parametrize("config_file", ["doc_sentinel.toml", "pyproject.toml"])
+@pytest.mark.parametrize("config_file", ["docsentinel.toml", "pyproject.toml"])
 @pytest.mark.parametrize(
     ("option", "value"),
     [
@@ -738,7 +738,7 @@ def test_invalid_option_raises_config_error_from_both_config_files(
     [Integration] detectors document identity uniqueness ds114: verifies invalid options are rejected.
 
     Scenario:
-        Given a doc_sentinel.toml or [tool.doc_sentinel] table that sets one DS114 option to an invalid value
+        Given a docsentinel.toml or [tool.doc_sentinel] table that sets one DS114 option to an invalid value
             (an out-of-vocabulary scope, a field name with a space, or a non-boolean flag)
         When scan loads that config
         Then a ConfigError naming the offending option is raised rather than silently coercing it, for every
@@ -753,7 +753,7 @@ def test_invalid_option_raises_config_error_from_both_config_files(
         - Whether an invalid value was coerced instead of raising
     """
     case = asset_case("ds114", "distinct_frontmatter_ids")
-    prefix = "" if config_file == "doc_sentinel.toml" else "[tool.doc_sentinel]\n"
+    prefix = "" if config_file == "docsentinel.toml" else "[tool.doc_sentinel]\n"
     (case.root / config_file).write_text(f'{prefix}profile = "fast"\n{option} = {value}\n', encoding="utf-8")
 
     with pytest.raises(ConfigError, match=option):

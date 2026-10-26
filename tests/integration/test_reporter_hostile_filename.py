@@ -29,7 +29,7 @@ def _make_hostile_root(tmp_path: Path) -> Path:
     """
     root = tmp_path / "hostile_repo"
     root.mkdir()
-    (root / "doc_sentinel.toml").write_text('profile = "fast"\n', encoding="utf-8")
+    (root / "docsentinel.toml").write_text('profile = "fast"\n', encoding="utf-8")
     try:
         (root / _HOSTILE_NAME).write_text(
             "# Title\n\n[dead](./missing-target.md)\n",
@@ -115,7 +115,7 @@ def test_scan_failed_error_line_neutralises_control_bytes_from_config_keys(tmp_p
     [Integration] reporter hostile filename: verifies the CLI error lines neutralise untrusted text.
 
     Scenario:
-        Given a doc_sentinel.toml whose unknown option name carries an ANSI escape and a line feed
+        Given a docsentinel.toml whose unknown option name carries an ANSI escape and a line feed
         When the scan fails with the documented configuration error
         Then the exit code is 2 and stderr holds a visible escape instead of any raw control byte,
             so an error message built from untrusted text cannot spoof a terminal or a log line.
@@ -129,7 +129,7 @@ def test_scan_failed_error_line_neutralises_control_bytes_from_config_keys(tmp_p
     """
     root = tmp_path / "bad_config"
     root.mkdir()
-    (root / "doc_sentinel.toml").write_text('"evil\\u001b[31m\\u000a::error::x" = 1\n', encoding="utf-8")
+    (root / "docsentinel.toml").write_text('"evil\\u001b[31m\\u000a::error::x" = 1\n', encoding="utf-8")
     (root / "README.md").write_text("# T\n", encoding="utf-8")
 
     completed = subprocess.run(

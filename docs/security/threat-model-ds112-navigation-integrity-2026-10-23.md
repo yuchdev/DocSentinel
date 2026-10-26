@@ -20,7 +20,7 @@ index is a **config/readiness error**, never a silent clean result.
 The novel trust-boundary fact that dominates this model: unlike `DS113`/`DS116`,
 whose only hostile input is document content, `DS112` is also driven by
 **attacker-controlled configuration**. In CI and pre-commit DocSentinel runs on a
-contributor-controlled checkout, so `doc_sentinel.toml` / `[tool.doc_sentinel]`
+contributor-controlled checkout, so `docsentinel.toml` / `[tool.doc_sentinel]`
 (and therefore `navigation_indexes` and `navigation_required`) are untrusted
 input. A PR author chooses *which files DS112 opens*. That is a config-injection
 surface on top of the content surface. It maps to CWE-22 (path traversal),

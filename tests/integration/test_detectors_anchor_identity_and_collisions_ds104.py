@@ -7,7 +7,7 @@ emits). Coverage spans the pure ``detect`` entry point, the shared ``scan``
 engine, ``select``/``ignore`` (exact and prefix), baseline suppression, the
 text/json/github reports, the CLI exit-code mapping for a warning rule,
 cross-rule isolation from DS101-DS103/DS105/DS109, config propagation through
-both ``doc_sentinel.toml`` and ``[tool.doc_sentinel]`` (the ``anchor_collision_policy``
+both ``docsentinel.toml`` and ``[tool.doc_sentinel]`` (the ``anchor_collision_policy``
 and ``anchor_renderer`` options, policy ``off`` disabling the rule, and invalid
 values raising :class:`ConfigError`), and the linear-time requirement on
 adversarial (non-fenced) anchor and heading input.
@@ -616,10 +616,10 @@ def test_cli_rules_lists_ds104_under_fast(capsys: pytest.CaptureFixture[str]):
 
 def test_standalone_toml_policy_off_disables_ds104(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors anchor identity and collisions ds104: verifies doc_sentinel.toml anchor_collision_policy.
+    [Integration] detectors anchor identity and collisions ds104: verifies docsentinel.toml anchor_collision_policy.
 
     Scenario:
-        Given a finding fixture with a standalone doc_sentinel.toml setting anchor_collision_policy='off'
+        Given a finding fixture with a standalone docsentinel.toml setting anchor_collision_policy='off'
         When scan discovers that config (no injected Config)
         Then the loaded policy reaches DS104 and it reports nothing, proving the file-sourced option
         gates the rule off.
@@ -629,11 +629,11 @@ def test_standalone_toml_policy_off_disables_ds104(asset_case: Callable[[str, st
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - Whether load_config reads anchor_collision_policy from doc_sentinel.toml
+        - Whether load_config reads anchor_collision_policy from docsentinel.toml
         - Whether policy 'off' short-circuits DS104 before scanning
     """
     case = asset_case("ds104", "duplicate_explicit_ids")
-    (case.root / "doc_sentinel.toml").write_text(
+    (case.root / "docsentinel.toml").write_text(
         'profile = "fast"\nanchor_collision_policy = "off"\n', encoding="utf-8"
     )
 
@@ -733,7 +733,7 @@ def test_invalid_anchor_collision_policy_raises_config_error(asset_case: Callabl
     [Integration] detectors anchor identity and collisions ds104: verifies an invalid policy is rejected.
 
     Scenario:
-        Given a doc_sentinel.toml that sets anchor_collision_policy to an unrecognized value
+        Given a docsentinel.toml that sets anchor_collision_policy to an unrecognized value
         When scan loads that config
         Then a ConfigError is raised rather than silently falling back to a default.
 
@@ -746,7 +746,7 @@ def test_invalid_anchor_collision_policy_raises_config_error(asset_case: Callabl
         - Whether an invalid value was coerced instead of raising
     """
     case = asset_case("ds104", "duplicate_explicit_ids")
-    (case.root / "doc_sentinel.toml").write_text(
+    (case.root / "docsentinel.toml").write_text(
         'profile = "fast"\nanchor_collision_policy = "aggressive"\n', encoding="utf-8"
     )
 

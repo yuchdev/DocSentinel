@@ -21,7 +21,7 @@ DS108.
 
 Coverage follows the task: all 14 fixtures; the ``duplicate_reference_definitions``
 off/warn/error severity ladder; the ``unused_reference_definitions`` opt-in through
-an injected Config and a discovered ``doc_sentinel.toml``; select/ignore (exact and
+an injected Config and a discovered ``docsentinel.toml``; select/ignore (exact and
 prefix); baseline round-trips; text/json/github report stability; the CLI fast-json
 and strict exit paths; ``docsentinel rules``/``doctor`` surfacing; the edge
 dimensions (CRLF line fidelity, invalid UTF-8 surfacing, an unreadable file, a
@@ -375,10 +375,10 @@ def test_unused_reference_definitions_option_gates_the_finding(asset_case: Calla
 
 def test_unused_option_propagates_from_standalone_toml(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] detectors reference definition integrity ds108: verifies doc_sentinel.toml unused opt-in.
+    [Integration] detectors reference definition integrity ds108: verifies docsentinel.toml unused opt-in.
 
     Scenario:
-        Given the unused_definition_enabled fixture with a standalone doc_sentinel.toml setting
+        Given the unused_definition_enabled fixture with a standalone docsentinel.toml setting
             unused_reference_definitions=true
         When scan discovers that config (no injected Config)
         Then the loaded policy reaches DS108 and it reports the unused definition at line 5, proving the
@@ -389,11 +389,11 @@ def test_unused_option_propagates_from_standalone_toml(asset_case: Callable[[str
         - Fixtures/params: asset_case
 
     On failure, first check:
-        - Whether load_config reads unused_reference_definitions from doc_sentinel.toml
+        - Whether load_config reads unused_reference_definitions from docsentinel.toml
         - Whether the engine forwards the discovered Config to DS108
     """
     case = asset_case("ds108", "unused_definition_enabled")
-    (case.root / "doc_sentinel.toml").write_text(
+    (case.root / "docsentinel.toml").write_text(
         'profile = "fast"\nunused_reference_definitions = true\n', encoding="utf-8"
     )
 
@@ -441,7 +441,7 @@ def test_invalid_ds108_option_raises_config_error(option: str, value: str, asset
     [Integration] detectors reference definition integrity ds108: verifies invalid options are rejected.
 
     Scenario:
-        Given a doc_sentinel.toml that sets one DS108 option to an invalid value (an unknown enum member
+        Given a docsentinel.toml that sets one DS108 option to an invalid value (an unknown enum member
             or a non-boolean)
         When scan loads that config
         Then a ConfigError naming the offending option is raised rather than silently coercing it.
@@ -455,7 +455,7 @@ def test_invalid_ds108_option_raises_config_error(option: str, value: str, asset
         - Whether an invalid value was coerced instead of raising
     """
     case = asset_case("ds108", "missing_explicit_reference")
-    (case.root / "doc_sentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
+    (case.root / "docsentinel.toml").write_text(f'profile = "fast"\n{option} = {value}\n', encoding="utf-8")
 
     with pytest.raises(ConfigError, match=option):
         scan(case.root)

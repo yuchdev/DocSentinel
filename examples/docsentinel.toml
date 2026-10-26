@@ -4,7 +4,7 @@
 # Command-line flags (--profile, --select, --ignore, --baseline) override the values below.
 # The full option reference is in docs/user/reference/configuration.md.
 #
-# doc_sentinel.toml uses top-level keys (no table header).
+# docsentinel.toml uses top-level keys (no table header).
 # In pyproject.toml put the same keys under [tool.doc_sentinel] instead.
 
 # Which detector set to run. Profiles are exact, not cumulative:

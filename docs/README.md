@@ -3,12 +3,17 @@
 | Path | Purpose |
 |------|---------|
 | `docs/README.md` | This registry of documents under `docs/`. |
-| `doc_sentinel.toml` | Root DocSentinel configuration specifying scan exclusions and baseline path. |
+| `docsentinel.toml` | Root DocSentinel configuration specifying scan exclusions and baseline path. |
 | `.docsentinel-baseline.json` | Captured finding fingerprints for repository self-scan baseline suppression. |
 | `docs/architecture/README.md` | DocSentinel's design boundaries: config discovery and rule selection, the discovery → `engine.scan` → reporting flow, and the future `fast`/`standard`/`deep` rule namespaces (no detectors exist before Story 02.0). |
 | `docs/adr/README.md` | ADR conventions: MADR template, `000N-slug.md` naming, Mermaid assets. |
 | `docs/adr/template.md` | MADR skeleton used by `app-architect` and `/adr-write`. |
 | `docs/adr/0001-config-loading-via-layered-settings.md` | Illustrative example ADR (layered pydantic-settings). Not a real DocSentinel decision; DocSentinel loads config with `tomllib` in `config.py`. |
+| [`docs/adr/0002-fault-telemetry-event-emission.md`](adr/0002-fault-telemetry-event-emission.md) | ADR 0002 (Proposed): fault-telemetry event emission. The cross-tool contract is a written spec (not shared code); DocSentinel implements its own `FaultEvent` dataclass and `FaultEventSink` PEP 544 Protocol with flexibly pluggable sinks (JSONL/logging/SQLite/custom callable), the `generated_by_model` flag, and a single `engine.scan()` call site. |
+| [`docs/specs/fault-event-contract.md`](specs/fault-event-contract.md) | Canonical cross-tool fault-event contract shared with FlakeForge: event fields/types, `tier`/`outcome` vocabularies, `schema_version` and its bump policy, the `FaultEventSink` Protocol, and runnable `JsonlSink`/`LoggingSink`/`SqliteSink`/custom-sink examples. Shared as a document only — no shared code. |
+| [`src/docsentinel/fault_classes.md`](../src/docsentinel/fault_classes.md) | Hand-maintained rule-code → fault-class mapping table consumed by the telemetry adapter in `telemetry.py`; co-maintained with `rules.py`. |
+| [`docs/adr/0002-fault-telemetry-event-emission.md`](adr/0002-fault-telemetry-event-emission.md) | ADR 0002 (Proposed): unified fault-telemetry event emission shared with FlakeForge — shared `faultevents/` module, event schema and vocabulary, sink abstraction, the `generated_by_model` flag, and the single `engine.scan()` call site. |
+| [`src/docsentinel/fault_classes.md`](../src/docsentinel/fault_classes.md) | Hand-maintained rule-code → fault-class mapping table consumed by the telemetry adapter; co-maintained with `rules.py`. |
 | `docs/adr/assets/0001-config-source-precedence.mmd` | Mermaid diagram referenced by the example ADR 0001. |
 | `docs/agent/agents.md` | Reference table of the kit's Claude Code agents, their models and roles. |
 | `docs/agent/skills.md` | Reference table of the kit's skills and how to invoke them. |
@@ -20,11 +25,13 @@
 | `docs/dev/markdown_dialect.md` | Supported Markdown dialect for the shared fast scanner: supported constructs, intentional gaps, and per-rule dialect notes. |
 | [`docs/dev/markdown_scanner.md`](dev/markdown_scanner.md) | Developer guide for the shared `markdown_blocks.py` scanner. |
 | `docs/roadmap/README.md` | Roadmap conventions and the milestone index: the Milestone → Story → Task hierarchy. Start here to navigate into any milestone's `plan.md`, then its story `README.md`s, then task specs - this registry does not re-list every roadmap leaf file. |
-| `docs/roadmap/0001-generic-implementation/plan.md` | Milestone 0001: rule registry, `pyproject.toml`/`doc_sentinel.toml` config conventions with `select`/`ignore`, and the first `fast`-profile detectors (`DS101`-`DS103`) - the "first limited run." 4 stories, fully task-specced. |
+| `docs/roadmap/0001-generic-implementation/plan.md` | Milestone 0001: rule registry, `pyproject.toml`/`docsentinel.toml` config conventions with `select`/`ignore`, and the first `fast`-profile detectors (`DS101`-`DS103`) - the "first limited run." 4 stories, fully task-specced. |
 | `docs/roadmap/0002-standard-profile-detectors/plan.md` | Milestone 0002: `standard`-profile detectors - corpus duplication, low-information content, text complexity, and a `docsig`-based doc-vs-code signature check (`DS201`-`DS204`). 5 stories, fully task-specced. |
 | `docs/roadmap/0003-deep-profile-and-periodic-review/plan.md` | Milestone 0003: the `deep`-profile fact-contradiction candidate detector (`DS301`), its opt-in gating, and the periodic `docs-reviewer` agent/loop. 4 stories, fully task-specced. |
 | `docs/roadmap/0004-deepening-test-cases/plan.md` | Milestone 0004: specification only (DS107, DS111, DS119–DS123). Not implemented in this checkout; superseded in scope by Milestone 0005. |
 | `docs/roadmap/0005-deepening-test-case-stage-2/plan.md` | Milestone 0005: thirteen new fast rules DS104–DS118, 185 fixture scenarios, and the shared `markdown_blocks.py` scanner. |
+| [`docs/roadmap/0006-fault-telemetry/plan.md`](roadmap/0006-fault-telemetry/plan.md) | Milestone 0006 (spec only): fault-telemetry event emission. Written cross-tool contract (no shared code), DocSentinel-local `FaultEvent`/`FaultEventSink` Protocol, flexibly pluggable sinks (JSONL/logging/SQLite/custom callable), typed config/CLI surface, a conformance tripwire, and a single `engine.scan()` call site. 4 stories. |
+| [`docs/roadmap/0006-fault-telemetry/plan.md`](roadmap/0006-fault-telemetry/plan.md) | Milestone 0006 (spec only): unified fault-telemetry event emission — shared tool-agnostic `faultevents/` module, typed config/CLI surface, adapter, and a single `engine.scan()` call site. 4 stories. |
 | `docs/roadmap/0005-deepening-test-case-stage-2/status.md` | Milestone 0005 live completion status (story table, notes, and decisions). Ground truth for rulings and accepted limitations. |
 | `docs/roadmap/0005-deepening-test-case-stage-2/handoff-ds2xx-ds3xx.md` | Technical handoff for future DS2xx and DS3xx rules. |
 | `docs/roadmap/0005-deepening-test-case-stage-2/performance-report.md` | Story 15.0 Task 02 fast-profile performance comparison before (pre-0005, 3 fast rules) vs after (current, 16 fast rules): machine, corpus, median scan wall-clock, import cost, per-rule breakdown, and the flagged runtime growth. |

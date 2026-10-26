@@ -291,11 +291,11 @@ was found or not outside the root).
 | Source | Wins over |
 |--------|-----------|
 | `Config(...)` injected by a library caller | everything |
-| `doc_sentinel.toml` at the scan root | `pyproject.toml` |
+| `docsentinel.toml` at the scan root | `pyproject.toml` |
 | `[tool.doc_sentinel]` in `pyproject.toml` | defaults |
 | `Config` defaults | nothing |
 
-When both `doc_sentinel.toml` and `pyproject.toml` are present, `doc_sentinel.toml`
+When both `docsentinel.toml` and `pyproject.toml` are present, `docsentinel.toml`
 wins entirely; `pyproject.toml` is not read.
 
 ### Incomplete-vs-clean status

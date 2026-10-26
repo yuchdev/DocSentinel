@@ -2,7 +2,7 @@
 
 This sample document is available for a simple inventory demonstration. It also walks through five small
 examples of what DocSentinel reports. The settings they rely on are explained line by line in
-[the example configuration](../doc_sentinel.toml).
+[the example configuration](../docsentinel.toml).
 
 Run every command from the repository root. If `docsentinel` is not on your path, put `uv run` in front of it.
 To reproduce examples 2 to 4, save each snippet in the docs directory under the file name shown in the output

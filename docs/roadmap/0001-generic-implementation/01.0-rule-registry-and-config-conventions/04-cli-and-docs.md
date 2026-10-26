@@ -18,10 +18,10 @@ only makes that *infrastructure* real.
 |------|--------|
 | `src/docsentinel/cli.py` | Modify - `TEMPLATE`, `init`, `scan` argparse, `rules`, `doctor` |
 | `tests/test_pytest_plugin.py` | Check only - confirm it does not construct `Config(...)` positionally; fix if it does |
-| `tests/test_scan.py` | Modify - CLI-level tests for `--select`/`--ignore`; `init` test now asserts `doc_sentinel.toml` is created, not `docsentinel.toml` |
+| `tests/test_scan.py` | Modify - CLI-level tests for `--select`/`--ignore`; `init` test now asserts `docsentinel.toml` is created, not `docsentinel.toml` |
 | `docs/architecture/README.md` | Modify - document the config discovery order and rule-code namespace from Tasks 02-03 |
 | `docs/README.md` | Modify - update the `docs/roadmap/0001-*` rows (see Links) |
-| `examples/docs/guide.md` directory (`examples/`) | Modify - add an example `doc_sentinel.toml` next to the existing sample doc, showing `select`/`ignore` in use |
+| `examples/docs/guide.md` directory (`examples/`) | Modify - add an example `docsentinel.toml` next to the existing sample doc, showing `select`/`ignore` in use |
 
 ## Symbols / fields
 
@@ -30,7 +30,7 @@ only makes that *infrastructure* real.
 | Symbol | Change |
 |--------|--------|
 | `TEMPLATE` | Rewrite to the new top-level-key shape: `profile = "fast"`, `include = [...]`, `exclude = [...]`, `select = []`, `ignore = []` (no `[docsentinel]` header). |
-| `init` subcommand | Target file becomes `Path(args.root) / "doc_sentinel.toml"` (was `docsentinel.toml`). Still opens with mode `"x"` (unchanged - never overwrites). |
+| `init` subcommand | Target file becomes `Path(args.root) / "docsentinel.toml"` (was `docsentinel.toml`). Still opens with mode `"x"` (unchanged - never overwrites). |
 | `scan` subcommand | Add `scan_parser.add_argument("--select", type=str, default=None)` and the `--ignore` equivalent. Each is a comma-separated string, e.g. `--select DS1,DS203`; parse via `tuple(s.strip() for s in value.split(",") if s.strip())` when not `None`. |
 | CLI → `Config` override | Replace the existing `if args.profile: settings = Config(settings.include, settings.exclude, args.profile)` positional construction (broken by Task 02's new fields) with a keyword-argument rebuild that applies `--profile`, `--select`, and `--ignore` **only when each is explicitly given on the CLI** (each replaces, not merges with, the loaded config's value for that field - consistent with how `--profile` already behaves today). |
 | `rules` subcommand | Replace the hardcoded `print("Enabled rules: []\n...")` with: for each profile in `("fast", "standard", "deep")`, print the profile name and `rules_for_profile(profile)` (code + title), or `"(none registered)"` if empty. Import `rules_for_profile` from `docsentinel.rules`. |
@@ -46,7 +46,7 @@ only makes that *infrastructure* real.
   being used - assert this indirectly via a monkeypatched `scan()` capturing the `config` kwarg,
   or via `rules`/`doctor` output if that is simpler; either is acceptable as long as whitespace
   around commas is proven to be stripped.
-- `test_cli_ignore_flag_overrides_config_file` - a `doc_sentinel.toml` sets
+- `test_cli_ignore_flag_overrides_config_file` - a `docsentinel.toml` sets
   `ignore = ["DS101"]`; `--ignore DS2` on the CLI replaces it entirely (not additive) - assert
   the effective config's `ignore == ("DS2",)`, not `("DS101", "DS2")`.
 - `test_rules_command_lists_real_registry` - with no detectors registered (this milestone's
@@ -60,7 +60,7 @@ only makes that *infrastructure* real.
 - [ ] No remaining reference to `docsentinel.toml` (the old filename) or `[docsentinel]` (the old
       table name) anywhere in `src/`, `tests/`, or `examples/` - grep clean.
 - [ ] `docsentinel scan --select DS1 .` and `docsentinel scan --ignore DS1 .` both run without
-      error against a tree with no `doc_sentinel.toml` at all (CLI flags work with pure defaults,
+      error against a tree with no `docsentinel.toml` at all (CLI flags work with pure defaults,
       not only on top of an existing config file).
 - [ ] `docsentinel rules` and `docsentinel doctor` output is generated from `rules.rules_for_profile`
       calls, not a string literal - confirmed by code review, not just test behavior.

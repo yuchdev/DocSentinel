@@ -8,13 +8,13 @@ The `docsentinel` command-line tool provides fast, deterministic documentation l
 
 DocSentinel provides the following CLI subcommands:
 
-| Command | Purpose |
-|---------|---------|
-| `docsentinel scan` | Analyze Markdown documents and report findings |
+| Command                | Purpose                                                                 |
+|------------------------|-------------------------------------------------------------------------|
+| `docsentinel scan`     | Analyze Markdown documents and report findings                          |
 | `docsentinel baseline` | Capture current findings into a baseline file to suppress legacy issues |
-| `docsentinel init` | Create a starter `doc_sentinel.toml` configuration file |
-| `docsentinel rules` | List all available and active rules per profile |
-| `docsentinel doctor` | Diagnose environment readiness and optional dependency installations |
+| `docsentinel init`     | Create a starter `docsentinel.toml` configuration file                  |
+| `docsentinel rules`    | List all available and active rules per profile                         |
+| `docsentinel doctor`   | Diagnose environment readiness and optional dependency installations    |
 
 ---
 
@@ -45,24 +45,24 @@ Runs structural and reference rules. All rules use only the Python standard
 library. Sixteen rules are registered; twelve are evaluated by default (four are
 opt-in policies that are silent until their option is set):
 
-| Rule | Severity | Description | Opt-in option |
-|------|----------|-------------|---------------|
-| `DS101` | error | Dangling link or anchor (missing target file) | — |
-| `DS102` | warning | Stray HTML comment | — |
-| `DS103` | warning | Unresolvable path-like inline code span | — |
-| `DS104` | warning | Conflicting heading and explicit anchors | — |
-| `DS105` | warning | Heading-level skip or wrong first heading | — |
-| `DS106` | warning | Empty or contentless leaf section | — |
-| `DS108` | warning | Reference-style link definition integrity | — |
-| `DS109` | error | Malformed or unclosed fenced code block | — |
-| `DS110` | warning | Missing language label on a code fence | `require_fence_languages` |
-| `DS112` | warning | Declared documentation navigation integrity | `navigation_indexes` |
-| `DS113` | error | Missing local media or document asset | — |
-| `DS114` | error | Duplicate stable document identifier | — |
-| `DS115` | warning | Deprecated name or migrated reference | `deprecated_references_file` |
-| `DS116` | error | Reference escaping the documentation root | — |
-| `DS117` | warning | Malformed GFM pipe-table structure | — |
-| `DS118` | warning | Documentation file or directory naming violation | `documentation_naming` |
+| Rule    | Severity | Description                                      | Opt-in option                |
+|---------|----------|--------------------------------------------------|------------------------------|
+| `DS101` | error    | Dangling link or anchor (missing target file)    | —                            |
+| `DS102` | warning  | Stray HTML comment                               | —                            |
+| `DS103` | warning  | Unresolvable path-like inline code span          | —                            |
+| `DS104` | warning  | Conflicting heading and explicit anchors         | —                            |
+| `DS105` | warning  | Heading-level skip or wrong first heading        | —                            |
+| `DS106` | warning  | Empty or contentless leaf section                | —                            |
+| `DS108` | warning  | Reference-style link definition integrity        | —                            |
+| `DS109` | error    | Malformed or unclosed fenced code block          | —                            |
+| `DS110` | warning  | Missing language label on a code fence           | `require_fence_languages`    |
+| `DS112` | warning  | Declared documentation navigation integrity      | `navigation_indexes`         |
+| `DS113` | error    | Missing local media or document asset            | —                            |
+| `DS114` | error    | Duplicate stable document identifier             | —                            |
+| `DS115` | warning  | Deprecated name or migrated reference            | `deprecated_references_file` |
+| `DS116` | error    | Reference escaping the documentation root        | —                            |
+| `DS117` | warning  | Malformed GFM pipe-table structure               | —                            |
+| `DS118` | warning  | Documentation file or directory naming violation | `documentation_naming`       |
 
 ```bash
 docsentinel scan --profile fast
@@ -75,7 +75,7 @@ their enabling option. The scan notice reports exactly which ones are off:
 12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming).
 ```
 
-To enable an opt-in rule, set its option in `doc_sentinel.toml` (see
+To enable an opt-in rule, set its option in `docsentinel.toml` (see
 [Configuration Reference](../reference/configuration.md)):
 
 ```toml
@@ -190,11 +190,11 @@ docsentinel scan --format github
 
 ### Exit Code Rules
 
-| Exit Code | Meaning |
-|-----------|---------|
-| `0` | Clean run (no error-level findings, or deep advisory findings) |
-| `1` | One or more error-level findings detected (or any warnings when `--strict` is enabled) |
-| `2` | Configuration error, invalid CLI flags, or filesystem scan failure |
+| Exit Code | Meaning                                                                                |
+|-----------|----------------------------------------------------------------------------------------|
+| `0`       | Clean run (no error-level findings, or deep advisory findings)                         |
+| `1`       | One or more error-level findings detected (or any warnings when `--strict` is enabled) |
+| `2`       | Configuration error, invalid CLI flags, or filesystem scan failure                     |
 
 ### Strict Mode (`--strict`)
 
@@ -273,13 +273,13 @@ docsentinel rules
 
 ## Project Configuration (`docsentinel init`)
 
-Generate a starter `doc_sentinel.toml` configuration:
+Generate a starter `docsentinel.toml` configuration:
 
 ```bash
 docsentinel init
 ```
 
-Created `doc_sentinel.toml`:
+Created `docsentinel.toml`:
 ```toml
 profile = "fast"
 include = ["*.md", "**/*.md"]
@@ -299,5 +299,8 @@ ignore = []
 # min_paragraph_chars = 30        # DS202/DS203: skip paragraphs shorter than this
 ```
 
+`docsentinel init` refuses to run in a directory that already contains the
+equivalent alias `doc_sentinel.toml`, because keeping both files is ambiguous.
+
 For a comprehensive example of fast-profile policy options (DS104–DS118) with
-all defaults documented, see [examples/doc_sentinel.toml](/examples/doc_sentinel.toml).
+all defaults documented, see [examples/docsentinel.toml](/examples/docsentinel.toml).

@@ -2,7 +2,7 @@
 
 ## Documentation
 
-Update `README.md`, `docs/architecture/README.md`, `docs/roadmap/README.md`, `docs/user/tutorial/cli.md`, `docs/user/tutorial/library.md`, `tests/assets/README.md`, `examples/doc_sentinel.toml`, and rule catalog/help output as required. Explain each new rule's scope, supported constructs, limitations, severity, configuration, and the explicit/cumulative profile distinction (profiles are *exact*).
+Update `README.md`, `docs/architecture/README.md`, `docs/roadmap/README.md`, `docs/user/tutorial/cli.md`, `docs/user/tutorial/library.md`, `tests/assets/README.md`, `examples/docsentinel.toml`, and rule catalog/help output as required. Explain each new rule's scope, supported constructs, limitations, severity, configuration, and the explicit/cumulative profile distinction (profiles are *exact*).
 
 ## Security audit
 

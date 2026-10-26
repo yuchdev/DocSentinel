@@ -501,41 +501,35 @@ wheels = [
 
 [[package]]
 name = "docsentinel"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "docsig" },
     { name = "flakeforge" },
     { name = "release-saga" },
+    { name = "scikit-learn" },
     { name = "spacy" },
+    { name = "textacy" },
+    { name = "textstat" },
 ]
 
 [package.optional-dependencies]
-deep = [
-    { name = "spacy" },
-    { name = "textacy" },
-]
-standard = [
-    { name = "docsig" },
-    { name = "scikit-learn" },
-    { name = "textstat" },
-]
 test = [
     { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "docsig", marker = "extra == 'standard'", specifier = ">=0.96" },
+    { name = "docsig", specifier = ">=0.96" },
     { name = "flakeforge", specifier = "==1.1.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8,<10" },
     { name = "release-saga", specifier = "==1.2.0" },
-    { name = "scikit-learn", marker = "extra == 'standard'", specifier = ">=1.4" },
+    { name = "scikit-learn", specifier = ">=1.4" },
     { name = "spacy", specifier = ">=3.8.16" },
-    { name = "spacy", marker = "extra == 'deep'", specifier = ">=3.7" },
-    { name = "textacy", marker = "extra == 'deep'", specifier = ">=0.13" },
-    { name = "textstat", marker = "extra == 'standard'", specifier = ">=0.7" },
+    { name = "textacy", specifier = ">=0.13" },
+    { name = "textstat", specifier = ">=0.7" },
 ]
-provides-extras = ["test", "standard", "deep"]
+provides-extras = ["test", "fast", "standard", "deep"]
 
 [[package]]
 name = "docsig"

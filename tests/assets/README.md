@@ -23,7 +23,7 @@ tests/assets/
 - **Byte-exact.** Cases are copied verbatim into `tmp_path`. Findings assert line numbers and offsets, so do
   not reformat assets. Some cases intentionally have no trailing newline.
 - **Deliberately broken.** Assets contain dangling links, stray comments and wrong docstrings on purpose. They
-  are excluded from the repository self-scan (`doc_sentinel.toml`), ruff (`ruff.toml`) and flakeforge
+  are excluded from the repository self-scan (`docsentinel.toml`), ruff (`ruff.toml`) and flakeforge
   (`pyproject.toml`). Do not "fix" them.
 - **Compose, don't copy.** A scenario that spans rules (a fast-profile tree, a standard-profile corpus) loads
   several single-rule cases into one `tmp_path`. Give files distinct names so cases do not overwrite each other.

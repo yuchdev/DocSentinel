@@ -3,8 +3,9 @@
 **Package:** `docsentinel` | **Module root:** `src/docsentinel/` | **Config namespace:** `doc_sentinel`
 
 > Naming note: the distributed package, CLI, and import path are all `docsentinel` (one word,
-> no underscore). The **configuration namespace** - the `pyproject.toml` table and the standalone
-> config filename - is deliberately `doc_sentinel` (underscored) per `CLAUDE.md`'s explicit
+> no underscore). The **configuration namespace** - the `[tool.doc_sentinel]` table in `pyproject.toml` - is
+> deliberately `doc_sentinel` (underscored); the standalone config *file* was later renamed from
+> `doc_sentinel.toml` to `docsentinel.toml`, matching the package name, per `CLAUDE.md`'s explicit
 > convention. These are two different names for two different things; do not "fix" one to match
 > the other. See
 > [Milestone 0001's naming note](/docs/roadmap/0001-generic-implementation/plan.md) for the full

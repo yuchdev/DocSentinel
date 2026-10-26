@@ -10,7 +10,7 @@
 2. Add optional `changed_paths` context to `scan` without breaking caller signatures. The CLI will supply repeated `--changed-file PATH`, and pytest plugin/library callers may pass a tuple; default is *not supplied*, distinguishable from an explicitly supplied empty change set.
 3. Define safe in-process cache scopes, one per scan and root, so graph/symbol indexes may be shared across DS107/DS216/DS316. Never use a cache key consisting only of document filenames.
 4. Keep findings/report schema backward-compatible. For rule-specific unsupported/partial execution, prefer additive optional execution status metadata rather than overloading an empty findings tuple.
-5. Add both standalone and `[tool.doc_sentinel]` TOML tests for every new option. Current config file is `doc_sentinel.toml` (underscore).
+5. Add both standalone and `[tool.doc_sentinel]` TOML tests for every new option. Current config file is `docsentinel.toml` (underscore).
 
 ## Exact acceptance
 

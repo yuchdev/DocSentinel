@@ -28,16 +28,16 @@ You can set these keys in three places. The engine applies the following
 precedence (first match wins):
 
 1. A `Config` object passed directly in the Python API
-2. A **doc_sentinel.toml** file at the scan root (standalone)
+2. A **docsentinel.toml** file at the scan root (standalone)
 3. A `[tool.doc_sentinel]` table in **pyproject.toml** at the scan root
 
-When both **doc_sentinel.toml** and **pyproject.toml** exist at the scan root,
+When both **docsentinel.toml** and **pyproject.toml** exist at the scan root,
 the standalone file wins and **pyproject.toml** is not read. This behaviour is
 confirmed in the `load_config` function in the `docsentinel` package.
 
-### doc_sentinel.toml
+### docsentinel.toml
 
-Create or edit **doc_sentinel.toml** at the root of your repository. All keys
+Create or edit **docsentinel.toml** at the root of your repository. All keys
 are at the top level:
 
 ```toml
@@ -115,12 +115,12 @@ uv run docsentinel scan docs/ --profile standard --format text
 ```
 
 There are no CLI flags for the six threshold keys. To change a threshold for a
-one-off run, write a temporary **doc_sentinel.toml** at the target directory or
+one-off run, write a temporary **docsentinel.toml** at the target directory or
 pass a `Config` via the Python API.
 
 ### Scaffolded Defaults
 
-`docsentinel init` writes a **doc_sentinel.toml** with all six keys commented
+`docsentinel init` writes a **docsentinel.toml** with all six keys commented
 out at their defaults so you can see and uncomment exactly what to change:
 
 ```toml
@@ -632,7 +632,7 @@ Check the following in order:
 3. **Key name is spelled exactly.** Compare your config key character-for-character
    against the names in the [Key Reference](#key-reference) table. A misspelled
    key triggers the `Unknown config options` error at startup.
-4. **Standalone file is not shadowing pyproject.** If both **doc_sentinel.toml**
+4. **Standalone file is not shadowing pyproject.** If both **docsentinel.toml**
    and **pyproject.toml** exist at the scan root, the standalone file wins.
    Settings in **pyproject.toml** are silently ignored when the standalone file
    is present.

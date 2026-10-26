@@ -389,7 +389,7 @@ def test_config_and_pending_profile(tmp_path: Path):
     """
     (tmp_path / "a.md").write_text("x", encoding="utf-8")
     (tmp_path / "b.markdown").write_text("y", encoding="utf-8")
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         'profile = "deep"\ninclude = ["*.markdown"]\n',
         encoding="utf-8",
     )
@@ -427,7 +427,7 @@ def test_bad_config_fails_clearly(tmp_path: Path, contents: str):
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by scan
     """
-    (tmp_path / "doc_sentinel.toml").write_text(contents, encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text(contents, encoding="utf-8")
     with pytest.raises(ConfigError):
         load_config(tmp_path)
 
@@ -451,7 +451,7 @@ def test_invalid_utf8_config_raises_config_error(tmp_path: Path):
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by scan
     """
-    (tmp_path / "doc_sentinel.toml").write_bytes(b"\xff")
+    (tmp_path / "docsentinel.toml").write_bytes(b"\xff")
     with pytest.raises(ConfigError):
         load_config(tmp_path)
     with pytest.raises(ConfigError):
@@ -479,13 +479,209 @@ def test_init_creates_doc_sentinel_toml(tmp_path: Path):
     """
     assert main(["init", str(tmp_path)]) == 0
 
-    target = tmp_path / "doc_sentinel.toml"
+    target = tmp_path / "docsentinel.toml"
     assert target.is_file()
     initial_content = target.read_text(encoding="utf-8")
     assert load_config(tmp_path) == Config()
 
     assert main(["init", str(tmp_path)]) == 2
     assert target.read_text(encoding="utf-8") == initial_content
+
+
+def test_init_refuses_when_legacy_doc_sentinel_toml_exists(tmp_path: Path):
+    """
+    [Integration] scan: verifies init does not create a second config next to doc_sentinel.toml.
+
+    Scenario:
+        Given a directory that already holds the doc_sentinel.toml alias
+        When the init command runs there
+        Then it exits 2 and creates no docsentinel.toml, avoiding an ambiguous pair.
+
+    Boundaries:
+        - Focus: init versus the legacy config alias
+        - Fixtures/params: tmp_path
+        - Scope: CLI init only
+
+    On failure, first check:
+        - The legacy-file guard in _run_init
+    """
+    (tmp_path / "doc_sentinel.toml").write_text("", encoding="utf-8")
+
+    assert main(["init", str(tmp_path)]) == 2
+    assert not (tmp_path / "docsentinel.toml").exists()
+
+
+def test_init_defaults_to_current_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """
+    [Integration] scan: verifies init defaulting to the current directory.
+
+    Scenario:
+        Given a temporary directory layout for init defaulting to the current directory
+        When test_init_defaults_to_current_directory runs the init command
+        Then the expected outcome for init defaulting to the current directory is confirmed.
+
+    Boundaries:
+        - Focus: init defaulting to the current directory
+        - Fixtures/params: tmp_path, monkeypatch
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - Location resolution in cli.find_project_root and cli._run_init
+        - Fixture or parameter values used by this test
+    """
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["init"]) == 0
+
+    assert (tmp_path / "docsentinel.toml").is_file()
+
+
+def test_init_project_root_walks_up_to_marker(tmp_path: Path):
+    """
+    [Integration] scan: verifies init --project-root choosing the ancestor with pyproject.toml.
+
+    Scenario:
+        Given a temporary directory layout for init --project-root choosing the ancestor with pyproject.toml
+        When test_init_project_root_walks_up_to_marker runs the init command
+        Then the expected outcome for init --project-root choosing the ancestor with pyproject.toml is confirmed.
+
+    Boundaries:
+        - Focus: init --project-root choosing the ancestor with pyproject.toml
+        - Fixtures/params: tmp_path, monkeypatch
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - Location resolution in cli.find_project_root and cli._run_init
+        - Fixture or parameter values used by this test
+    """
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'x'\n", encoding="utf-8")
+    nested = tmp_path / "docs" / "deep"
+    nested.mkdir(parents=True)
+
+    assert main(["init", str(nested), "--project-root"]) == 0
+
+    assert (tmp_path / "docsentinel.toml").is_file()
+    assert not (nested / "docsentinel.toml").exists()
+
+
+def test_init_project_root_accepts_uv_lock_marker(tmp_path: Path):
+    """
+    [Integration] scan: verifies init --project-root recognising uv.lock.
+
+    Scenario:
+        Given a temporary directory layout for init --project-root recognising uv.lock
+        When test_init_project_root_accepts_uv_lock_marker runs the init command
+        Then the expected outcome for init --project-root recognising uv.lock is confirmed.
+
+    Boundaries:
+        - Focus: init --project-root recognising uv.lock
+        - Fixtures/params: tmp_path, monkeypatch
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - Location resolution in cli.find_project_root and cli._run_init
+        - Fixture or parameter values used by this test
+    """
+    (tmp_path / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    nested = tmp_path / "sub"
+    nested.mkdir()
+
+    assert main(["init", str(nested), "--project-root"]) == 0
+
+    assert (tmp_path / "docsentinel.toml").is_file()
+
+
+def test_init_project_root_without_marker_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """
+    [Integration] scan: verifies init --project-root failing when no marker exists.
+
+    Scenario:
+        Given a temporary directory layout for init --project-root failing when no marker exists
+        When test_init_project_root_without_marker_fails runs the init command
+        Then the expected outcome for init --project-root failing when no marker exists is confirmed.
+
+    Boundaries:
+        - Focus: init --project-root failing when no marker exists
+        - Fixtures/params: tmp_path, monkeypatch
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - Location resolution in cli.find_project_root and cli._run_init
+        - Fixture or parameter values used by this test
+    """
+    monkeypatch.setattr(cli, "find_project_root", lambda start: None)
+
+    assert main(["init", str(tmp_path), "--project-root"]) == 2
+
+    assert not (tmp_path / "docsentinel.toml").exists()
+
+
+def test_init_declined_confirmation_creates_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """
+    [Integration] scan: verifies init respecting a declined confirmation.
+
+    Scenario:
+        Given a temporary directory layout for init respecting a declined confirmation
+        When test_init_declined_confirmation_creates_nothing runs the init command
+        Then the expected outcome for init respecting a declined confirmation is confirmed.
+
+    Boundaries:
+        - Focus: init respecting a declined confirmation
+        - Fixtures/params: tmp_path, monkeypatch
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - Location resolution in cli.find_project_root and cli._run_init
+        - Fixture or parameter values used by this test
+    """
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+
+    assert main(["init", str(tmp_path)]) == 0
+
+    assert not (tmp_path / "docsentinel.toml").exists()
+
+
+def test_init_yes_skips_confirmation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """
+    [Integration] scan: verifies init --yes never prompting.
+
+    Scenario:
+        Given a temporary directory layout for init --yes never prompting
+        When test_init_yes_skips_confirmation runs the init command
+        Then the expected outcome for init --yes never prompting is confirmed.
+
+    Boundaries:
+        - Focus: init --yes never prompting
+        - Fixtures/params: tmp_path, monkeypatch
+        - Scope: assertions and setup in this test case only
+
+    On failure, first check:
+        - Location resolution in cli.find_project_root and cli._run_init
+        - Fixture or parameter values used by this test
+    """
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+
+    def fail_prompt(prompt: str = "") -> str:
+        """Fail the test if the init command prompts despite ``--yes``.
+
+        Parameters
+        ----------
+        prompt : str
+            Prompt text passed to ``input``.
+
+        Returns
+        -------
+        str
+            Never returns; always raises.
+        """
+        raise AssertionError("must not prompt with --yes")
+
+    monkeypatch.setattr("builtins.input", fail_prompt)
+
+    assert main(["init", str(tmp_path), "--yes"]) == 0
+
+    assert (tmp_path / "docsentinel.toml").is_file()
 
 
 def test_cli_select_flag_parses_comma_separated(
@@ -564,7 +760,7 @@ def test_cli_ignore_flag_overrides_config_file(
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by scan
     """
-    (tmp_path / "doc_sentinel.toml").write_text('ignore = ["DS101"]\n', encoding="utf-8")
+    (tmp_path / "docsentinel.toml").write_text('ignore = ["DS101"]\n', encoding="utf-8")
 
     assert main(["scan", str(tmp_path), "--ignore", "DS2"]) == 0
 
@@ -608,7 +804,7 @@ def test_cli_explicit_override_preserves_other_loaded_settings(
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by scan
     """
-    (tmp_path / "doc_sentinel.toml").write_text(
+    (tmp_path / "docsentinel.toml").write_text(
         'profile = "deep"\n'
         'include = ["*.markdown"]\n'
         'exclude = ["build"]\n'
