@@ -26,7 +26,7 @@ Missing .md References
       docs/specs/ui-design.md                       (score 0.55)
 
 [REVIEW] No candidates found
-  .claude/skills/pr-review/SKILL.md:12
+  .github/skills/pr-review/SKILL.md:12
     link:      ](../../docs/reviews/pr-template.md)
     candidates: (none)
 

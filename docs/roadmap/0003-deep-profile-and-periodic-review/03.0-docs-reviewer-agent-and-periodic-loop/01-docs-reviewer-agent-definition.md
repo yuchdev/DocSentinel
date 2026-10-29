@@ -2,7 +2,7 @@
 
 **Story:** [03.0 - `docs-reviewer` Agent & Periodic Review Loop](README.md)
 **Depends on:** Milestone 0003 Story 02.0 (`DS301` candidate output the agent triages). Mirrors the
-existing [`background-reviewer`](/.claude/agents/background-reviewer.md) agent's frontmatter,
+existing [`background-reviewer`](/.github/agents/background-reviewer.agent.md) agent's frontmatter,
 tool-profile, and dated-report convention.
 
 ## Purpose

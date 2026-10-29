@@ -23,7 +23,7 @@ Usage::
 
 This is the comprehensive, on-demand checker the `/link-check` skill runs - a separate,
 faster inline check runs automatically on every edit as the `doc_link_check` PostToolUse/Stop
-hook (`.claude/hooks/doc_link_check.py`); the two are complementary, not duplicates - the hook
+hook (`.github/hooks/scripts/doc_link_check.py`); the two are complementary, not duplicates - the hook
 never imports or shells out to this script.
 
 Exit status is ``1`` when any dangling link or anchor is found, else ``0``.

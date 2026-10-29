@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python $CLAUDE_PROJECT_DIR/.claude/hooks/session_start.py"
+            "command": "python $CLAUDE_PROJECT_DIR/.github/hooks/scripts/session_start.py --host claude"
           }
         ]
       }
@@ -36,10 +36,6 @@
       {
         "matcher": "Bash",
         "hooks": [
-          {
-            "type": "command",
-            "command": "python $CLAUDE_PROJECT_DIR/.claude/hooks/guard_bash.py"
-          }
         ]
       },
       {
@@ -47,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python $CLAUDE_PROJECT_DIR/.claude/hooks/secret_scan.py"
+            "command": "python $CLAUDE_PROJECT_DIR/.github/hooks/scripts/secret_scan.py --host claude"
           }
         ]
       }
@@ -58,19 +54,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python $CLAUDE_PROJECT_DIR/.claude/hooks/post_edit_format.py"
+            "command": "python $CLAUDE_PROJECT_DIR/.github/hooks/scripts/post_edit_format.py --host claude"
           },
           {
             "type": "command",
-            "command": "python $CLAUDE_PROJECT_DIR/.claude/hooks/style_fixes.py"
+            "command": "python $CLAUDE_PROJECT_DIR/.github/hooks/scripts/style_fixes.py --host claude"
           },
           {
             "type": "command",
-            "command": "python $CLAUDE_PROJECT_DIR/.claude/hooks/dep_audit.py"
+            "command": "python $CLAUDE_PROJECT_DIR/.github/hooks/scripts/dep_audit.py --host claude"
           },
           {
             "type": "command",
-            "command": "python $CLAUDE_PROJECT_DIR/.claude/hooks/doc_link_check.py"
+            "command": "python $CLAUDE_PROJECT_DIR/.github/hooks/scripts/doc_link_check.py --host claude"
           }
         ]
       },
@@ -79,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python $CLAUDE_PROJECT_DIR/.claude/hooks/github_audit.py"
+            "command": "python $CLAUDE_PROJECT_DIR/.github/hooks/scripts/github_audit.py --host claude"
           }
         ]
       }
@@ -89,11 +85,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python $CLAUDE_PROJECT_DIR/.claude/hooks/run_tests.py"
+            "command": "python $CLAUDE_PROJECT_DIR/.github/hooks/scripts/run_tests.py --host claude"
           },
           {
             "type": "command",
-            "command": "python $CLAUDE_PROJECT_DIR/.claude/hooks/doc_link_check.py"
+            "command": "python $CLAUDE_PROJECT_DIR/.github/hooks/scripts/doc_link_check.py --host claude"
           }
         ]
       }

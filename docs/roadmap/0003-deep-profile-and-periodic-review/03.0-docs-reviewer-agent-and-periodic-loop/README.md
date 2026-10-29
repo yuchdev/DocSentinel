@@ -7,7 +7,7 @@ distinct from Milestone 0002's `docsig` *signature*-only check) - requires readi
 both sides. That is agent work, not regex or model-triple work.
 
 This story adds a `docs-reviewer` agent (sibling of the existing
-[`background-reviewer`](/.claude/agents/background-reviewer.md), whose tool-profile and
+[`background-reviewer`](/.github/agents/background-reviewer.agent.md), whose tool-profile and
 dated-report-to-`docs/reviews/` convention it mirrors) and a periodic `deep-review` loop that runs
 the confirmed `deep` scan plus the agent on a **cadence** - weekly or on-demand - deliberately
 *not* per-commit, because `deep` is slow, heuristic, and advisory. These are `.claude/` markdown

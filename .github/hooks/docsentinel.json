@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "hooks": {
+    "SessionStart": [
+      { "type": "command", "command": "python .github/hooks/scripts/session_start.py", "cwd": ".", "timeoutSec": 30 }
+    ],
+    "PreToolUse": [
+      {
+        "type": "command",
+        "matcher": "Write|Edit|MultiEdit",
+        "command": "python .github/hooks/scripts/secret_scan.py",
+        "timeoutSec": 30
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "matcher": "Write|Edit|MultiEdit|edit|create|apply_patch|str_replace_editor",
+        "command": "python .github/hooks/scripts/post_edit_format.py",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "matcher": "Write|Edit|MultiEdit|edit|create|apply_patch|str_replace_editor",
+        "command": "python .github/hooks/scripts/style_fixes.py",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "matcher": "Write|Edit|MultiEdit|edit|create|apply_patch|str_replace_editor",
+        "command": "python .github/hooks/scripts/dep_audit.py",
+        "timeoutSec": 200
+      },
+      {
+        "type": "command",
+        "matcher": "Write|Edit|MultiEdit|edit|create|apply_patch|str_replace_editor",
+        "command": "python .github/hooks/scripts/doc_link_check.py",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "matcher": "github-mcp-server-.*|mcp__github__.*",
+        "command": "python .github/hooks/scripts/github_audit.py",
+        "timeoutSec": 30
+      }
+    ],
+    "Stop": [
+      { "type": "command", "command": "python .github/hooks/scripts/run_tests.py", "timeoutSec": 900 },
+      { "type": "command", "command": "python .github/hooks/scripts/doc_link_check.py", "timeoutSec": 60 }
+    ]
+  }
+}

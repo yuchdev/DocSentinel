@@ -13,9 +13,9 @@ block use identical rules.
 
 ## How it works
 
-- **Automatic (block)**: `.claude/hooks/secret_scan.py` runs before every
+- **Automatic (block)**: `.github/hooks/scripts/secret_scan.py` runs before every
   Write/Edit, scans the pending content, and exits 2 (blocking the write) if a
-  likely secret is found. Findings are logged to `.claude/logs/secret-scan.log`.
+  likely secret is found. Findings are logged to `.copilot/logs/secret-scan.log`.
 - **Manual (sweep)**: this skill scans files already on disk.
 
 ## Steps
@@ -23,7 +23,7 @@ block use identical rules.
 1. Resolve targets from `$ARGUMENTS`. If empty, sweep changed files:
    `git diff --name-only` + `git diff --cached --name-only` + untracked.
 2. Run the shared scanner:
-   `python .claude/hooks/secret_scan.py <file> [<file> ...]`
+   `python .github/hooks/scripts/secret_scan.py <file> [<file> ...]`
 3. For each hit, report `file:line: <type>: <excerpt>`. Never print the full
    secret value beyond the short excerpt the scanner emits.
 
@@ -37,7 +37,7 @@ are ignored to limit false positives.
 The full pattern table, the complete placeholder allowlist, per-type remediation,
 and the skipped-suffix list are in
 **[references/pattern-catalog.md](references/pattern-catalog.md)** — kept in sync
-with `.claude/hooks/secret_scan.py`.
+with `.github/hooks/scripts/secret_scan.py`.
 
 ## Output
 
@@ -54,7 +54,7 @@ if it was already committed.
 ## Completion checklist
 
 - [ ] Targets resolved from `$ARGUMENTS`, or changed+untracked files when empty
-- [ ] Shared scanner (`.claude/hooks/secret_scan.py`) run - not an ad-hoc regex
+- [ ] Shared scanner (`.github/hooks/scripts/secret_scan.py`) run - not an ad-hoc regex
 - [ ] Each finding reported as `file:line: <type>: <short excerpt>` - full secret value never printed
 - [ ] Placeholder/allowlisted lines correctly treated as clean (see [references/pattern-catalog.md](references/pattern-catalog.md))
 - [ ] For real hits: remove + rotate + replace with `${VAR}`/secrets-manager advised; history rewrite recommended if already committed

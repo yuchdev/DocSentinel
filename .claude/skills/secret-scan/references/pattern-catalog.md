@@ -1,7 +1,7 @@
 # Secret-scan pattern catalog
 
 Documents the exact detection engine shared by the `/secret-scan` skill and the
-`PreToolUse(Write|Edit|MultiEdit)` hook (`.claude/hooks/secret_scan.py`). Both use
+`PreToolUse(Write|Edit|MultiEdit)` hook (`.github/hooks/scripts/secret_scan.py`). Both use
 this same table, so the manual sweep and the automatic block agree. When the hook
 source changes, update this file (drift here means the catalog lies about what is
 actually blocked).

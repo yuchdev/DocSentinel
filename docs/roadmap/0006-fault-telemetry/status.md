@@ -1,13 +1,13 @@
 # Milestone 0006 — completion status
 
 **Planning state:** 📝 Specification only (0 of 4 stories implemented). ADR 0002
-is `Proposed`, awaiting human/architect sign-off before implementation begins.
+is `Accepted` (ratified 2026-10-27); implementation in progress.
 
 ## Current status
 
 | Story | Name | State | Tests executed |
 |---|---|---|---|
-| 01.0 | Contract spec + local event type/Protocol + tripwire | ⬜ Not started | — |
+| 01.0 | Contract spec + local event type/Protocol + tripwire | 🔶 In progress (1/2 tasks) | Task 01: 10 unit tests; full suite 2626 passed |
 | 02.0 | Pluggable sinks and config/CLI surface | ⬜ Not started | — |
 | 03.0 | Adapter and engine emission | ⬜ Not started | — |
 | 04.0 | Tests, docs, conformance readiness | ⬜ Not started | — |
@@ -33,3 +33,4 @@ is `Proposed`, awaiting human/architect sign-off before implementation begins.
   reference set is `JsonlSink`/`LoggingSink`/`SqliteSink`/`NullSink` plus a
   `python:<module>:<callable>` custom-sink loader reusing the FlakeForge
   `rule_modules` `importlib` precedent.
+- 2026-10-27: ADR 0002 ratified `Accepted` by the user; implementation started with Story 01.0.
