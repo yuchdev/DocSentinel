@@ -1,6 +1,6 @@
 """Reference specimen for /document-tests — the docstring format, one per class.
 
-This is a *teaching example*, not a collected test (it lives under `.claude/`,
+This is a *teaching example*, not a collected test (it lives under `.github/`,
 outside `tests/`, so pytest never runs it). Each function below shows two things
 at once:
 

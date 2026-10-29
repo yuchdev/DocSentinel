@@ -27,16 +27,16 @@ sweep (rename a spec + a heading, update every inbound hit across docs and code)
 1. **Prerequisite — linkify bare mentions** so prose references become discoverable
    links before the inbound search runs:
    ```bash
-   python scripts/linkify_doc_mentions.py docs .claude
+   python scripts/linkify_doc_mentions.py docs .github
    ```
    Note this **rewrites files**. Pass the narrowest roots that could plausibly
    reference the target rather than letting it sweep the whole corpus - a "find
    references" run should not quietly reformat unrelated docs. Unresolvable mentions
-   land in `.claude/state/linkify-report.md`.
+   land in `.copilot/state/linkify-report.md`.
 
 2. Enumerate inbound references across both trees:
    - **Docs**: links `](<path-or-anchor>)`, bare path mentions, and prose mentions
-     of the heading/title in `docs/**`, repo-root `*.md`, and `.claude/**`.
+     of the heading/title in `docs/**`, repo-root `*.md`, and `.github/**`.
    - **Code**: docstring / comment pointers in `src/**` and `tests/**` (e.g.
      ``See docs/adr/template.md#alternatives-considered``), plus the symbol name itself
      when the target is a symbol.

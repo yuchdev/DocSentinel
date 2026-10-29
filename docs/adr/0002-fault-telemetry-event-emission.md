@@ -1,6 +1,6 @@
 # 0002 - Fault-Telemetry Event Emission via a Written Contract and Pluggable Sinks
 
-> **Status:** Proposed
+> **Status:** Accepted
 >
 > **Date:** 2026-10-26
 >

@@ -3,7 +3,7 @@
 **Repository:** https://github.com/yuchdev/DocSentinel  
 **Milestone path:** `docs/roadmap/0006-fault-telemetry/`  
 **Status:** specification only; no telemetry module, adapter, config options or CLI flags exist yet  
-**Decision record:** [ADR 0002](/docs/adr/0002-fault-telemetry-event-emission.md) (Proposed)  
+**Decision record:** [ADR 0002](/docs/adr/0002-fault-telemetry-event-emission.md) (Accepted)  
 **Cross-tool contract:** [docs/specs/fault-event-contract.md](/docs/specs/fault-event-contract.md)  
 **Dependencies:** Milestones 0001–0005 complete (rule registry, `engine.scan()` single entry point, typed `Config` validation, `ScanResult`/`reporting` contracts).
 

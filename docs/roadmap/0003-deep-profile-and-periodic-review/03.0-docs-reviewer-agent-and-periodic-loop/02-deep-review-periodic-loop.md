@@ -4,8 +4,8 @@
 **Depends on:** [01 - `docs-reviewer` agent definition](01-docs-reviewer-agent-definition.md),
 Milestone 0003 Story 01.0 (the confirmed-deep invocation), Story 02.0 (`DS301`, the candidate
 source). Mirrors the file conventions of the existing loops
-[`implement-story.md`](/.claude/loops/implement-story.md) and
-[`update-docs.md`](/.claude/loops/update-docs.md) (frontmatter, Step algorithm, state cursor,
+[`implement-story.md`](/.github/skills/implement-story/SKILL.md) and
+[`update-docs.md`](/.github/skills/update-docs/SKILL.md) (frontmatter, Step algorithm, state cursor,
 Termination table, `ScheduleWakeup` self-reschedule).
 
 ## Purpose

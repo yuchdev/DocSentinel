@@ -1,6 +1,6 @@
 ---
 name: link-check
-description: User-invoked as /link-check [path ...]. Validates that documentation links and heading anchors resolve across docs/ (plus repo-root Markdown files and .claude/), using scripts/check_doc_links.py, and suggests rename candidates for missing files via scripts/doc_registry.py. Use after editing, splitting, merging, or renaming docs to catch dangling references.
+description: User-invoked as /link-check [path ...]. Validates that documentation links and heading anchors resolve across docs/ (plus repo-root Markdown files and .github/), using scripts/check_doc_links.py, and suggests rename candidates for missing files via scripts/doc_registry.py. Use after editing, splitting, merging, or renaming docs to catch dangling references.
 allowed-tools: Bash, Read, Grep, Glob, Edit
 invocation: /link-check [path ...]
 ---
@@ -17,7 +17,7 @@ inbound direction - who points *at* a target you are about to rename - use
 
 Note on the automated gate: the `doc_link_check` hook runs on every edit and at
 session end and checks the same *kinds* of defect, but it is a **separate, faster
-implementation** (inline, importing `.claude/hooks/_common.py`) - it does not call
+implementation** (inline, importing `.github/hooks/scripts/_common.py`) - it does not call
 `scripts/check_doc_links.py`. The two deliberately agree on heading-slug rules; if
 this skill and the hook ever disagree about one anchor, that is a bug in their
 parity, not a judgement call.
@@ -30,7 +30,7 @@ parity, not a judgement call.
    ```
    This **rewrites files**, converting prose mentions of `*.md` filenames into
    Markdown links so the checker can see them at all. Any unresolvable mention is
-   written to `.claude/state/linkify-report.md` for human review.
+   written to `.copilot/state/linkify-report.md` for human review.
 
 2. Run the checker over `$ARGUMENTS` (or the whole doc set when no path is given):
    ```bash
@@ -79,4 +79,4 @@ deliberate.
 - [ ] `python scripts/check_doc_links.py` exits 0 over the scoped paths
 - [ ] Every `dangling link` either repointed, or flagged as deliberate in the output
 - [ ] `/doc-xref` run for any heading or file that was renamed or moved
-- [ ] Anything `.claude/state/linkify-report.md` could not resolve is surfaced to the user
+- [ ] Anything `.copilot/state/linkify-report.md` could not resolve is surfaced to the user
