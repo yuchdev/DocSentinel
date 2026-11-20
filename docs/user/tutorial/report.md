@@ -5,15 +5,15 @@ name, and five templates ship with DocSentinel:
 
 | Format           | Flag                      | Audience                                | Carries rule code | Carries line and column |
 |------------------|---------------------------|-----------------------------------------|-------------------|-------------------------|
-| `text`           | `--format text`           | A person reading a terminal             | No                | No                      |
+| `text`           | `--format text`           | A person reading a terminal             | Yes               | Yes (when known)        |
 | `json`           | `--format json`           | Scripts, dashboards, other tools        | Yes               | Yes (may be `null`)     |
 | `github`         | `--format github`         | GitHub Actions annotations              | Yes (`title=`)    | Yes (when known)        |
 | `json-v1`        | `--format json-v1`        | Existing consumers of the schema 1 JSON | Yes               | Line only               |
 | `json-documents` | `--format json-documents` | Tools that want only the document list  | Yes               | Yes (may be `null`)     |
 
 `text` is the default. Every format is rendered from one `ScanResult`, so they never disagree about
-*what* was found. They differ only in how much of it they show. If you need the rule code (for
-example to add it to `ignore`), use `json` or `github`.
+*what* was found. They differ only in how much of it they show. Every format carries the rule code
+(for example to add it to `ignore`).
 
 You can also add your own templates (see [Custom templates](#custom-templates)).
 
@@ -45,7 +45,7 @@ the changes below.
 | Before                                                    | Now                                                                                         | What to do                                                                 |
 |-----------------------------------------------------------|---------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
 | `--format json` printed schema 1 (a flat `findings` list) | `--format json` prints schema 2: one record per document, with its problems inside it       | Switch to `--format json-v1` to keep the schema 1 shape, or read schema 2  |
-| `text` listed every document, then every finding unindented (`error: PATH: MESSAGE`) | `text` lists each document that has problems, with its findings indented two spaces under it. Clean documents are hidden | Match `  SEVERITY: PATH: MESSAGE` (two leading spaces). Pass `--show-clean-documents` to list every document |
+| `text` listed every document, then every finding unindented (`error: PATH: MESSAGE`) | `text` lists each document that has problems, with its findings indented two spaces under it. Clean documents are hidden | Match `  SEVERITY RULE TYPE: MESSAGE` (two leading spaces). Pass `--show-clean-documents` to list every document |
 | `Documents: N`                                            | `Documents: N (M with problems)`                                                            | Read only the first number if you need the old value                       |
 | `github` printed `::error file=PATH,line=N::MESSAGE`       | `github` adds `col=` when the column is known and always adds `title=RULE`                   | Annotation consumers need no change. Update parsers that split the property list |
 
@@ -90,9 +90,12 @@ Documents: 2 (1 with problems)
 Enabled rules: ["DS101", "DS102", "DS103", "DS104", "DS105", "DS106", "DS108", "DS109", "DS110", "DS112", "DS113", "DS114", "DS115", "DS116", "DS117", "DS118"]
 12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming).
 README.md (74 bytes)
-  error: README.md:3:15: dangling link -> docs/nope.md
-  error: README.md:3:39: missing anchor '#nowhere' in this file
-  warning: README.md:5:1: stray HTML comment: '<!-- stray -->'
+  error   DS101 dangling link, line 3, col 15: docs/nope.md
+  error   DS101 dangling anchor, line 3, col 39: #nowhere
+  warning DS102 stray html comment, line 5, col 1: '<!-- stray -->'
+Blocking findings: 2
+  error   DS101 dangling link: README.md, line 3, col 15: docs/nope.md
+  error   DS101 dangling anchor: README.md, line 3, col 39: #nowhere
 ```
 
 The output is a plain list of lines, always in this order:
@@ -106,28 +109,31 @@ The output is a plain list of lines, always in this order:
 | 5 | notice                                        | One sentence describing what was actually evaluated (see below).                                                     |
 | 6 | *(deep only)* advisory banner                 | Present only for the `deep` profile when it has findings. See [Deep profile differences](#deep-profile-differences). |
 | 7 | `PATH (N bytes)` for each document            | Not indented. Only documents with problems, in stable sorted order, unless `--show-clean-documents` is set.         |
-| 8 | `  SEVERITY: PATH:LINE:COL: MESSAGE` under its document | Indented two spaces. One line per finding, directly under the document it belongs to. `:COL` is left out when the finding has no column, and `:LINE:COL` when it has no line. |
-| 9 | `Pending: REASON` for each pending reason     | Work that was requested but could not run, such as missing optional dependencies.                                   |
+| 8 | `  SEVERITY RULE TYPE, line N, col M: VALUE` under its document | Indented two spaces, severity padded to 7 characters. One line per finding, directly under the document it belongs to, so the path is printed once. `, col M` is left out when the finding has no column, and `, line N, col M` when it has no line. |
+| 9 | `Blocking findings: N` and one recap line per blocking finding | Present only when something blocks, after the documents. Each recap line repeats the finding with its path: `  SEVERITY RULE TYPE: PATH, line N, col M: VALUE`. Blocking means `error`, or `warning` with `--strict`. |
+| 10 | `Pending: REASON` for each pending reason     | Work that was requested but could not run, such as missing optional dependencies.                                   |
 
 ### Reading a finding line
 
 ```text
-  error: README.md:3:15: dangling link -> docs/nope.md
-  └─┬─┘  └───┬───┘ │ └┬┘ └─────────────┬──────────────┘
-severity    path line col           message
+  error   DS101 dangling link, line 3, col 15: docs/nope.md
+  └─┬─┘   └─┬─┘ └────┬────┘  └──┬─┘ └──┬──┘  └───┬────┘
+severity  rule    type      line   col     value
 ```
 
-- **`severity`** is `error` or `warning`. Errors fail the scan. Warnings fail it only with `--strict`.
-- **`path`** is relative to the scan root and uses `/` separators.
-- **`line`** and **`col`** are 1-based (the column counts code points). A finding without a column
-  prints `PATH:LINE:`, and a finding without a line (for example a corpus-level finding) prints
-  `PATH:`. Editors and terminals turn the `PATH:LINE:COL:` shape into a clickable location.
-- **`message`** is the detector's explanation. It often echoes a short excerpt of the source (here
-  `'<!-- stray -->'`).
+- **`severity`** is `error` or `warning`, padded so the rule codes line up. Errors fail the scan.
+  Warnings fail it only with `--strict`.
+- **`rule`** is the rule code, such as `DS101`.
+- **`type`** is a short category such as `dangling link`. When a finding has none, it is the rule
+  title with a lowercase first letter, else `finding`.
+- **`line`** and **`col`** are 1-based (the column counts code points) and are left out when
+  unknown. The path is not on the line: it is the header above it, relative to the scan root with
+  `/` separators.
+- **`value`** is the offending token, such as a link target. A finding without one prints the
+  detector's message instead (for example `empty section: 'Setup' has no visible content`).
 
-The text format **omits the rule code**. `json` shows it, and `github` shows it in its `title=`
-property. To find which rule produced a line, run `docsentinel scan --format json`, or search the
-[Configuration Reference](../reference/configuration.md) for the message wording.
+Only the recap lines carry `PATH, line N, col M:`, because they are listed apart from their
+document. Editors and terminals can turn that shape into a clickable location.
 
 ### The notice line
 
@@ -169,9 +175,12 @@ docsentinel scan --show-clean-documents
 ```text
 ...
 README.md (74 bytes)
-  error: README.md:3:15: dangling link -> docs/nope.md
-  error: README.md:3:39: missing anchor '#nowhere' in this file
-  warning: README.md:5:1: stray HTML comment: '<!-- stray -->'
+  error   DS101 dangling link, line 3, col 15: docs/nope.md
+  error   DS101 dangling anchor, line 3, col 39: #nowhere
+  warning DS102 stray html comment, line 5, col 1: '<!-- stray -->'
+Blocking findings: 2
+  error   DS101 dangling link: README.md, line 3, col 15: docs/nope.md
+  error   DS101 dangling anchor: README.md, line 3, col 39: #nowhere
 docs/setup.md (15 bytes)
 ```
 

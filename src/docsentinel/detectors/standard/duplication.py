@@ -7,6 +7,7 @@ attributed to the later paragraph and referencing the earlier one.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -25,6 +26,8 @@ DS202 = rules.register_rule(
         severity="warning",
     )
 )
+
+logger = logging.getLogger(__name__)
 
 
 def duplicate_pairs(
@@ -70,6 +73,12 @@ def detect(
         min_paragraph_words=config.min_paragraph_words,
     )
     pairs = duplicate_pairs(model, config.duplicate_similarity)
+    logger.debug(
+        "DS202: %d paragraphs compared, %d pairs at or above %.2f",
+        len(model.paragraphs),
+        len(pairs),
+        config.duplicate_similarity,
+    )
     findings: list[models.Finding] = []
     chunks = model.paragraphs
 

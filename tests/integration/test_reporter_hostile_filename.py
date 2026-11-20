@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.log_helpers import problem_output
+
 #: A legally-named file (every byte is a permitted path character on POSIX) whose name
 #: nonetheless carries an ANSI colour escape, CR, LF and a spoofed ``::error::`` command.
 _HOSTILE_NAME: str = "evil\x1b[31m\r\n::error::spoofed.md"
@@ -143,4 +145,4 @@ def test_scan_failed_error_line_neutralises_control_bytes_from_config_keys(tmp_p
     assert b"Traceback" not in completed.stderr
     for forbidden in _FORBIDDEN_BYTES:
         assert forbidden not in completed.stderr
-    assert completed.stderr.count(b"\n") == 1
+    assert problem_output(completed.stderr.decode("utf-8")).count("\n") == 1

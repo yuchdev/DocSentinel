@@ -166,6 +166,7 @@ it is on by default.
 from __future__ import annotations
 
 import codecs
+import logging
 import os
 import posixpath
 import unicodedata
@@ -175,10 +176,13 @@ from typing import Optional
 
 from docsentinel import models, rules
 from docsentinel.config import Config, ConfigError
+from docsentinel.log import safe
 
 #: Stable metadata for ``DS114``, registered here as an import side effect (Story
 #: 12.0 Task 02) so importing :mod:`docsentinel.detectors` activates it; the
 #: ``ANALYZERS`` wiring is added at the foot of this module.
+logger = logging.getLogger(__name__)
+
 DS114 = rules.register_rule(
     rules.Rule(
         code="DS114",
@@ -222,6 +226,15 @@ _DEFERRED = "deferred"
 #: explicit finding for such a document and excludes it from collision detection,
 #: rather than inventing an identity or silently dropping it.
 _UNSUPPORTED = "unsupported"
+
+#: Fixed per-document DEBUG text for each reader outcome; the log never carries the
+#: identity value itself, which is frontmatter content.
+_STATUS_LOG_TEXT = {
+    _ID: "id declared",
+    _ABSENT: "no id declared",
+    _DEFERRED: "malformed or ambiguous frontmatter left to DS111, not evaluated",
+    _UNSUPPORTED: "id field has an unsupported value shape, not evaluated for uniqueness",
+}
 
 #: The accepted ``document_id_scope`` vocabulary. An injected :class:`Config` (the
 #: library-caller trust boundary that bypasses ``load_config``'s enum validation)
@@ -649,8 +662,12 @@ def check_documents(
 
     findings: list[models.Finding] = []
     originals: dict[tuple[str, str], str] = {}
+    statuses = {_ID: 0, _ABSENT: 0, _DEFERRED: 0, _UNSUPPORTED: 0}
     for path, text in sorted(entries, key=lambda entry: entry[0]):
         reading = extract_frontmatter_field(text, field)
+        statuses[reading.status] = statuses.get(reading.status, 0) + 1
+        # Only the reader outcome is logged, never the identity value (frontmatter content).
+        logger.debug("DS114 read %s: %s", safe(path), _STATUS_LOG_TEXT.get(reading.status, reading.status))
         if reading.status == _DEFERRED:
             # Malformed/ambiguous metadata is DS111's; DS114 stays silent for it.
             continue
@@ -699,6 +716,16 @@ def check_documents(
                 line=reading.line,
             )
         )
+    logger.debug(
+        "DS114 checked %d documents: %d with an id, %d without, %d deferred to DS111, %d unsupported shape; "
+        "%d findings",
+        len(entries),
+        statuses[_ID],
+        statuses[_ABSENT],
+        statuses[_DEFERRED],
+        statuses[_UNSUPPORTED],
+        len(findings),
+    )
     return tuple(findings)
 
 
@@ -758,6 +785,15 @@ def detect(
     :returns: Findings in sorted-path order.
     """
     settings = config if config is not None else Config()
+    logger.debug(
+        "DS114 detect: %d documents, document_id_field=%s, document_id_scope=%s, "
+        "document_id_case_sensitive=%s, document_id_required=%s",
+        len(documents),
+        safe(settings.document_id_field),
+        safe(settings.document_id_scope),
+        settings.document_id_case_sensitive,
+        settings.document_id_required,
+    )
     canonical = Path(os.path.realpath(root))
     entries: list[tuple[str, str]] = []
     for document in documents:
@@ -765,6 +801,7 @@ def detect(
             continue
         head = _read_head(canonical / document.path)
         if head is None:
+            logger.warning("DS114 skipped %s: the document head is not valid UTF-8", safe(document.path))
             continue
         entries.append((document.path, head))
     return check_documents(tuple(entries), settings)

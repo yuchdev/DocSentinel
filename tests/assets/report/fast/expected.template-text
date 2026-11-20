@@ -4,9 +4,9 @@ Documents: 2 (2 with problems)
 Enabled rules: ["DS101", "DS102", "DS103"]
 3 fast rule(s) evaluated.
 README.md (120 bytes)
-  error: README.md:3: Dangling link target: ./missing.md
+  error   DS101 dangling link or anchor, line 3: Dangling link target: ./missing.md
 docs/guide.md (342 bytes)
-  warning: docs/guide.md:7: Stray HTML comment
-  warning: docs/guide.md: Unresolvable path: scripts/run.sh
+  warning DS102 stray HTML comment, line 7: Stray HTML comment
+  warning DS103 unresolvable path-like code span: Unresolvable path: scripts/run.sh
 Blocking findings: 1
-  error: README.md:3: Dangling link target: ./missing.md
+  error   DS101 dangling link or anchor: README.md, line 3: Dangling link target: ./missing.md

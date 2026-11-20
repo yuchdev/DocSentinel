@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 import textwrap
+from collections import Counter
 from collections.abc import Callable
 
 import pytest
@@ -57,8 +58,9 @@ _PROBLEM_KEYS: tuple[str, ...] = (
     "outcome",
 )
 
-#: A finding line of the text template: two spaces, the severity, a colon.
-_FINDING_LINE = re.compile(r"^  (error|warning): ")
+#: A finding line of the text template under its document:
+#: ``  <severity padded to 7> <rule> <type>[, line N[, col M]]: <value or message>``.
+_FINDING_LINE = re.compile(r"^  (error  |warning) (DS\d{3}) [^,:]+?(?:, line (\d+)(?:, col (\d+))?)?: ")
 
 
 def _read_exact(case: AssetCase, relative_path: str) -> str:
@@ -219,13 +221,27 @@ def test_text_findings_sit_under_their_document(case_name: str, asset_case: Call
         if not line.startswith(("Schema version:", "Profile:", "Documents:", "Enabled"))
     ]
 
+    # The finding line no longer repeats the path, so each one must match an unclaimed finding of the
+    # document line above it by severity, rule, line and column (the column is printed only after a line).
+    unclaimed = Counter(
+        (f.path, f.severity, f.rule, f.line, f.column if f.line is not None else None) for f in result.findings
+    )
     current = None
     seen_findings = 0
     for line in body:
         match = _FINDING_LINE.match(line)
         if match is not None:
             assert current is not None, line
-            assert re.match(rf"  {match.group(1)}: {re.escape(current)}(:\d+){{0,2}}: ", line), line
+            severity, rule, line_no, column = match.groups()
+            key = (
+                current,
+                severity.rstrip(),
+                rule,
+                None if line_no is None else int(line_no),
+                None if column is None else int(column),
+            )
+            assert unclaimed[key] > 0, line
+            unclaimed[key] -= 1
             seen_findings += 1
         elif any(line == path or line.startswith(f"{path} (") for path in flagged):
             current = next(path for path in flagged if line == path or line.startswith(f"{path} ("))
@@ -396,7 +412,7 @@ def test_templates_render_a_large_report_within_the_step_budget(name: str, monke
         Given a synthetic result at CanonixEngine scale (358 documents, 5000 findings)
         When it is rendered with each packaged template
         Then rendering succeeds and uses under a tenth of ``MAX_STEPS`` (measured: github about 106k,
-        json about 62k, text about 38k, json-v1 about 36k).
+        json about 62k, text about 189k with its Blocking findings recap, json-v1 about 36k).
 
     Boundaries:
         - Focus: the R5 step cap as the effective size limit (Story 02.0 follow-up)
@@ -404,7 +420,8 @@ def test_templates_render_a_large_report_within_the_step_budget(name: str, monke
         - Scope: rendering only
 
     On failure, first check:
-        - Whether a template gained per-problem conditions (github costs about 21 steps per problem)
+        - Whether a template gained per-problem conditions (github costs about 21 steps per problem; text about
+          20 per problem plus about 23 per blocking problem for the recap)
     """
     peak = {"steps": 0}
     original = engine_module._Budget.step

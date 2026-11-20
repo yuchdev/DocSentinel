@@ -2,12 +2,16 @@
 
 import hashlib
 import json
+import logging
 from pathlib import Path
 
 from docsentinel.config import ConfigError
+from docsentinel.log import safe
 from docsentinel.models import Finding
 
 __all__ = ["filter_baselined", "fingerprint", "load_baseline", "save_baseline"]
+
+logger = logging.getLogger(__name__)
 
 
 def fingerprint(finding: Finding) -> str:
@@ -25,6 +29,9 @@ def load_baseline(path: Path) -> frozenset[str]:
     with string list items.
     """
     if not path.exists():
+        # A configured baseline that is missing suppresses nothing: every finding is
+        # reported, which the user who configured it would not expect.
+        logger.warning("baseline %s does not exist; no findings are suppressed", safe(path))
         return frozenset()
     try:
         with path.open("r", encoding="utf-8") as stream:
@@ -39,6 +46,7 @@ def load_baseline(path: Path) -> frozenset[str]:
     fingerprints = data["fingerprints"]
     if not isinstance(fingerprints, list) or not all(isinstance(item, str) for item in fingerprints):
         raise ConfigError(f"Invalid baseline in {path}: 'fingerprints' must be a list of strings")
+    logger.debug("loaded baseline %s: %d fingerprints", safe(path), len(fingerprints))
     return frozenset(fingerprints)
 
 
@@ -49,6 +57,7 @@ def save_baseline(path: Path, findings: tuple[Finding, ...]) :
     content = json.dumps(payload, indent=2) + "\n"
     with path.open("w", encoding="utf-8") as stream:
         stream.write(content)
+    logger.debug("saved baseline %s: %d fingerprints", safe(path), len(payload["fingerprints"]))
 
 
 def filter_baselined(findings: tuple[Finding, ...], known: frozenset[str]) -> tuple[Finding, ...]:

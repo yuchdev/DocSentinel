@@ -17,6 +17,7 @@ import textwrap
 from pathlib import Path
 
 from docsentinel.telemetry.loader import packaged_template_names
+from tests.log_helpers import problem_output
 
 #: The probe: snapshot ``sys.modules``, render every template, report what was added.
 _PROBE = textwrap.dedent(
@@ -87,7 +88,7 @@ def _assert_isolated(report: dict[str, object]):
     codes = report["codes"]
     assert isinstance(codes, dict) and sorted(codes) == sorted(packaged_template_names())
     for name, (code, length, err) in codes.items():
-        assert err == "", f"{name}: {err}"
+        assert problem_output(err) == "", f"{name}: {err}"
         assert length > 0, f"{name} rendered nothing"
         assert code in (0, 1), f"{name}: exit {code}"
     assert report["planted_loaded"] is False

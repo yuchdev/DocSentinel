@@ -119,18 +119,22 @@ exactly as ``DS108``/``DS112``/``DS115`` were sequenced.
 
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
 from typing import Optional
 
 from docsentinel import models, rules
 from docsentinel.config import Config, ConfigError
+from docsentinel.log import safe
 
 #: Stable metadata for ``DS118``, registered (Story 14.0 Task 02) as a ``fast``-profile
 #: opt-in policy rule alongside its committed ``tests/assets/ds118/*`` fixtures.
 #: ``opt_in_option`` names the config string that switches the policy on, exactly as
 #: ``DS110`` uses ``require_fence_languages`` and ``DS115`` uses
 #: ``deprecated_references_file``.
+logger = logging.getLogger(__name__)
+
 DS118 = rules.register_rule(
     rules.Rule(
         code="DS118",
@@ -513,11 +517,23 @@ def check_paths(paths: tuple[str, ...], config: Optional[Config] = None) -> tupl
     """
     settings = config if config is not None else Config()
     if settings.documentation_naming == _STYLE_OFF:
+        logger.debug("DS118 inactive: documentation_naming is off")
         return ()
     policy = _Policy(settings)
+    logger.debug(
+        "DS118 checking %d path(s): documentation_naming=%s, documentation_naming_directories=%s, "
+        "%d allowed name(s), %d prefix pattern(s)",
+        len(paths),
+        safe(policy.style),
+        policy.check_directories,
+        len(policy.allow),
+        len(policy.prefix_patterns),
+    )
     findings: list[models.Finding] = []
     for path in paths:
-        findings.extend(policy.check_path(path))
+        path_findings = policy.check_path(path)
+        logger.debug("DS118 checked %s: %d findings", safe(path), len(path_findings))
+        findings.extend(path_findings)
     return tuple(findings)
 
 

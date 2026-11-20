@@ -15,6 +15,7 @@ Known limitations:
 from __future__ import annotations
 
 import importlib
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -32,6 +33,8 @@ DS301 = rules.register_rule(
         severity="warning",
     )
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _disagree(a: Claim, b: Claim) -> bool:
@@ -128,7 +131,9 @@ def detect(
         claims = extract_claims(pipeline, text, doc.path)
         all_claims.extend(claims)
 
-    return _candidate_findings(tuple(all_claims))
+    findings = _candidate_findings(tuple(all_claims))
+    logger.debug("DS301: %d claims compared, %d candidates", len(all_claims), len(findings))
+    return findings
 
 
 rules.ANALYZERS[DS301.code] = detect

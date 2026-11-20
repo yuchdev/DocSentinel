@@ -7,12 +7,17 @@ A model upgrade can alter Claim output.
 from __future__ import annotations
 
 import importlib
+import logging
 import re
 import string
 from dataclasses import dataclass
 from typing import Any
 
 import spacy.language
+
+from docsentinel.log import safe
+
+logger = logging.getLogger(__name__)
 
 _CLOSED_ENTITY_TYPES: frozenset[str] = frozenset(
     {"ORG", "PRODUCT", "GPE", "PERSON", "CARDINAL", "QUANTITY", "PERCENT", "DATE"}
@@ -166,4 +171,5 @@ def extract_claims(
                 )
             )
 
+    logger.debug("extracted %d claims from %d paragraphs of %s", len(claims), len(paragraphs), safe(path))
     return tuple(claims)

@@ -17,6 +17,7 @@ least one extension is loaded, is built by
 hook, and is untrusted at every depth.
 """
 
+import logging
 import re
 import uuid
 from collections import Counter
@@ -31,6 +32,8 @@ from docsentinel.telemetry.builtin.domain import DomainTable, domain_table
 from docsentinel.telemetry.classify import classify, rule_title
 from docsentinel.telemetry.events import utc_now_iso
 from docsentinel.telemetry.extensions import LoadedExtensions, apply_report_hooks
+
+logger = logging.getLogger(__name__)
 
 #: Deep-profile advisory banner, carried as data in the ``advisory`` variable.
 ADVISORY_BANNER: Final[str] = "Deep findings are heuristic candidates for review - they do not fail the build."
@@ -372,6 +375,14 @@ class ReportModel:
             context["run"] = {"generated_at": utc_now_iso(), "id": uuid.uuid4().hex}
         if isinstance(extensions, LoadedExtensions) and extensions:
             apply_report_hooks(context, extensions, flat_for)
+        logger.debug(
+            "report model built: %d documents (%d with problems, %d outside the inventory), %d problems, %d blocking",
+            len(document_list),
+            len(with_problems),
+            len(document_list) - len(documents.keys() & inventory_paths),
+            len(flat),
+            context["blocking_count"],
+        )
         return context
 
     @staticmethod

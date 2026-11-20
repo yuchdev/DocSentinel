@@ -96,21 +96,38 @@ _TEXT_CONTROL_TABLE: dict[int, str] = _build_control_table(keep_crlf=False)
 _GITHUB_CONTROL_TABLE: dict[int, str] = _build_control_table(keep_crlf=True)
 
 
+#: The GitHub Actions legacy (v1) workflow-command marker. The runner looks for it
+#: anywhere in a line (not only at its start), so no sink may ever emit it verbatim.
+LEGACY_COMMAND_MARKER: Final[str] = "##["
+#: What :data:`LEGACY_COMMAND_MARKER` is rewritten to: a backslash before the bracket.
+LEGACY_COMMAND_REPLACEMENT: Final[str] = "##\\["
+
+
 def _neutralize_controls(value: str, *, keep_crlf: bool = False) -> str:
     """Replace unsafe control and bidi/zero-width format code points with escapes.
+
+    It also rewrites every ``##[`` (the GitHub Actions legacy workflow-command
+    marker, honoured anywhere in a line) as ``##\\[``. The rewrite only inserts a
+    backslash before a ``[`` and the code-point escapes contain neither ``#`` nor
+    ``[``, so the output can never contain ``##[``.
 
     :param value: An untrusted path or message string from scanned content.
     :param keep_crlf: Pass ``True`` from the GitHub sink so CR/LF survive for its
         ``%0D``/``%0A`` property/data escaping; the text sink uses ``False``.
     :returns: ``value`` with every neutralised code point rendered as a visible
-        ASCII backslash escape; ASCII-printable input is returned byte-identical.
+        ASCII backslash escape and ``##[`` broken up; other ASCII-printable input is
+        returned byte-identical.
     """
     if type(value) is str and value.isascii() and value.isprintable():
         # Fast path: both tables hold every ASCII code point that is not printable
         # (U+0000-U+001F, U+007F; the GitHub table minus CR/LF, which are not
         # printable either), and no printable ASCII one, so translate is the identity.
-        return value
-    return value.translate(_GITHUB_CONTROL_TABLE if keep_crlf else _TEXT_CONTROL_TABLE)
+        neutral = value
+    else:
+        neutral = value.translate(_GITHUB_CONTROL_TABLE if keep_crlf else _TEXT_CONTROL_TABLE)
+    if LEGACY_COMMAND_MARKER in neutral:
+        return neutral.replace(LEGACY_COMMAND_MARKER, LEGACY_COMMAND_REPLACEMENT)
+    return neutral
 
 
 #: The characters :func:`_escape_property` percent-encodes; without one, its
@@ -181,7 +198,8 @@ def neutralize(value: str) -> str:
 
     The text sink filter (spec §7), and the public ``reporting.neutralize_text``:
     C0/C1/DEL, CR/LF, bidi controls, zero-width characters, line/paragraph
-    separators and lone surrogates become visible ASCII backslash escapes.
+    separators and lone surrogates become visible ASCII backslash escapes, and the
+    GitHub legacy workflow-command marker ``##[`` becomes ``##\\[``.
 
     :param value: Text that may embed untrusted path or content characters.
     :returns: The text with every unsafe code point rendered as a visible escape.

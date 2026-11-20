@@ -23,6 +23,7 @@ from docsentinel import cli
 from docsentinel.models import Finding
 from docsentinel.telemetry.loader import packaged_template_names
 from tests.asset_helpers import AssetCase, load_asset_case
+from tests.log_helpers import problem_output
 
 ESC = chr(0x1B)
 
@@ -70,7 +71,7 @@ def test_strict_turns_warnings_into_exit_1_for_every_template(
     strict_out = capsys.readouterr()
 
     assert (lenient, strict) == (0, 1)
-    assert lenient_out.err == strict_out.err == ""
+    assert problem_output(lenient_out.err) == problem_output(strict_out.err) == ""
     assert "comment.md" in lenient_out.out and "comment.md" in strict_out.out
     if name == "json":
         assert [problem["outcome"] for problem in _problems(lenient_out.out)] == ["advisory"]
@@ -110,7 +111,7 @@ def test_baseline_suppresses_findings_and_exit_code_for_every_template(
     strict_out = capsys.readouterr()
 
     assert (unfiltered, filtered, strict) == (1, 0, 0)
-    assert filtered_out.err == strict_out.err == ""
+    assert problem_output(filtered_out.err) == problem_output(strict_out.err) == ""
     for report in (filtered_out.out, strict_out.out):
         assert "dangling" not in report and "stray" not in report.lower()
         if name == "json":
@@ -161,7 +162,7 @@ def test_deep_findings_are_advisory_exit_0_for_every_template(
     strict_out = capsys.readouterr()
 
     assert (lenient, strict) == (0, 0)
-    assert lenient_out.err == strict_out.err == ""
+    assert problem_output(lenient_out.err) == problem_output(strict_out.err) == ""
     assert "candidate contradiction" in lenient_out.out
     if name == "text":
         assert "heuristic candidates for review" in lenient_out.out
@@ -198,7 +199,7 @@ def test_unknown_builtin_extension_exits_2_before_the_scan(
     assert (unknown, malformed) == (2, 2)
     assert unknown_out.out == malformed_out.out == ""
     assert unknown_out.err.startswith("Scan failed: unknown builtin extension")
-    assert malformed_out.err.startswith("Scan failed: ") and malformed_out.err.count("\n") == 1
+    assert malformed_out.err.startswith("Scan failed: ") and problem_output(malformed_out.err).count("\n") == 1
     assert ESC not in malformed_out.err
     assert calls == []
 
