@@ -23,6 +23,7 @@ cross-tool wire shape.
 
 | Rule  | Profile | Fault class            | Notes |
 |-------|---------|------------------------|-------|
+| DS100 | fast    | `unreadable_document`  | Unreadable or non-UTF-8 document, emitted by the engine in every profile (advisory in a deep scan) |
 | DS101 | fast    | `dangling_reference`   | Dangling links/anchors |
 | DS102 | fast    | `residual_markup`      | Stray HTML comments |
 | DS103 | fast    | `unresolvable_path`    | Unresolvable local paths |
@@ -39,6 +40,7 @@ cross-tool wire shape.
 | DS116 | fast    | `path_escape`          | Reference escaping the scan root |
 | DS117 | fast    | `table_malformed`      | Malformed GFM pipe table |
 | DS118 | fast    | `naming_policy`        | File/directory naming policy (opt-in) |
+| DS124 | fast    | `dangling_reference`   | Dangling `@`-document mention |
 
 ## Standard profile (DS2xx) - deterministic
 

@@ -6,25 +6,27 @@ skinparam shadowing false
 skinparam packageStyle rectangle
 
 package "Consumers" {
-  [cli.py\nscan | baseline | init | rules | doctor] as cli
-  [~__init~__.py\nPython API: scan, load_config, ...] as api
+  [cli.py\nscan | baseline | init | rules | doctor\n~-~-include / ~-~-exclude on scan and baseline] as cli
+  [~__init~__.py\nPython API: scan, load_config,\nload_config_with_sources, ConfigSources, ...] as api
   [pytest_plugin.py\ndocsentinel_scan fixture] as plugin
   [.pre-commit-hooks.yaml\ndocsentinel-fast / -standard] as precommit
 }
 
 package "Core" {
   [engine.py\nscan()] as engine
-  [config.py\nConfig, load_config, ConfigError] as config
-  [discovery.py\ndiscover()] as discovery
+  [config.py\nConfig, load_config, ConfigError,\nload_config_with_sources, ConfigSources] as config
+  [discovery.py\ndiscover(), discover_with_stats(),\nnormalize_invoker_selectors(),\nselector_root_spellings()] as discovery
   [rules.py\nRULES, ANALYZERS, opt_in_satisfied] as rules
   [models.py\nDocument, Finding, ScanResult] as models
   [baseline.py\nfingerprints, filter_baselined] as baseline
   [code_discovery.py\ndiscover_python()] as codedisc
   [errors.py\nExtraNotInstalledError] as errors
+  [log.py\nsafe(), configure_cli_logging,\nstderr handler + per-run log file] as log
 }
 
 package "Detectors (see component-detectors)" {
   [Fast DS1xx\nstdlib only, eager] as fast
+  [unreadable.py DS100\nRule registration only, no analyzer] as unreadable
   [Standard DS2xx\nlazy via detectors/loader.py] as standard
   [Deep DS301\nlazy spaCy/textacy] as deep
   [deep_support.py\ndeep_ready()] as deepsup
@@ -38,8 +40,11 @@ package "Reporting (see component-reporting)" {
 
 package "Inputs and outputs (file system)" {
   database "Markdown corpus" as corpus
-  database "docsentinel.toml / doc_sentinel.toml\npyproject.toml [tool.doc_sentinel]" as cfgfiles
+  database "docsentinel.toml / doc_sentinel.toml\npyproject.toml [tool.doc_sentinel]\nexplicit ~-~-config FILE (.toml or .json)" as cfgfiles
+  database "User settings JSON\n(layer 2; DOCSENTINEL_SETTINGS, else\nXDG_DATA_HOME or ~~/.local/share)" as usersettings
+  database "Environment\nDOCSENTINEL_SETTINGS, XDG_DATA_HOME, HOME" as env
   database "Baseline JSON" as basefile
+  database "Per-run log file\n(DOCSENTINEL_LOG_DIR or user log dir)" as logfile
   database "User templates dir\n(report_templates_dir)" as tpldir
 }
 
@@ -59,13 +64,26 @@ cli --> rules : rules cmd
 cli --> telemetry : template/extension\nresolution
 
 engine --> config
-engine --> discovery
+engine --> discovery : inventory +\ninvoker include / exclude\n(normalized, merged)
+cli ..> discovery : early selector validation
 engine --> rules
 engine --> baseline : filter
 engine --> models
 engine --> standard : ensure_standard_loaded()
 engine --> deepsup : deep gate
 cli ..> errors
+engine --> unreadable : emits DS100 finding\n(ENGINE_RULES, all profiles)
+engine --> corpus : reads each document once;\nonly readable ones go to analyzers
+rules <.. unreadable : register Rule only
+cli --> log : configure_cli_logging /\nshutdown_cli_logging
+engine ..> log : safe()
+discovery ..> log : safe()
+fast ..> log : safe()
+standard ..> log : safe()
+deep ..> log : safe()
+telemetry ..> log : safe()
+log --> telemetry : filters.neutralize
+log --> logfile : write (0600, rotated)
 rules <.. fast : register Rule + Analyzer
 rules <.. standard : register
 rules <.. deep : register (eager)
@@ -78,7 +96,9 @@ deepsup ..> deepext : readiness probe
 reporting --> telemetry
 telemetry --> config
 telemetry --> rules : classify
-config --> cfgfiles : read
+config --> cfgfiles : read (layer 3)
+config --> usersettings : read (layer 2, C6-restricted,\nowner and mode gate)
+config --> env : read (only config.py)
 discovery --> corpus : inventory
 baseline --> basefile : read/write
 telemetry --> tpldir : read (containment-gated)
@@ -88,7 +108,25 @@ note bottom of engine
   detect(root, documents) or detect(root, documents, config).
   Deep: confirmation gate (deep_confirm, ~-~-i-understand-deep-is-heuristic,
   DOCSENTINEL_DEEP_CONFIRM=1) then deep_ready(); advisory-only, exit 0.
+  Reads every discovered document once up front (_partition_readable);
+  unreadable or non-UTF-8 ones get a DS100 error finding from the engine
+  and are withheld from analyzers.
   Exit codes: 0 ok, 1 blocking findings, 2 config/scan failure.
+end note
+
+note as cfgnote
+  Layers, lowest first: Config defaults < user settings JSON <
+  project TOML or ~-~-config file (.json allowed) < CLI flags.
+  Whole values are replaced, never merged. ~-~-no-user-settings turns
+  layer 2 off. A Config passed to scan() is used verbatim.
+  See sequence/config-layered-load.
+end note
+config .. cfgnote
+
+note bottom of log
+  Library stays quiet (NullHandler). Only the CLI configures handlers.
+  Nearly every module (config, baseline, discovery, reporting, ...)
+  also calls safe() for untrusted text; edges shown are representative.
 end note
 
 note bottom of fast

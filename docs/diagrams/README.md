@@ -20,16 +20,29 @@ rendered `.svg` and `.png`. Re-render from the repository root with
 
 ![Reporting shim and the telemetry package: loader, model, engine, extensions and templates](component/reporting/component-reporting.svg)
 
+## Sequence diagrams (`sequence/`)
+
+### Layered configuration load
+
+![Layered configuration load: user settings JSON gate, project layer, CLI flags, single validation and the injected Config bypass](sequence/config-layered-load/config-layered-load.svg)
+
+### Invoker include and exclude selection
+
+![Invoker include and exclude selection: CLI early validation, engine normalisation and merge, discovery, and the empty-selection ConfigError](sequence/scan-selection/scan-selection.svg)
+
 ## Layout
 
 ```text
 docs/diagrams/
 ├── README.md
-└── component/
-    ├── overview/    component-overview.{puml,svg,png}
-    ├── detectors/   component-detectors.{puml,svg,png}
-    └── reporting/   component-reporting.{puml,svg,png}
+├── component/
+│   ├── overview/    component-overview.{puml,svg,png}
+│   ├── detectors/   component-detectors.{puml,svg,png}
+│   └── reporting/   component-reporting.{puml,svg,png}
+└── sequence/
+    ├── config-layered-load/   config-layered-load.{puml,svg,png}
+    └── scan-selection/        scan-selection.{puml,svg,png}
 ```
 
-New diagram kinds (sequence, state, deployment, …) get a sibling directory
+New diagram kinds (state, deployment, …) get a sibling directory
 next to `component/`, with one subdirectory per diagram.

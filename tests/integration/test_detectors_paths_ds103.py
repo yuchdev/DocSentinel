@@ -9,7 +9,11 @@ from pathlib import Path
 import pytest
 
 from docsentinel import models, rules
+from docsentinel.config import Config
 from tests.asset_helpers import AssetCase
+
+#: DS103 is opt-in (Milestone 0009 Story 01.0): it evaluates only under reference_scope = "strict".
+STRICT_SCOPE = Config(reference_scope="strict")
 
 paths: types.ModuleType
 
@@ -74,7 +78,7 @@ def test_unresolvable_relative_path_is_flagged(asset_case: Callable[[str, str], 
     """
     case = asset_case("ds103", "unresolvable_relative_path")
 
-    assert paths.detect(case.root, case.documents("README.md")) == (
+    assert paths.detect(case.root, case.documents("README.md"), STRICT_SCOPE) == (
         models.Finding(
             rule="DS103",
             path="README.md",
@@ -113,7 +117,7 @@ def test_leading_slash_resolves_from_root(
     other_directory.mkdir()
     monkeypatch.chdir(other_directory)
 
-    assert paths.detect(scan_root.root, scan_root.documents("README.md")) == ()
+    assert paths.detect(scan_root.root, scan_root.documents("README.md"), STRICT_SCOPE) == ()
 
 
 @pytest.mark.parametrize(
@@ -147,7 +151,7 @@ def test_non_path_like_spans_are_excluded(asset_case: Callable[[str, str], Asset
     """
     case = asset_case("ds103", case_name)
 
-    assert paths.detect(case.root, case.documents("README.md")) == ()
+    assert paths.detect(case.root, case.documents("README.md"), STRICT_SCOPE) == ()
 
 
 def test_code_span_inside_link_label_is_not_double_reported(asset_case: Callable[[str, str], AssetCase]):
@@ -174,7 +178,7 @@ def test_code_span_inside_link_label_is_not_double_reported(asset_case: Callable
     documents = case.documents("README.md")
 
     assert len(links.detect(case.root, documents)) == 1
-    assert paths.detect(case.root, documents) == ()
+    assert paths.detect(case.root, documents, STRICT_SCOPE) == ()
 
 
 def test_code_span_inside_fenced_block_is_ignored(asset_case: Callable[[str, str], AssetCase]):
@@ -198,7 +202,7 @@ def test_code_span_inside_fenced_block_is_ignored(asset_case: Callable[[str, str
     """
     case = asset_case("ds103", "code_span_inside_fenced_block")
 
-    assert paths.detect(case.root, case.documents("README.md")) == ()
+    assert paths.detect(case.root, case.documents("README.md"), STRICT_SCOPE) == ()
 
 
 def test_opposite_fence_marker_does_not_close_active_fence(asset_case: Callable[[str, str], AssetCase]):
@@ -222,7 +226,7 @@ def test_opposite_fence_marker_does_not_close_active_fence(asset_case: Callable[
     """
     case = asset_case("ds103", "opposite_fence_marker")
 
-    assert paths.detect(case.root, case.documents("README.md")) == ()
+    assert paths.detect(case.root, case.documents("README.md"), STRICT_SCOPE) == ()
 
 
 def test_non_markdown_documents_are_not_scanned(asset_case: Callable[[str, str], AssetCase]):
@@ -246,7 +250,7 @@ def test_non_markdown_documents_are_not_scanned(asset_case: Callable[[str, str],
     """
     case = asset_case("ds103", "non_markdown_document")
 
-    assert paths.detect(case.root, case.documents("notes.txt")) == ()
+    assert paths.detect(case.root, case.documents("notes.txt"), STRICT_SCOPE) == ()
 
 
 def test_finding_reports_one_based_source_line(asset_case: Callable[[str, str], AssetCase]):
@@ -270,7 +274,7 @@ def test_finding_reports_one_based_source_line(asset_case: Callable[[str, str], 
     """
     case = asset_case("ds103", "source_line_number")
 
-    findings = paths.detect(case.root, case.documents("README.md"))
+    findings = paths.detect(case.root, case.documents("README.md"), STRICT_SCOPE)
 
     assert len(findings) == 1
     assert findings[0].line == 3
@@ -300,7 +304,7 @@ def test_ds101_and_ds103_report_only_their_own_shared_fixture_spans(asset_case: 
     documents = case.documents("README.md")
 
     link_findings = links.detect(case.root, documents)
-    path_findings = paths.detect(case.root, documents)
+    path_findings = paths.detect(case.root, documents, STRICT_SCOPE)
 
     assert tuple(finding.rule for finding in link_findings) == ("DS101",)
     assert tuple(finding.rule for finding in path_findings) == ("DS103",)
@@ -329,7 +333,7 @@ def test_findings_preserve_supplied_document_and_regex_match_order(asset_case: C
     """
     case = asset_case("ds103", "findings_preserve_document_order")
 
-    assert paths.detect(case.root, case.documents("z.md", "a.md")) == (
+    assert paths.detect(case.root, case.documents("z.md", "a.md"), STRICT_SCOPE) == (
         models.Finding("DS103", "z.md", "unresolvable path -> z-one.md", "warning", 1),
         models.Finding("DS103", "z.md", "unresolvable path -> z-two.md", "warning", 1),
         models.Finding("DS103", "a.md", "unresolvable path -> a-one.md", "warning", 1),
@@ -358,7 +362,7 @@ def test_source_lines_are_preserved_after_fence_stripping(asset_case: Callable[[
     """
     case = asset_case("ds103", "source_lines_after_fence_stripping")
 
-    assert paths.detect(case.root, case.documents("README.md")) == (
+    assert paths.detect(case.root, case.documents("README.md"), STRICT_SCOPE) == (
         models.Finding("DS103", "README.md", "unresolvable path -> src/missing.py", "warning", 6),
     )
 
@@ -384,7 +388,7 @@ def test_relative_path_resolves_from_document_directory(asset_case: Callable[[st
     """
     case = asset_case("ds103", "relative_path_from_document_directory")
 
-    assert paths.detect(case.root, case.documents("docs/guides/intro.md")) == ()
+    assert paths.detect(case.root, case.documents("docs/guides/intro.md"), STRICT_SCOPE) == ()
 
 
 def test_parent_traversal_outside_root_matches_ds101_resolution(asset_case: Callable[[str, str], AssetCase]):
@@ -409,7 +413,7 @@ def test_parent_traversal_outside_root_matches_ds101_resolution(asset_case: Call
     case = asset_case("ds103", "parent_traversal_outside_root")
     scan_root = case.child("scan-root")
 
-    assert paths.detect(scan_root.root, scan_root.documents("docs/README.md")) == ()
+    assert paths.detect(scan_root.root, scan_root.documents("docs/README.md"), STRICT_SCOPE) == ()
 
 
 def test_missing_parent_traversal_is_not_reported_by_ds103(asset_case: Callable[[str, str], AssetCase]):
@@ -439,7 +443,7 @@ def test_missing_parent_traversal_is_not_reported_by_ds103(asset_case: Callable[
     case = asset_case("ds103", "missing_parent_traversal")
     scan_root = case.child("scan-root")
 
-    assert paths.detect(scan_root.root, scan_root.documents("docs/README.md")) == ()
+    assert paths.detect(scan_root.root, scan_root.documents("docs/README.md"), STRICT_SCOPE) == ()
 
 
 @pytest.mark.parametrize(
@@ -503,7 +507,7 @@ def test_windows_anchored_code_span_keeps_legacy_ds103_report(
     monkeypatch.setattr(Path, "resolve", fail_resolve)
     monkeypatch.setattr(Path, "exists", fail_exists)
 
-    findings = paths.detect(case.root, documents)
+    findings = paths.detect(case.root, documents, STRICT_SCOPE)
 
     assert [finding.message for finding in findings] == [f"unresolvable path -> {candidate}"]
 
@@ -530,7 +534,7 @@ def test_symlink_to_existing_target_resolves(asset_case: Callable[[str, str], As
     case = asset_case("ds103", "symlink_to_existing_target")
     _symlink_or_skip(case.path("alias.md"), case.path("target.md"))
 
-    assert paths.detect(case.root, case.documents("README.md")) == ()
+    assert paths.detect(case.root, case.documents("README.md"), STRICT_SCOPE) == ()
 
 
 def test_broken_symlink_is_unresolvable(asset_case: Callable[[str, str], AssetCase]):
@@ -555,7 +559,7 @@ def test_broken_symlink_is_unresolvable(asset_case: Callable[[str, str], AssetCa
     case = asset_case("ds103", "broken_symlink")
     _symlink_or_skip(case.path("alias.md"), case.path("missing.md"))
 
-    assert paths.detect(case.root, case.documents("README.md")) == (
+    assert paths.detect(case.root, case.documents("README.md"), STRICT_SCOPE) == (
         models.Finding("DS103", "README.md", "unresolvable path -> alias.md", "warning", 1),
     )
 
@@ -584,10 +588,10 @@ def test_symlink_followed_by_parent_component_never_checks_outside_file(tmp_path
     document = _write_document(root, "docs/README.md", "See `hop/../secret.md`.\n")
     _symlink_or_skip(root / "docs" / "hop", Path("../../outside/sub"))
 
-    assert paths.detect(root, (document,)) == ()
+    assert paths.detect(root, (document,), STRICT_SCOPE) == ()
 
     (outside / "secret.md").write_text("outside\n", encoding="utf-8")
-    assert paths.detect(root, (document,)) == ()
+    assert paths.detect(root, (document,), STRICT_SCOPE) == ()
 
 
 @pytest.mark.parametrize(
@@ -616,7 +620,7 @@ def test_hostile_incomplete_span_shapes_are_ignored(asset_case: Callable[[str, s
     """
     case = asset_case("ds103", case_name)
 
-    assert paths.detect(case.root, case.documents("README.md")) == ()
+    assert paths.detect(case.root, case.documents("README.md"), STRICT_SCOPE) == ()
 
 
 def test_invalid_utf8_read_error_is_propagated(tmp_path: Path):
@@ -643,7 +647,7 @@ def test_invalid_utf8_read_error_is_propagated(tmp_path: Path):
     document = models.Document(path="README.md", bytes=1)
 
     with pytest.raises(UnicodeDecodeError):
-        paths.detect(tmp_path, (document,))
+        paths.detect(tmp_path, (document,), STRICT_SCOPE)
 
 
 def test_os_read_error_is_propagated(tmp_path: Path):
@@ -668,7 +672,7 @@ def test_os_read_error_is_propagated(tmp_path: Path):
     document = models.Document(path="missing.md", bytes=0)
 
     with pytest.raises(FileNotFoundError):
-        paths.detect(tmp_path, (document,))
+        paths.detect(tmp_path, (document,), STRICT_SCOPE)
 
 
 def test_many_unclosed_code_span_openers_are_handled(tmp_path: Path):
@@ -692,4 +696,4 @@ def test_many_unclosed_code_span_openers_are_handled(tmp_path: Path):
     """
     document = _write_document(tmp_path, "README.md", "`\n" * 2_000)
 
-    assert paths.detect(tmp_path, (document,)) == ()
+    assert paths.detect(tmp_path, (document,), STRICT_SCOPE) == ()

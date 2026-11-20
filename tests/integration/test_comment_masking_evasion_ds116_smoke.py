@@ -153,7 +153,7 @@ def test_every_fast_rule_sees_its_construct_after_an_unclosed_inline_opener(tmp_
     (tmp_path / "a" / "b").mkdir(parents=True)
     (tmp_path / "a" / "b" / "README.md").write_text(body, encoding="utf-8")
 
-    result = scan(tmp_path, config=Config(profile="fast", require_fence_languages=True))
+    result = scan(tmp_path, config=Config(profile="fast", require_fence_languages=True, reference_scope="strict"))
     fired = {finding.rule for finding in result.findings}
 
     for rule in ("DS101", "DS103", "DS104", "DS105", "DS106", "DS110", "DS116", "DS117"):

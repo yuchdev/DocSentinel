@@ -855,6 +855,7 @@ def test_rules_command_lists_real_registry(capsys: pytest.CaptureFixture[str]):
         - Recent changes in code paths exercised by scan
     """
     expected_codes = (
+        "DS100",
         "DS101",
         "DS102",
         "DS103",
@@ -871,6 +872,7 @@ def test_rules_command_lists_real_registry(capsys: pytest.CaptureFixture[str]):
         "DS116",
         "DS117",
         "DS118",
+        "DS124",
     )
     assert main(["rules"]) == 0
 
@@ -916,6 +918,7 @@ def test_doctor_command_reports_counts(capsys: pytest.CaptureFixture[str]):
         - Recent changes in code paths exercised by scan
     """
     expected_codes = (
+        "DS100",
         "DS101",
         "DS102",
         "DS103",
@@ -932,6 +935,7 @@ def test_doctor_command_reports_counts(capsys: pytest.CaptureFixture[str]):
         "DS116",
         "DS117",
         "DS118",
+        "DS124",
         "DS201",
         "DS202",
         "DS203",
@@ -944,7 +948,7 @@ def test_doctor_command_reports_counts(capsys: pytest.CaptureFixture[str]):
     assert "Inventory: available" in output
     assert "standard profile: available" in output
     assert "deep profile:" in output
-    assert "fast rules: 16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)" in output
+    assert "fast rules: 18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)" in output
     assert "standard rules: 4 registered" in output
     assert "deep rules: 1 registered" in output
     assert tuple(sorted(RULES)) == expected_codes
@@ -1025,7 +1029,10 @@ def test_cli_scan_returns_one_and_renders_findings(
     monkeypatch.setattr(cli, "scan", fake_scan)
 
     assert main(["scan", str(tmp_path)]) == 1
-    assert "  error: README.md: Broken link" in capsys.readouterr().out.splitlines()
+    lines = capsys.readouterr().out.splitlines()
+    assert "README.md" in lines
+    assert "  error   DS101 dangling link or anchor: Broken link" in lines
+    assert "  error   DS101 dangling link or anchor: README.md: Broken link" in lines
 
 
 def test_invalid_root(tmp_path: Path):

@@ -9,6 +9,9 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     env:
+      # Never read a user settings file in CI: a persistent (self-hosted) runner home could
+      # carry one between jobs (ADR 0005, threat model 0009-user-settings U4, A9).
+      DOCSENTINEL_SETTINGS: "off"
       REPORT_PRINT_MAX_FINDINGS: "15"
       REPORT_TAIL_LINES: "60"
     strategy:

@@ -14,6 +14,10 @@ from unittest import mock
 import pytest
 
 from docsentinel import models, rules
+from docsentinel.config import Config
+
+#: DS103 is opt-in (Milestone 0009 Story 01.0): it evaluates only under reference_scope = "strict".
+STRICT_SCOPE = Config(reference_scope="strict")
 
 paths: types.ModuleType
 
@@ -365,7 +369,7 @@ def test_detect_locations_search_every_span_only_since_previous_match(
         mock.patch.object(paths, "_read_text", return_value=tracked),
         mock.patch.object(paths, "_strip_fenced_blocks", return_value=tracked),
     ):
-        findings = paths.detect(tmp_path, (document,))
+        findings = paths.detect(tmp_path, (document,), STRICT_SCOPE)
 
     assert [(finding.line, finding.column) for finding in findings] == expected
     starts = [match.start() for match in paths._CODE_SPAN_RE.finditer(text)]

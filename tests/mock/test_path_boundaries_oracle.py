@@ -27,6 +27,9 @@ from docsentinel import models
 from docsentinel.config import Config
 from docsentinel.detectors import links, path_boundaries, paths
 
+#: DS103 is opt-in (Milestone 0009 Story 01.0): it evaluates only under reference_scope = "strict".
+STRICT_SCOPE = Config(reference_scope="strict")
+
 #: Raw adversarial targets from the threat model, rendered as live links. The NUL
 #: and ESC control bytes and the fullwidth-dot confusable are embedded literally.
 _CORPUS_TARGETS = (
@@ -190,14 +193,14 @@ def test_detectors_never_touch_a_path_outside_the_root(tmp_path: Path, monkeypat
     # assertion be strict (every path is the root, under it, or an ancestor of it
     # from the one allowed realpath -- anything else, e.g. /etc/passwd, fails).
     links.detect(root, (document,))
-    paths.detect(root, (document,))
+    paths.detect(root, (document,), STRICT_SCOPE)
     path_boundaries.detect(root, (document,), error_policy)
 
     recorder = _Recorder()
     _install_recorder(monkeypatch, recorder)
 
     links.detect(root, (document,))
-    paths.detect(root, (document,))
+    paths.detect(root, (document,), STRICT_SCOPE)
     path_boundaries.detect(root, (document,), error_policy)
 
     assert recorder.paths, "recorder captured no filesystem access; the detectors did not run"
@@ -244,3 +247,61 @@ def test_ds116_reports_in_root_symlink_escape(tmp_path: Path):
     assert len(findings) == 1
     assert "symlink that escapes the documentation root" in findings[0].message
     assert findings[0].line == 1
+
+
+def test_hidden_intermediate_symlink_link_never_probes_outside(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """
+    [Unit] detectors path_boundaries: verifies a symlink hidden in a relative link target is walked, not followed.
+
+    Scenario:
+        Given root/a -> ../outside, root/l -> a/b and a Markdown link [x](l/x.md), with outside/b a
+            symlink to an absolute directory above the root
+        When DS116 and DS101 run with every os.lstat/os.readlink/os.stat recorded
+        Then the kernel-resolved parent of every recorded path stays inside the canonical root, and
+            DS116 reports exactly one symlink escape.
+
+    Boundaries:
+        - Focus: security review H1, the link form (pre-existing in DS116/DS101/DS113 callers)
+        - Fixtures/params: tmp_path, monkeypatch; symlinks built in the test body
+
+    On failure, first check:
+        - Whether escapes_via_symlink jumps to a joined symlink target instead of re-walking its components
+    """
+    base = Path(os.path.realpath(tmp_path))
+    outside = base / "outside"
+    outside.mkdir()
+    root = base / "scanroot"
+    root.mkdir()
+    _symlink_or_skip(outside / "b", str(base))
+    _symlink_or_skip(root / "a", "../outside")
+    _symlink_or_skip(root / "l", "a/b")
+    (root / "README.md").write_text("[x](l/x.md)\n", encoding="utf-8")
+    document = models.Document("README.md", 0)
+    recorded: list[str] = []
+    paused = [False]
+    for name in ("stat", "lstat", "readlink"):
+        original = getattr(os, name)
+
+        def wrapper(path: object, *args: object, _original=original, **kwargs: object) -> object:
+            """Record the path argument (unless paused) then delegate."""
+            if not paused[0] and isinstance(path, (str, os.PathLike)):
+                recorded.append(os.fspath(path))
+            return _original(path, *args, **kwargs)
+
+        monkeypatch.setattr(os, name, wrapper)
+
+    ds116 = path_boundaries.detect(root, (document,))
+    links.detect(root, (document,))
+
+    paused[0] = True
+    escaping = [
+        path
+        for path in recorded
+        if not _is_under(os.path.realpath(os.path.dirname(os.path.normpath(path))), str(root))
+        and not _is_under(str(root), os.path.normpath(path))
+    ]
+    paused[0] = False
+    assert escaping == [], f"probed through an unwalked symlink outside the root: {escaping}"
+    assert [finding.message for finding in ds116] == [
+        "reference resolves through a symlink that escapes the documentation root: l/x.md"
+    ]

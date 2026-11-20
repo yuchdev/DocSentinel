@@ -44,6 +44,7 @@ handling; the exhaustive algorithmic floods live in
 from __future__ import annotations
 
 import json
+import logging
 import os
 import socket
 import subprocess
@@ -157,6 +158,7 @@ FAST_RULE_ORDER: tuple[str, ...] = (
     "DS116",
     "DS117",
     "DS118",
+    "DS124",
 )
 
 #: The DS11x rules the genuine ``DS11`` prefix matches today, derived live so the
@@ -440,7 +442,7 @@ def test_code_span_scope_is_narrower_than_full_references(tmp_path: Path):
     docs.write_text("# W\n\nUse `\\Windows\\win.ini` and `C:\\Program.ini` here.\n", encoding="utf-8")
     (tmp_path / "escape.md").write_text("# E\n\nNever `../../etc/passwd` from docs.\n", encoding="utf-8")
 
-    result = scan(tmp_path, config=Config(profile="fast"))
+    result = scan(tmp_path, config=Config(profile="fast", reference_scope="strict"))
     ds116 = {(finding.path, finding.line) for finding in _ds116(result.findings)}
     assert ds116 == {("escape.md", 3)}
 
@@ -599,7 +601,14 @@ def test_reports_are_stable_across_formats(asset_case: Callable[[str, str], Asse
 
     text = render(result, "text")
     assert render(result, "text") == text
-    assert "error: README.md:3: reference escapes the documentation root: ../../secrets.md" in text
+    assert (
+        "  error   DS116 path traversal outside documentation root, line 3: "
+        "reference escapes the documentation root: ../../secrets.md"
+    ) in text
+    assert (
+        "  error   DS116 path traversal outside documentation root: README.md, line 3: "
+        "reference escapes the documentation root: ../../secrets.md"
+    ) in text
 
     payload = json.loads(render(result, "json-v1"))
     assert payload["schema_version"] == 1
@@ -713,7 +722,7 @@ def test_cli_doctor_counts_ds116_as_an_ordinary_fast_rule(capsys: pytest.Capture
         Given the installed rule registry
         When the doctor command reports environment readiness
         Then the fast-rule tally reads exactly
-            "16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)",
+            "18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)",
             so DS116 is inside the registered count and is not one of the opt-in rules.
 
     Boundaries:
@@ -728,7 +737,9 @@ def test_cli_doctor_counts_ds116_as_an_ordinary_fast_rule(capsys: pytest.Capture
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "fast rules: 16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)" in captured.out
+    assert (
+        "fast rules: 18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)" in captured.out
+    )
 
 
 def test_notice_names_only_the_off_opt_in_rule(asset_case: Callable[[str, str], AssetCase]):
@@ -759,7 +770,7 @@ def test_notice_names_only_the_off_opt_in_rule(asset_case: Callable[[str, str], 
     assert "DS116" in result.enabled_rules
     assert (
         result.notice
-        == "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
+        == '12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS103 (set reference_scope = "strict"), DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming).'
     )
 
 
@@ -832,9 +843,7 @@ def test_decode_percent_paths_false_keeps_raw_traversal_but_not_encoded(asset_ca
     assert [finding.line for finding in _ds116(scan(raw.root).findings)] == [3]
 
     encoded = asset_case("ds116", "percent_encoded_parent_escape")
-    (encoded.root / "docsentinel.toml").write_text(
-        'profile = "fast"\ndecode_percent_paths = false\n', encoding="utf-8"
-    )
+    (encoded.root / "docsentinel.toml").write_text('profile = "fast"\ndecode_percent_paths = false\n', encoding="utf-8")
     assert _ds116(scan(encoded.root).findings) == ()
 
 
@@ -953,7 +962,8 @@ def test_hostile_targets_are_bounded_and_repr_escaped(tmp_path: Path):
     assert "\x1b" not in text and "\x00" not in text
     assert "\\x1b" in text and "\\x00" in text
     body = text.split("\nBlocking findings:", 1)[0]  # the trailing recap repeats every error line
-    error_lines = [line for line in body.splitlines() if line.startswith("  error: README.md:")]
+    finding_prefix = "  error   DS116 path traversal outside documentation root, line "
+    error_lines = [line for line in body.splitlines() if line.startswith(finding_prefix)]
     assert len(error_lines) == len(hostile_targets)  # no message broke onto a second line
 
     github = render(result, "github")
@@ -989,44 +999,55 @@ def test_crlf_line_numbers_point_at_the_offending_reference(tmp_path: Path):
     assert findings[0].line == 5
 
 
-def test_invalid_utf8_scan_surfaces_rather_than_false_clean(tmp_path: Path):
+def test_invalid_utf8_scan_is_reported_as_ds100(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """
-    [Integration] detectors repository root path boundaries ds116: verifies invalid UTF-8 is not a silent clean.
+    [Integration] detectors repository root path boundaries ds116: verifies an invalid-UTF-8 document is reported as DS100.
 
     Scenario:
         Given a Markdown document holding invalid UTF-8 bytes
         When a fast scan reads it with DS116 selected
-        Then a decode error propagates instead of a misleading zero-finding result.
+        Then the engine withholds the document from every analyzer: it stays in the inventory
+            with exactly one blocking DS100 error finding, and one WARNING names it (owner decision:
+            skip + blocking finding, so the result is never a silent clean).
 
     Boundaries:
-        - Focus: unreadable input raises rather than masquerading as clean (contract B.4)
-        - Fixtures/params: tmp_path
+        - Focus: an unreadable or undecodable document is withheld from analyzers and reported as DS100, never a silent clean
+        - Fixtures/params: tmp_path, caplog
 
     On failure, first check:
-        - The UTF-8 read in path_boundaries._read_text
-        - That the engine does not swallow the decode error into a clean scan
+        - engine._partition_readable and its WARNING text
     """
     (tmp_path / "README.md").write_bytes(b"# Title\n\n[x](\xff\xfe/../../x.md)\n")
 
-    with pytest.raises(UnicodeDecodeError):
-        scan(tmp_path, config=Config(profile="fast", select=("DS116",)))
+    with caplog.at_level(logging.WARNING, logger="docsentinel"):
+        result = scan(tmp_path, config=Config(profile="fast", select=("DS100", "DS116")))
+
+    assert [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING] == [
+        "skipped README.md: not valid UTF-8"
+    ]
+    assert [document.path for document in result.documents] == ["README.md"]
+    assert [(finding.rule, finding.severity, finding.message) for finding in result.findings] == [
+        ("DS100", "error", "unreadable document: not valid UTF-8")
+    ]
 
 
-def test_unreadable_file_surfaces_rather_than_false_clean(tmp_path: Path):
+def test_unreadable_file_is_reported_as_ds100(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """
-    [Integration] detectors repository root path boundaries ds116: verifies an unreadable file is not a silent clean.
+    [Integration] detectors repository root path boundaries ds116: verifies an unreadable file is reported as DS100.
 
     Scenario:
         Given a Markdown document whose read permission is removed
         When a fast scan tries to read it with DS116 selected
-        Then a PermissionError propagates instead of a misleading zero-finding result.
+        Then the engine withholds the document from every analyzer: it stays in the inventory
+            with exactly one blocking DS100 error finding, and one WARNING names it (owner decision:
+            skip + blocking finding, so the result is never a silent clean).
 
     Boundaries:
-        - Focus: a filesystem read error surfaces instead of masquerading as clean
-        - Fixtures/params: tmp_path (skipped when running as root, which bypasses the mode)
+        - Focus: an unreadable or undecodable document is withheld from analyzers and reported as DS100, never a silent clean
+        - Fixtures/params: tmp_path, caplog (skipped when running as root, which bypasses the mode)
 
     On failure, first check:
-        - Whether the engine swallowed the read error into a clean scan
+        - engine._partition_readable and its WARNING text
         - Whether the test runs as root, where chmod 000 does not block reads
     """
     if hasattr(os, "geteuid") and os.geteuid() == 0:
@@ -1035,8 +1056,15 @@ def test_unreadable_file_surfaces_rather_than_false_clean(tmp_path: Path):
     target.write_text("# Title\n\n[x](../../secret.md)\n", encoding="utf-8")
     target.chmod(0o000)
     try:
-        with pytest.raises(PermissionError):
-            scan(tmp_path, config=Config(profile="fast", select=("DS116",)))
+        with caplog.at_level(logging.WARNING, logger="docsentinel"):
+            result = scan(tmp_path, config=Config(profile="fast", select=("DS100", "DS116")))
+        assert [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING] == [
+            "skipped README.md: cannot read it (Permission denied)"
+        ]
+        assert [document.path for document in result.documents] == ["README.md"]
+        assert [(finding.rule, finding.severity, finding.message) for finding in result.findings] == [
+            ("DS100", "error", "unreadable document: cannot read it (Permission denied)")
+        ]
     finally:
         target.chmod(0o644)
 
@@ -1382,3 +1410,38 @@ def test_symlink_chain_walk_terminates_and_stays_linear(tmp_path: Path):
         return pb.detect(root, documents, Config(root_escape_policy="error"))
 
     assert_scales_linearly(build, run, (8, 16, 32), expected_count=1, label="ds116-symlink-chain")
+
+
+def test_deep_prefix_symlink_out_link_is_ds116(tmp_path: Path):
+    """
+    [Integration] detectors repository root path boundaries ds116: verifies a link whose symlink-out
+    follows 70 plain components is still one DS116 escape.
+
+    Scenario:
+        Given 70 nested plain directories whose last holds a symlink to a directory outside the root,
+            and a Markdown link through all of them
+        When DS116 runs with the default error policy
+        Then exactly one DS116 symlink finding is reported.
+
+    Boundaries:
+        - Focus: security review M-A (only followed symlinks count toward the 64-hop cap), link form
+        - Fixtures/params: tmp_path; directories and symlink built in the test body
+
+    On failure, first check:
+        - The hop counter of the shared walker in path_boundaries
+    """
+    base = Path(os.path.realpath(tmp_path))
+    (base / "outside").mkdir()
+    root = base / "scanroot"
+    deep = root.joinpath(*(["d"] * 70))
+    deep.mkdir(parents=True)
+    try:
+        (deep / "out").symlink_to(base / "outside", target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    (root / "README.md").write_text("[x](" + "d/" * 70 + "out/x.md)\n", encoding="utf-8")
+
+    findings = pb.detect(root, (models.Document("README.md", 0),))
+
+    assert [finding.line for finding in findings] == [1]
+    assert "symlink that escapes the documentation root" in findings[0].message

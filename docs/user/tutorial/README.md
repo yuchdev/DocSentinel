@@ -26,7 +26,7 @@ DocSentinel provides three installation tiers depending on the analysis profile 
 ### 1. Fast Profile (Core)
 
 Installs the core engine, CLI, and deterministic structural checks
-(`DS101`–`DS118`, sixteen rules total). No optional extras are required at
+(`DS100`–`DS118`, seventeen rules total). No optional extras are required at
 scan time; all fast rules use only the Python standard library at run time.
 See the [dependency note](#dependency-note) below for a known inconsistency.
 
@@ -70,7 +70,7 @@ docsentinel doctor
 
 | Profile              | Focus                                                                                | Execution Speed               | Optional extras                                                 |
 |----------------------|--------------------------------------------------------------------------------------|-------------------------------|-----------------------------------------------------------------|
-| **`fast`** (default) | Structural and reference integrity: 16 rules (DS101–DS118)                           | Sub-second                    | None (fast rules use stdlib only at scan time)                  |
+| **`fast`** (default) | Structural and reference integrity: 17 rules (DS100–DS118)                           | Sub-second                    | None (fast rules use stdlib only at scan time)                  |
 | **`standard`**       | Corpus analysis (text complexity, duplication, low-information text, docstring sync) | Fast (seconds)                | `docsentinel[standard]`: `scikit-learn`, `textstat`, `docsig`   |
 | **`deep`**           | Semantic contradictions and subject-verb-object claims                               | Heuristic / Compute-intensive | `docsentinel[deep]`: `spacy`, `textacy`, `en_core_web_sm` model |
 

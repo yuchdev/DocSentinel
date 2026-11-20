@@ -51,6 +51,7 @@ scenarios and the cross-module behaviour.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import socket
 import subprocess
@@ -162,6 +163,7 @@ FAST_RULE_ORDER: tuple[str, ...] = (
     "DS116",
     "DS117",
     "DS118",
+    "DS124",
 )
 
 #: The DS11x rules the genuine ``DS11`` prefix matches today, derived live so the test
@@ -912,7 +914,14 @@ def test_reports_are_stable_across_formats(asset_case: Callable[[str, str], Asse
 
     text = render(result, "text")
     assert render(result, "text") == text
-    assert 'error: b.md:2: duplicate document id "alpha" (already declared in a.md)' in text
+    assert (
+        '  error   DS114 duplicate stable document identifiers, line 2: '
+        'duplicate document id "alpha" (already declared in a.md)'
+    ) in text
+    assert (
+        '  error   DS114 duplicate stable document identifiers: b.md, line 2: '
+        'duplicate document id "alpha" (already declared in a.md)'
+    ) in text
 
     payload = json.loads(render(result, "json-v1"))
     assert payload["schema_version"] == 1
@@ -1042,22 +1051,23 @@ def test_invalid_utf8_head_contributes_no_identity_and_does_not_crash(tmp_path: 
     assert _ds114(result.findings) == ()
 
 
-def test_unreadable_document_surfaces_rather_than_false_clean(tmp_path: Path):
+def test_unreadable_document_is_reported_as_ds100(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """
-    [Integration] detectors document identity uniqueness ds114: verifies an unreadable document is not a silent clean.
+    [Integration] detectors document identity uniqueness ds114: verifies an unreadable document is reported as DS100.
 
     Scenario:
         Given a Markdown document whose read permission is removed
         When a fast scan tries to read it with DS114 selected
-        Then a PermissionError propagates instead of a misleading zero-finding result, matching how the other
-        fast detectors surface a genuine filesystem read failure rather than masking it.
+        Then the engine withholds the document from every analyzer: it stays in the inventory
+            with exactly one blocking DS100 error finding, and one WARNING names it (owner decision:
+            skip + blocking finding, so the result is never a silent clean).
 
     Boundaries:
-        - Focus: a filesystem read error surfaces instead of masquerading as clean (not masked in _read_head)
-        - Fixtures/params: tmp_path (skipped when running as root, which bypasses the mode)
+        - Focus: an unreadable or undecodable document is withheld from analyzers and reported as DS100, never a silent clean
+        - Fixtures/params: tmp_path, caplog (skipped when running as root, which bypasses the mode)
 
     On failure, first check:
-        - Whether _read_head swallowed the OSError into a clean scan
+        - engine._partition_readable and its WARNING text
         - Whether the test runs as root, where chmod 000 does not block reads
     """
     if hasattr(os, "geteuid") and os.geteuid() == 0:
@@ -1066,8 +1076,15 @@ def test_unreadable_document_surfaces_rather_than_false_clean(tmp_path: Path):
     target.write_text("---\nid: alpha\n---\n", encoding="utf-8")
     target.chmod(0o000)
     try:
-        with pytest.raises(PermissionError):
-            scan(tmp_path, config=Config(profile="fast", select=("DS114",)))
+        with caplog.at_level(logging.WARNING, logger="docsentinel"):
+            result = scan(tmp_path, config=Config(profile="fast", select=("DS100", "DS114")))
+        assert [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING] == [
+            "skipped README.md: cannot read it (Permission denied)"
+        ]
+        assert [document.path for document in result.documents] == ["README.md"]
+        assert [(finding.rule, finding.severity, finding.message) for finding in result.findings] == [
+            ("DS100", "error", "unreadable document: cannot read it (Permission denied)")
+        ]
     finally:
         target.chmod(0o644)
 
@@ -1364,7 +1381,7 @@ def test_cli_doctor_counts_ds114_as_an_ordinary_fast_rule(capsys: pytest.Capture
         Given the installed rule registry
         When the doctor command reports environment readiness
         Then the fast-rule tally reads exactly
-            "16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)",
+            "18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)",
             so DS114 is inside the registered count and is not one of the opt-in rules.
 
     Boundaries:
@@ -1380,7 +1397,7 @@ def test_cli_doctor_counts_ds114_as_an_ordinary_fast_rule(capsys: pytest.Capture
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "DS114" in {rule.code for rule in rules_for_profile("fast")}
-    assert "fast rules: 16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)" in captured.out
+    assert "fast rules: 18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)" in captured.out
 
 
 def _multi_document_corpus(tmp_path: Path, shape: str, size: int) -> tuple[Path, tuple[models.Document, ...]]:
