@@ -572,8 +572,8 @@ def check_text(
     :param link_root: Precomputed base for ``/`` targets; ``None`` resolves it from
         ``config`` via :func:`~docsentinel.link_root.link_root_for`.
     :param mention_cache: Memo of :func:`mention_ds116_reason` results keyed by
-        ``(document directory, target)``, shared across the documents of one
-        :func:`detect` run so a repeated mention is classified once (security review
+        ``(document directory, target)``, shared across the documents of
+        one :func:`detect` run so a repeated mention is classified once (security review
         2026-11-16, L2); ``None`` uses a cache local to this document. The key holds
         no root, so the cache must be one per scan root: never share one across
         different roots, or a result computed under one root answers for another.

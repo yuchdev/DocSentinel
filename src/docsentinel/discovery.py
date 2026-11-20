@@ -349,7 +349,9 @@ def _check_shape(key: str, values: object) -> tuple[str, ...]:
     return tuple(str.__str__(item) for item in values)
 
 
-def check_invoker_selector_shape(include: Optional[Sequence[str]], exclude: Optional[Sequence[str]]):
+def check_invoker_selector_shape(
+    include: Optional[Sequence[str]], exclude: Optional[Sequence[str]]
+) -> "None":
     """Run only the shape checks of ADR 0006 Contract 3 step 1 on invoker selectors.
 
     The engine calls this for every scan target, including a single-file one,
