@@ -13,6 +13,7 @@ import pytest
 
 from docsentinel import cli
 from docsentinel.config import ConfigError
+from tests.log_helpers import problem_output
 
 ESC = chr(0x1B)
 
@@ -54,7 +55,7 @@ def test_symlink_loop_root_is_exit_two_with_a_neutralized_message(
     assert captured.out == ""
     assert "symlink loop" in captured.err and ESC not in captured.err
     assert captured.err.startswith(("Scan failed: cannot resolve", "Baseline generation failed: cannot resolve"))
-    assert len(captured.err.splitlines()) == 1
+    assert len(problem_output(captured.err).splitlines()) == 1
 
 
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks are not available")

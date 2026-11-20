@@ -20,6 +20,7 @@ from docsentinel.config import load_config
 from docsentinel.engine import scan
 from docsentinel.telemetry.loader import packaged_template_names
 from tests.asset_helpers import AssetCase, load_asset_case
+from tests.log_helpers import problem_output
 
 _BASELINE = "baseline-pre-0007.json"
 
@@ -30,6 +31,8 @@ def _tree(asset_case: Callable[[str, str], AssetCase]) -> Path:
     load_asset_case("ds102", "stray_comment_file", root)
     load_asset_case("ds103", "unresolvable_path_file", root)
     load_asset_case("report", "baseline_pre_0007", root)
+    # The frozen baseline holds a DS103 fingerprint; DS103 is opt-in since Milestone 0009 Story 01.0.
+    (root / "docsentinel.toml").write_text('reference_scope = "strict"\n', encoding="utf-8")
     return root
 
 
@@ -90,6 +93,6 @@ def test_pre_0007_baseline_suppresses_every_finding_through_the_cli(
     captured = capsys.readouterr()
 
     assert (without, code) == (1, 0)
-    assert captured.err == ""
+    assert problem_output(captured.err) == ""
     for message in ("dangling link", "stray HTML comment", "unresolvable path"):
         assert message not in captured.out

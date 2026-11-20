@@ -15,6 +15,9 @@ from docsentinel.reporting import render
 from docsentinel.telemetry.model import ReportModel
 from tests.asset_helpers import AssetCase
 
+#: DS103 is opt-in (Milestone 0009 Story 01.0): it evaluates only under reference_scope = "strict".
+STRICT_SCOPE = Config(reference_scope="strict")
+
 
 def _enrichment(findings: tuple) -> list[tuple]:
     """Project findings onto ``(line, column, value, type)`` for compact assertions."""
@@ -105,15 +108,16 @@ def test_ds101_missing_anchor_in_other_file_value_is_full_target(asset_case: Cal
 
 def test_ds102_stray_comment_column_and_type(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] finding enrichment ds102: verifies stray comments report their opening column and type.
+    [Integration] finding enrichment ds102: verifies stray comments report their opening column, value and type.
 
     Scenario:
         Given a comment at the start of a line and one in the middle of a line
         When DS102 runs on each
-        Then the columns are 1 and 11, the type is ``stray html comment`` and no snippet is copied to value.
+        Then the columns are 1 and 11, the type is ``stray html comment`` and value is the ``repr`` of the
+            comment start, the same bounded text the message echoes after ``stray HTML comment: ``.
 
     Boundaries:
-        - Focus: DS102 column/type enrichment; value stays None (the message is a snippet)
+        - Focus: DS102 column/value/type enrichment
         - Fixtures/params: assets ds102/stray_comment_file and ds102/comment_mid_line_column
         - Scope: detector output only
 
@@ -126,8 +130,10 @@ def test_ds102_stray_comment_column_and_type(asset_case: Callable[[str, str], As
     at_start = comments.detect(start_case.root, start_case.documents("comment.md"))
     mid_line = comments.detect(mid_case.root, mid_case.documents("README.md"))
 
-    assert _enrichment(at_start) == [(1, 1, None, "stray html comment")]
-    assert _enrichment(mid_line) == [(3, 11, None, "stray html comment")]
+    assert _enrichment(at_start) == [(1, 1, "'<!-- stray -->'", "stray html comment")]
+    assert _enrichment(mid_line) == [(3, 11, "'<!-- note -->'", "stray html comment")]
+    for finding in (*at_start, *mid_line):
+        assert finding.message == f"stray HTML comment: {finding.value}"
 
 
 def test_ds103_unresolvable_path_value_column_and_type(asset_case: Callable[[str, str], AssetCase]):
@@ -150,8 +156,8 @@ def test_ds103_unresolvable_path_value_column_and_type(asset_case: Callable[[str
     first = asset_case("ds103", "unresolvable_path_file")
     mid = asset_case("ds103", "path_column_mid_line")
 
-    at_start = paths.detect(first.root, first.documents("path.md"))
-    mid_line = paths.detect(mid.root, mid.documents("README.md"))
+    at_start = paths.detect(first.root, first.documents("path.md"), STRICT_SCOPE)
+    mid_line = paths.detect(mid.root, mid.documents("README.md"), STRICT_SCOPE)
 
     assert _enrichment(at_start) == [(1, 6, "nonexistent/path.py", "unresolvable path")]
     assert _enrichment(mid_line) == [(3, 14, "missing/tool.sh", "unresolvable path")]
@@ -177,7 +183,7 @@ def test_scan_enrichment_reaches_report_model_but_not_v1_json(asset_case: Callab
     root = asset_case("ds101", "dangling_link_file").root
     asset_case("ds102", "stray_comment_file")
     asset_case("ds103", "unresolvable_path_file")
-    config = Config(select=("DS101", "DS102", "DS103"))
+    config = Config(select=("DS101", "DS102", "DS103"), reference_scope="strict")
 
     result = scan(root, config=config)
     legacy = json.loads(render(result, "json-v1"))
@@ -188,7 +194,7 @@ def test_scan_enrichment_reaches_report_model_but_not_v1_json(asset_case: Callab
     assert "opt_in_off" not in legacy
     assert [(p["rule"], p["column"], p["value"], p["type"]) for p in context["findings"]] == [
         ("DS101", 11, "missing.md", "dangling link"),
-        ("DS102", 1, None, "stray html comment"),
+        ("DS102", 1, "'<!-- stray -->'", "stray html comment"),
         ("DS103", 6, "nonexistent/path.py", "unresolvable path"),
     ]
     assert context["rules_evaluated"] == 3

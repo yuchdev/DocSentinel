@@ -1,7 +1,8 @@
 # Configuration Reference — Fast-Profile Policy Options
 
 This page is the reference for every configuration option introduced in
-Milestone 0005 for the fast-profile rules DS104–DS118. All defaults and
+Milestone 0005 for the fast-profile rules DS104–DS118 and, since Milestone 0009, the
+reference-scope options of DS103 and DS124. All defaults and
 valid values on this page were verified against
 `src/docsentinel/config.py` before publication.
 
@@ -16,12 +17,25 @@ For the report options (`report_templates_dir`, `report_show_clean_documents`,
 
 ## How to set options
 
-Options are set in the same places as all other DocSentinel keys:
+An effective configuration is built from four layers. A later layer replaces an earlier one
+**per key**, as a whole value: a list is never merged with the list of a lower layer.
 
-1. A `Config` object passed directly to `scan()` in the Python API (bypasses
-   `load_config` validation; the caller is responsible for valid values).
-2. `docsentinel.toml` at the scan root (keys at the top level — no table
-   header). `doc_sentinel.toml` is accepted as an equivalent alias.
+1. **Built-in defaults** (the `Config` dataclass).
+2. **User settings**: one personal JSON file, described in
+   [User settings](#user-settings-json) below.
+3. **Project configuration**: one file for the scan, as described next.
+4. **Command-line flags**, for example `--reference-scope`, `--profile` or `--strict`, for one run.
+
+A `Config` object passed directly to `scan()` in the Python API bypasses all of this: it is used
+as given, with no file read, no user settings and no validation (the caller is responsible for
+valid values).
+
+The project configuration is, in order, the first that applies:
+
+1. An explicit file given with `--config FILE` (or `load_config(root, path)`). A `.json`
+   suffix, in any letter case, selects the JSON reader; any other suffix is read as TOML.
+2. `docsentinel.toml` at the scan root (keys at the top level, no table header).
+   `doc_sentinel.toml` is accepted as an equivalent alias.
 3. `[tool.doc_sentinel]` in `pyproject.toml` at the scan root.
 
 When a standalone file (`docsentinel.toml` or `doc_sentinel.toml`) and
@@ -34,8 +48,150 @@ keep only one. New projects should use `docsentinel.toml`, which is what
 config load regardless of the active profile; an invalid value makes even a
 fast scan fail with exit code 2.
 
+**JSON is not discovered in projects.** A project JSON file is read only when you name it with
+`--config FILE.json`; no `docsentinel.json` is looked for at the scan root. The keys and the
+validation are the same as in TOML, so an invalid value gives the same message.
+
+```json
+{
+  "profile": "fast",
+  "ignore": ["DS102"],
+  "reference_scope": "strict"
+}
+```
+
+JSON is read strictly, and each of these is a configuration error (exit code 2): a file larger than
+1 MiB (1,048,576 bytes), a byte-order mark, invalid UTF-8, a duplicate key, `NaN` or `Infinity`, a
+`null` anywhere (leave the key out to get its default), a lone surrogate escape, or a top-level
+value that is not an object.
+
+### User settings (JSON)
+
+User settings hold your personal defaults, for example `profile` or `reference_scope`, for every
+repository you scan on this machine. The file is a JSON object in the format above.
+
+| Where | Location |
+|-------|----------|
+| Default | `~/.local/share/docsentinel/settings.json` |
+| `XDG_DATA_HOME` set (absolute) | `$XDG_DATA_HOME/docsentinel/settings.json` |
+| `DOCSENTINEL_SETTINGS=/abs/path.json` | That file, which must exist (a missing file is an error) |
+| `DOCSENTINEL_SETTINGS=off` | No user settings at all, for every run |
+
+A missing file at the default location is simply skipped. An empty `DOCSENTINEL_SETTINGS` counts
+as unset; a relative path in it is an error. When no home directory is known and no override is
+set, the layer is skipped. Create the starter file with
+[`docsentinel init --user`](../tutorial/cli.md#user-settings-docsentinel-init---user), or switch
+the layer off for one run with `docsentinel scan --no-user-settings` (also on `baseline` and
+`doctor`) or in Python with `load_config(root, user_settings=False)`.
+
+**Refused keys.** An option that names a repository file or changes which documents a repository
+scans belongs to that repository, not to you, so these ten keys in a user file are a
+configuration error that lists every refused key: `baseline`, `include`, `exclude`,
+`docsig_paths`, `navigation_indexes`, `navigation_required`, `deprecated_references_file`,
+`report_templates_dir`, `link_root` and `telemetry_domains`. The same file may not enable a
+`python:` extension either. Set them in the project configuration or on the command line.
+
+**`deep_confirm` at user level.** `deep_confirm` is allowed in user settings, so one setting there
+confirms the heuristic deep profile on every repository you scan. The deep profile stays
+advisory-only (it never changes the exit code), but if you want each project to opt in on its own,
+leave `deep_confirm` out of the user file and use the flag or the project configuration.
+
+**Permission rule.** A user settings file that someone else could have changed would let that
+person weaken every scan of yours, so on POSIX systems (Linux, macOS, BSD, WSL) the file is checked
+before it is read:
+
+- The file (after following symbolic links) must be a regular file owned by you or by root, and
+  must not be writable by group or others.
+- The directory that holds the path, each directory that holds a symbolic link on the way to the
+  file, and the directory that holds the final file must be owned by you or by root, and must not be
+  writable by group or others. A directory that is group- or world-writable is accepted only when
+  it has the sticky bit set (like `/tmp`), and then a symbolic link in it must be owned by you or
+  root too. At most 40 links are followed.
+- When you run as root, only root-owned files and directories pass, so `sudo` with your `HOME`
+  kept does not read your file as root.
+
+A violation is a configuration error with exit code `2` and one of the fixed messages `owned by
+another user`, `writable by group or others (run chmod go-w on it)` or `its directory is owned by
+another user or writable by others`. There is no warning mode and no override flag. The directory
+message names no directory: check the directory holding the file, every directory holding a
+symbolic link on the way to it, and the directory holding the final file. Fix a mode problem with
+`chmod go-w` on the file or on that directory. An ownership problem, or a link owned by another
+user in a shared sticky directory, cannot be fixed with `chmod`: move the file (or the link) to a
+directory you own. Or skip the layer with `--no-user-settings` or `DOCSENTINEL_SETTINGS=off`. Read permission is not checked; keep no secrets in the file. On
+non-POSIX systems the ownership and mode checks are skipped (the regular-file, size and parse
+checks still apply); protect the profile directory with its own access rights. ACLs are not
+inspected.
+
+**WSL.** With the default drvfs mount options, files under the Windows mount (`/mnt/c/...`)
+report mode `0777`, so the permission rule refuses them. Keep the settings file in the Linux home directory.
+
+**Tools that set `DOCSENTINEL_SETTINGS`.** The path in that variable is trusted. A tool that sets
+it for you (direnv, pytest-env, tox `setenv`, an IDE run configuration) is therefore trusted with
+your settings: it can point DocSentinel at a file it chose. The file still cannot set the refused
+keys, so it cannot change which documents a repository scans, but it can, for example, ignore
+rules. Review such hooks as you would any script that runs in your shell.
+
+**CI.** Set `DOCSENTINEL_SETTINGS=off` at job level in every CI job that runs `docsentinel`. On a
+self-hosted runner the home directory persists, so a settings file written by one job (a fork pull
+request, say) would otherwise apply to every later job, including the protected branch. Job-wide
+`off` only removes trust, so it is the safe direction. This repository's own workflow does so.
+Quote the value in YAML (`DOCSENTINEL_SETTINGS: "off"`): unquoted, a YAML 1.1 parser reads `off` as
+the boolean false. `off` closes only this one way for a job to affect a later one. Do not run
+untrusted fork pull requests on a self-hosted runner that also runs protected jobs.
+
 For a working annotated example of every option in this page, see
 [examples/docsentinel.toml](/examples/docsentinel.toml).
+
+---
+
+## Selection options: `include` and `exclude`
+
+These two options choose which Markdown documents a scan inventories. Patterns are matched against
+each path relative to the scan root, written with `/`, and the match is case-sensitive.
+
+| Option | Type | Default | Merge with the command line |
+|--------|------|---------|-----------------------------|
+| `include` | list of strings | `["*.md", "**/*.md"]` | `--include` replaces it |
+| `exclude` | list of strings | `[".git", ".venv", "node_modules"]` | `--exclude` is appended to it |
+
+A user settings file may not set either key (see [Refused keys](#user-settings-json)).
+
+A value that contains `*`, `?` or `[` is a **glob**; any other value is a **literal**.
+
+| Kind | `include` admits a document when | `exclude` removes a document when |
+|------|----------------------------------|-----------------------------------|
+| glob | its path matches the glob | its path matches, or a directory name on its path matches |
+| literal | the path equals the value, or lies below it and ends in `.md` | the path equals the value or lies below it, or a directory name on its path equals the value |
+
+- A literal names **this file, or this directory and everything below it**. A directory `include`
+  admits only `.md` files, so images and sources below it are not inventoried. A literal `exclude`
+  prunes the walk: the directory is never entered.
+- **Exclude wins.** A document that is both included and excluded is left out.
+- Symlinked files and directories are skipped; a literal does not follow them.
+- Glob values behave as they always have. Literal values changed: a value such as `docs/archive`
+  used to match nothing, and now it matches that directory and everything below it, in a
+  configuration file and on the command line alike.
+- A file name that contains `*`, `?` or `[` cannot be selected as a literal. Use a glob that
+  matches it, writing the bracket as `[[]`: `notes[[]1].md` selects `notes[1].md`.
+- Matching is case- and Unicode-normalisation-sensitive: `Docs` does not match `docs`, even on a
+  case-insensitive file system, and a look-alike slash such as U+2215 or U+FF0F is an ordinary
+  character, not a separator.
+
+```toml
+include = ["docs", "README.md"]
+exclude = [".git", ".venv", "node_modules", "docs/archive", "**/*.draft.md"]
+```
+
+The same options exist on the command line and in Python; see
+[Selecting files](../tutorial/cli.md#selecting-files---include-and---exclude) and
+[`scan(include=, exclude=)`](../tutorial/library.md#selecting-documents-include-and-exclude).
+A configuration value is checked only to be a list of non-empty strings; unlike a command-line
+value it is never refused for being absolute, for containing `..` or for naming a missing path.
+
+Corpus-level results depend on the selection (`DS114`, `DS118`, `DS202`, `DS203`, `DS301`), and a
+baseline recorded with one selection looks stale under another, so record it with the selection
+of the scan it serves. Links into an excluded document still resolve, because `DS101`, `DS113` and
+`DS116` read the file system, not the inventory.
 
 ---
 
@@ -764,7 +920,7 @@ windows_path_policy = "portable"
 | Type | string |
 | Default | `"auto"` |
 | Valid values | `"auto"`, or a path relative to the scan root naming the scan root or a permitted ancestor (`"."`, `".."`, ...) |
-| Consumed by | DS101, DS103, DS112, DS113, DS116 |
+| Consumed by | DS101, DS103, DS112, DS113, DS116, DS124 |
 
 The directory that site-root-absolute targets (a link starting with `/`, such as
 one to the ADR index under the repository's docs directory) resolve against.
@@ -795,18 +951,23 @@ root or one of its ancestors. No `.git` or project marker is needed; only the
 filesystem root is refused. Use it for docs that are not in a
 git repository, or to go further up than a configuration file may.
 
-Only `/` targets are affected; relative targets still resolve against the
-referring document. A `/` target inside the link root is a valid repository
+Only `/` targets of links, and the fallback step of `DS124` `@`-mentions, are
+affected; relative link targets still resolve against the referring document.
+`DS124` tries every relative mention against the link root when it is not found
+next to the document, so a bare file name is looked up at the link root too. A `/` target inside the link root is a valid repository
 reference, even outside the scan root (a link to a source file while scanning
 only the docs directory), so DS116 does not report it; a `/` target whose `..`
 climbs above the link root is still an escape.
 
 **Trust.** `"auto"` trusts the enclosing git repository: DocSentinel checks
 whether `/` targets exist anywhere in it and reads the headings of linked
-Markdown files there. If you scan untrusted content that was extracted inside
-another repository (for example a downloaded archive unpacked into your
-checkout), its `/` links can reach files of that repository. Set
-`link_root = "."` for such scans so `/` stays within the scanned directory.
+Markdown files there. `DS124` also checks every relative `@`-mention against it.
+If you scan untrusted content that was extracted inside another repository (for
+example a downloaded archive unpacked into your checkout), its `/` links and its
+`DS124` mentions can reach files of that repository: each mention shows, as a
+finding or none, whether one file exists there, and CI output exposes that
+result. Set `link_root = "."` for such scans so `/` links and mention fallbacks
+stay within the scanned directory.
 
 ```toml
 link_root = "auto"
@@ -1082,6 +1243,59 @@ documentation_naming_prefix_patterns: pattern too long (max 256 chars)
 
 ---
 
+## Reference scope options (DS103, DS124)
+
+`reference_scope` decides whether `DS103` (path-like inline code spans) runs at all. `DS124`
+checks `@`-document mentions in both scopes and is tuned by `at_reference_extensions`. The scan
+notice names `DS103 (set reference_scope = "strict")` while the scope is `"links"`, so a default
+scan never reads as if it had checked code-span paths. For the grammar of a mention and the two
+resolution steps, see [document mentions](../tutorial/cli.md#document-mentions-ds124).
+
+### `reference_scope`
+
+| Field | Value |
+|-------|-------|
+| Type | string enum |
+| Default | `"links"` |
+| Valid values | `"links"`, `"strict"` |
+| Consumed by | DS103 (opt-in gate) |
+
+Which path-like references a scan checks.
+
+- `"links"` (default): Markdown links and `@`-document mentions only. `DS103` is inert: it emits
+  nothing and is listed as opt-in and not enabled.
+- `"strict"`: `DS103` also checks path-like inline code spans, as it did before 1.3.0, except
+  spans starting with `@` (those belong to `DS124` and `DS116`).
+
+`docsentinel scan --reference-scope {links,strict}` (also on `baseline`) overrides the key for one
+run. Any other value is a `ConfigError` (exit code 2). An injected `Config` with an unknown value
+keeps `DS103` inert.
+
+```toml
+reference_scope = "strict"
+```
+
+### `at_reference_extensions`
+
+| Field | Value |
+|-------|-------|
+| Type | list of strings |
+| Default | `["md", "markdown", "mdx", "txt", "rst", "toml", "json", "yaml", "yml", "py"]` |
+| Valid values | 1 to 64 entries, each 1 to 16 ASCII letters or digits, no dot |
+| Consumed by | DS124 |
+
+The file extensions a `relative` `@`-mention must end in to be checked by `DS124`. Entries are
+compared case-insensitively and stored lowercase; a duplicate after lowercasing is a
+`ConfigError`. An empty list is a `ConfigError` too: to switch the `@`-reference check off use
+`ignore = ["DS124"]`. `DS116` still checks every `relative` mention for a root escape, whatever
+its extension.
+
+```toml
+at_reference_extensions = ["md", "txt", "py"]
+```
+
+---
+
 ## Summary table
 
 The following table lists every option on this page with its default and
@@ -1123,7 +1337,9 @@ the rule that consumes it. All defaults were verified against
 | `root_escape_policy` | `"error"` | DS116 |
 | `decode_percent_paths` | `true` | DS116 |
 | `windows_path_policy` | `"portable"` | DS116 |
-| `link_root` | `"auto"` | DS101, DS103, DS112, DS113, DS116 |
+| `link_root` | `"auto"` | DS101, DS103, DS112, DS113, DS116, DS124 |
+| `reference_scope` | `"links"` | DS103 (opt-in, on with `"strict"`) |
+| `at_reference_extensions` | `["md","markdown","mdx","txt","rst","toml","json","yaml","yml","py"]` | DS124 |
 | `document_id_field` | `"id"` | DS114 |
 | `document_id_scope` | `"corpus"` | DS114 |
 | `document_id_case_sensitive` | `true` | DS114 |

@@ -1,5 +1,6 @@
 """End-to-end tests for the standard profile (DS201-DS204) over composed text assets from ``tests/assets``."""
 
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -17,6 +18,9 @@ from docsentinel.config import Config
 from docsentinel.detectors.standard import corpus
 from docsentinel.engine import scan
 from tests.asset_helpers import AssetCase
+
+#: The DS201 finding line printed directly under the ``dense.md`` document header of the text report.
+_DENSE_FINDING = r"^dense\.md \(\d+ bytes\)\n  warning DS201 high text complexity: Readability grade level"
 
 
 @pytest.fixture
@@ -192,10 +196,11 @@ def test_fast_profile_scan_ignores_standard_detectors(
         "DS116",
         "DS117",
         "DS118",
+        "DS124",
     )
     assert (
         result.notice
-        == "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
+        == "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS103 (set reference_scope = \"strict\"), DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
     )
     assert "DS201" not in result.enabled_rules
     assert "DS204" not in result.enabled_rules
@@ -226,7 +231,7 @@ def test_standard_scan_exit_code_zero_for_warning_only(
     root, _, _ = standard_profile_tree
     assert main(["scan", str(root), "--profile", "standard"]) == 0
     captured = capsys.readouterr()
-    assert "warning: dense.md: Readability grade level" in captured.out
+    assert re.search(_DENSE_FINDING, captured.out, re.MULTILINE)
 
 
 def test_standard_scan_exit_code_one_under_strict(
@@ -254,7 +259,8 @@ def test_standard_scan_exit_code_one_under_strict(
     root, _, _ = standard_profile_tree
     assert main(["scan", str(root), "--profile", "standard", "--strict"]) == 1
     captured = capsys.readouterr()
-    assert "warning: dense.md: Readability grade level" in captured.out
+    assert re.search(_DENSE_FINDING, captured.out, re.MULTILINE)
+    assert "  warning DS201 high text complexity: dense.md: Readability grade level" in captured.out
 
 
 def test_standard_scan_reports_duplicate_and_low_info(asset_case: Callable[[str, str], AssetCase]):
@@ -447,7 +453,8 @@ def test_standard_scan_exit_code_one_for_ds204_error(
 
     assert main(["scan", str(case.root), "--profile", "standard"]) == 1
     captured = capsys.readouterr()
-    assert "error: src/pkg/bad.py:1: compute: SIG202" in captured.out
+    assert "\nsrc/pkg/bad.py\n  error   DS204 docstring/signature mismatch, line 1: compute: SIG202" in captured.out
+    assert "  error   DS204 docstring/signature mismatch: src/pkg/bad.py, line 1: compute: SIG202" in captured.out
 
 
 def test_ds204_coexists_with_corpus_detectors(asset_case: Callable[[str, str], AssetCase]):

@@ -1,5 +1,6 @@
 """Detect dangling Markdown links and anchors."""
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -9,6 +10,9 @@ from docsentinel import models, rules
 from docsentinel.config import Config
 from docsentinel.detectors.path_boundaries import contained_path, is_ds116_owned
 from docsentinel.link_root import link_root_for
+from docsentinel.log import safe
+
+logger = logging.getLogger(__name__)
 
 DS101 = rules.register_rule(
     rules.Rule(
@@ -101,11 +105,26 @@ def _linked_anchors(path: Path) -> Optional[set[str]]:
     try:
         with path.open(encoding="utf-8") as stream:
             text = stream.read(_MAX_ANCHOR_SOURCE_CHARS + 1)
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError) as exc:
         # An unreadable or non-UTF-8 linked file: its anchors are unknown, so the
         # caller skips the anchor check rather than failing the whole scan.
+        if isinstance(exc, UnicodeDecodeError):
+            logger.warning("DS101 skipped the anchor check for linked file %s: not valid UTF-8", safe(path))
+        else:
+            logger.warning(
+                "DS101 skipped the anchor check for linked file %s: cannot read it (%s)",
+                safe(path),
+                safe(exc.strerror or type(exc).__name__),
+            )
         text = None
-    if text is None or len(text) > _MAX_ANCHOR_SOURCE_CHARS:
+    if text is None:
+        return None
+    if len(text) > _MAX_ANCHOR_SOURCE_CHARS:
+        logger.warning(
+            "DS101 skipped the anchor check for linked file %s: larger than %d characters",
+            safe(path),
+            _MAX_ANCHOR_SOURCE_CHARS,
+        )
         return None
     return _anchors_from_lines(text.splitlines())
 
@@ -224,6 +243,7 @@ def check_document(
             # scan root (the existence oracle fixed in Story 11.0). Every other
             # target keeps DS101's exact legacy behavior below.
             if is_ds116_owned(root, document.path, target, link_root=base):
+                logger.debug("DS101 %s:%d: target %s left to DS116", safe(document.path), line_number, safe(target))
                 continue
 
             file_part, _, anchor = target.partition("#")
@@ -252,6 +272,12 @@ def check_document(
             boundary = base if file_part.startswith("/") else root
             resolved = contained_path(boundary, candidate)
             if resolved is None:
+                logger.debug(
+                    "DS101 %s:%d: target %s resolves outside its boundary; left to DS116",
+                    safe(document.path),
+                    line_number,
+                    safe(target),
+                )
                 continue
             if not resolved.exists():
                 findings.append(
@@ -293,6 +319,7 @@ def check_document(
                             type="dangling anchor",
                         )
                     )
+    logger.debug("DS101 checked %s: %d finding(s)", safe(document.path), len(findings))
     return tuple(findings)
 
 
@@ -316,6 +343,7 @@ def detect(
     """
     settings = config if config is not None else Config()
     base = link_root if link_root is not None else link_root_for(Path(os.path.realpath(root)), settings)
+    logger.debug("DS101 checking %d document(s): link_root=%s", len(documents), safe(base))
     return tuple(
         finding
         for document in documents

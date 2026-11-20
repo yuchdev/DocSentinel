@@ -31,6 +31,7 @@ a cell in DS117, unlike GitHub's own table parser -- a documented limitation in
 from __future__ import annotations
 
 import json
+import logging
 import socket
 import subprocess
 import sys
@@ -44,7 +45,7 @@ from docsentinel.config import Config, ConfigError
 from docsentinel.detectors import tables
 from docsentinel.engine import scan
 from docsentinel.reporting import render
-from docsentinel.rules import rules_for_profile
+from docsentinel.rules import ENGINE_RULES, rules_for_profile
 from tests.asset_helpers import AssetCase
 from tests.timing_helpers import assert_scales_linearly
 
@@ -99,6 +100,7 @@ FAST_RULE_ORDER: tuple[str, ...] = (
     "DS116",
     "DS117",
     "DS118",
+    "DS124",
 )
 
 #: The legitimate non-DS117 findings a full fast scan adds on these fixtures. On
@@ -129,13 +131,14 @@ def _ds117(findings: tuple[models.Finding, ...]) -> tuple[models.Finding, ...]:
 
 
 def _fast_codes() -> tuple[str, ...]:
-    """Return the live fast-profile rule codes in registry order.
+    """Return the live fast-profile analyzer rule codes in registry order.
 
     Prefix-selection expectations are computed from this live set rather than a
     hard-coded tuple so the assertions stay correct if a future DS11x/DS12x fast
-    rule is registered.
+    rule is registered. Engine rules (``DS100``) are left out: a scan lists them in
+    ``enabled_rules`` only when they report a document, which these clean trees never do.
     """
-    return tuple(rule.code for rule in rules_for_profile("fast"))
+    return tuple(rule.code for rule in rules_for_profile("fast") if rule.code not in ENGINE_RULES)
 
 
 def test_catalog_counts_match_the_committed_manifest():
@@ -655,7 +658,11 @@ def test_reports_are_stable_across_formats(asset_case: Callable[[str, str], Asse
 
     text = render(result, "text")
     assert render(result, "text") == text
-    assert "warning: README.md:5: table body row has 3 cells; the header declares 2" in text
+    assert "\nREADME.md (" in text
+    assert (
+        "  warning DS117 malformed GFM pipe-table structure, line 5: "
+        "table body row has 3 cells; the header declares 2"
+    ) in text
 
     payload = json.loads(render(result, "json-v1"))
     assert payload["schema_version"] == 1
@@ -1103,27 +1110,36 @@ def test_crlf_line_numbers_point_at_the_offending_row(asset_case: Callable[[str,
     assert "table body row has 3 cells; the header declares 2" in findings[0].message
 
 
-def test_invalid_utf8_scan_surfaces_rather_than_false_clean(tmp_path: Path):
+def test_invalid_utf8_scan_is_reported_as_ds100(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """
-    [Integration] detectors pipe table structural validation ds117: verifies invalid UTF-8 is not a silent clean.
+    [Integration] detectors pipe table structural validation ds117: verifies an invalid-UTF-8 document is reported as DS100.
 
     Scenario:
         Given a Markdown document holding invalid UTF-8 bytes inside a broken table
         When a fast scan reads it
-        Then a decode error propagates instead of a misleading zero-finding result.
+        Then the engine withholds the document from every analyzer: it stays in the inventory
+            with exactly one blocking DS100 error finding, and one WARNING names it (owner decision:
+            skip + blocking finding, so the result is never a silent clean).
 
     Boundaries:
-        - Focus: unreadable input raises rather than masquerading as clean (contract B.4)
-        - Fixtures/params: tmp_path
+        - Focus: an unreadable or undecodable document is withheld from analyzers and reported as DS100, never a silent clean
+        - Fixtures/params: tmp_path, caplog
 
     On failure, first check:
-        - The UTF-8 read in tables._read_text
-        - That the engine does not swallow the decode error into a clean scan
+        - engine._partition_readable and its WARNING text
     """
     (tmp_path / "README.md").write_bytes(b"| A | B |\n| --- | --- |\n| \xff\xfe | x | y |\n")
 
-    with pytest.raises(UnicodeDecodeError):
-        scan(tmp_path, config=Config(profile="fast", select=("DS117",)))
+    with caplog.at_level(logging.WARNING, logger="docsentinel"):
+        result = scan(tmp_path, config=Config(profile="fast", select=("DS100", "DS117")))
+
+    assert [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING] == [
+        "skipped README.md: not valid UTF-8"
+    ]
+    assert [document.path for document in result.documents] == ["README.md"]
+    assert [(finding.rule, finding.severity, finding.message) for finding in result.findings] == [
+        ("DS100", "error", "unreadable document: not valid UTF-8")
+    ]
 
 
 def test_symlinked_markdown_file_is_not_inventoried(tmp_path: Path):

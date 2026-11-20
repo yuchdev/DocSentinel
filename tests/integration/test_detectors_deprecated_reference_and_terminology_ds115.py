@@ -59,6 +59,7 @@ documented normalization/case policy.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import socket
 import subprocess
@@ -78,6 +79,7 @@ from docsentinel.engine import scan
 from docsentinel.reporting import render
 from docsentinel.rules import rules_for_profile
 from tests.asset_helpers import AssetCase
+from tests.log_helpers import problem_output
 from tests.mock.test_detectors_deprecated_oracle import (
     _install_recorder,
     _is_under,
@@ -201,6 +203,7 @@ FAST_RULE_ORDER: tuple[str, ...] = (
     "DS116",
     "DS117",
     "DS118",
+    "DS124",
 )
 
 #: Legitimate non-DS115 findings a full fast scan adds on a FINDING scenario, each owned by
@@ -454,7 +457,7 @@ def test_cli_readiness_error_exits_two_without_report_or_absolute_path(
     assert exit_code == 2
     assert captured.out == ""
     assert "Scan failed" in captured.err
-    assert str(Path(os.path.realpath(loaded.root))) not in captured.err
+    assert str(Path(os.path.realpath(loaded.root))) not in problem_output(captured.err)
 
 
 def test_unconfigured_mapping_is_named_not_counted_in_the_notice(asset_case: Callable[[str, str], AssetCase]):
@@ -486,7 +489,7 @@ def test_unconfigured_mapping_is_named_not_counted_in_the_notice(asset_case: Cal
     assert _ds115(result.findings) == ()
     assert result.notice == (
         "12 fast rule(s) evaluated; opt-in rule(s) not enabled: "
-        "DS110 (set require_fence_languages), DS112 (set navigation_indexes), "
+        "DS103 (set reference_scope = \"strict\"), DS110 (set require_fence_languages), DS112 (set navigation_indexes), "
         "DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
     )
 
@@ -517,7 +520,7 @@ def test_configured_mapping_is_counted_in_the_notice(asset_case: Callable[[str, 
     assert "DS115" not in result.notice
     assert result.notice == (
         "13 fast rule(s) evaluated; opt-in rule(s) not enabled: "
-        "DS110 (set require_fence_languages), DS112 (set navigation_indexes), "
+        "DS103 (set reference_scope = \"strict\"), DS110 (set require_fence_languages), DS112 (set navigation_indexes), "
         "DS118 (set documentation_naming)."
     )
     assert _triples(_ds115(result.findings)) == list(FINDING_EXPECTATIONS["deprecated_module_in_prose"])
@@ -557,7 +560,7 @@ def test_cli_doctor_counts_ds115_among_the_three_opt_in_rules(capsys: pytest.Cap
         Given the installed rule registry
         When the doctor command reports environment readiness
         Then the fast-rule tally reads exactly
-            "16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)", so DS115 is inside
+            "18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)", so DS115 is inside
             the registered count and is one of the four opt-in rules alongside DS110, DS112 and DS118.
 
     Boundaries:
@@ -573,7 +576,7 @@ def test_cli_doctor_counts_ds115_among_the_three_opt_in_rules(capsys: pytest.Cap
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "DS115" in {rule.code for rule in rules_for_profile("fast")}
-    assert "fast rules: 16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)" in captured.out
+    assert "fast rules: 18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)" in captured.out
 
 
 def test_cli_fast_json_scan_reports_ds115_warning_and_exits_zero(
@@ -1305,49 +1308,58 @@ def test_crlf_line_numbers_point_at_the_occurrence(tmp_path: Path):
     assert findings[0].line == 5
 
 
-def test_invalid_utf8_document_surfaces_rather_than_false_clean(tmp_path: Path):
+def test_invalid_utf8_document_is_reported_as_ds100(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """
-    [Integration] detectors deprecated references ds115: verifies an invalid-UTF-8 document is not a silent clean.
+    [Integration] detectors deprecated references ds115: verifies an invalid-UTF-8 document is reported as DS100.
 
     Scenario:
         Given a committed mapping and a discovered document holding invalid UTF-8 bytes
         When a fast scan reads it with DS115 selected and the mapping configured
-        Then an error is raised instead of a misleading zero-finding result, so an unreadable document fails
-            closed rather than scanning clean.
+        Then the engine withholds the document from every analyzer: it stays in the inventory
+            with exactly one blocking DS100 error finding, and one WARNING names it (owner decision:
+            skip + blocking finding, so the result is never a silent clean).
 
     Boundaries:
-        - Focus: an undecodable document surfaces rather than masquerading as clean
-        - Fixtures/params: tmp_path
+        - Focus: an unreadable or undecodable document is withheld from analyzers and reported as DS100, never a silent clean
+        - Fixtures/params: tmp_path, caplog
 
     On failure, first check:
-        - The UTF-8 read in deprecated_refs._read_document
-        - That the engine does not swallow the decode error into a clean scan
+        - engine._partition_readable and its WARNING text
     """
     (tmp_path / "mapping.toml").write_text(
         'version = 1\n[[replacement]]\nold = "oldmod"\nnew = "newmod"\nkind = "prose"\n', encoding="utf-8"
     )
     (tmp_path / "README.md").write_bytes(b"# Title\n\nThe oldmod helper.\n\xff\xfe\n")
 
-    with pytest.raises((UnicodeDecodeError, ConfigError, OSError)):
-        scan(tmp_path, config=Config(profile="fast", select=("DS115",), deprecated_references_file="mapping.toml"))
+    with caplog.at_level(logging.WARNING, logger="docsentinel"):
+        result = scan(tmp_path, config=Config(profile="fast", select=("DS100", "DS115"), deprecated_references_file="mapping.toml"))
+
+    assert [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING] == [
+        "skipped README.md: not valid UTF-8"
+    ]
+    assert [document.path for document in result.documents] == ["README.md"]
+    assert [(finding.rule, finding.severity, finding.message) for finding in result.findings] == [
+        ("DS100", "error", "unreadable document: not valid UTF-8")
+    ]
 
 
-def test_unreadable_document_surfaces_rather_than_false_clean(tmp_path: Path):
+def test_unreadable_document_is_reported_as_ds100(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """
-    [Integration] detectors deprecated references ds115: verifies an unreadable document is not a silent clean.
+    [Integration] detectors deprecated references ds115: verifies an unreadable document is reported as DS100.
 
     Scenario:
         Given a committed mapping and a discovered document whose read permission is removed
         When a fast scan tries to read it with DS115 selected and the mapping configured
-        Then an OSError surfaces instead of a misleading zero-finding result, so a readiness problem fails
-            closed rather than scanning clean.
+        Then the engine withholds the document from every analyzer: it stays in the inventory
+            with exactly one blocking DS100 error finding, and one WARNING names it (owner decision:
+            skip + blocking finding, so the result is never a silent clean).
 
     Boundaries:
-        - Focus: a filesystem read error surfaces instead of masquerading as clean
-        - Fixtures/params: tmp_path (skipped when running as root, which bypasses the mode)
+        - Focus: an unreadable or undecodable document is withheld from analyzers and reported as DS100, never a silent clean
+        - Fixtures/params: tmp_path, caplog (skipped when running as root, which bypasses the mode)
 
     On failure, first check:
-        - Whether deprecated_refs._read_document swallowed the read error into a clean scan
+        - engine._partition_readable and its WARNING text
         - Whether the test runs as root, where chmod 000 does not block reads
     """
     if hasattr(os, "geteuid") and os.geteuid() == 0:
@@ -1359,8 +1371,15 @@ def test_unreadable_document_surfaces_rather_than_false_clean(tmp_path: Path):
     target.write_text("# Title\n\nThe oldmod helper.\n", encoding="utf-8")
     target.chmod(0o000)
     try:
-        with pytest.raises(OSError):
-            scan(tmp_path, config=Config(profile="fast", select=("DS115",), deprecated_references_file="mapping.toml"))
+        with caplog.at_level(logging.WARNING, logger="docsentinel"):
+            result = scan(tmp_path, config=Config(profile="fast", select=("DS100", "DS115"), deprecated_references_file="mapping.toml"))
+        assert [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING] == [
+            "skipped README.md: cannot read it (Permission denied)"
+        ]
+        assert [document.path for document in result.documents] == ["README.md"]
+        assert [(finding.rule, finding.severity, finding.message) for finding in result.findings] == [
+            ("DS100", "error", "unreadable document: cannot read it (Permission denied)")
+        ]
     finally:
         target.chmod(0o644)
 
@@ -1417,7 +1436,8 @@ def test_reports_are_stable_across_formats(asset_case: Callable[[str, str], Asse
 
     text = render(result, "text")
     assert render(result, "text") == text
-    assert f"warning: README.md:3: {expected}" in text
+    assert "\nREADME.md (" in text
+    assert f"  warning DS115 deprecated names and migrated references, line 3: {expected}" in text
     assert "\x00" not in text and "\x1b" not in text
     assert str(Path(os.path.realpath(loaded.root))) not in text
 
@@ -1777,7 +1797,8 @@ def test_cli_unknown_key_readiness_error_is_bounded_and_escaped(
     assert exit_code == 2
     assert captured.out == ""
     assert "Scan failed" in captured.err
-    err = captured.err
+    assert "\x1b" not in captured.err and "\x07" not in captured.err and "\x00" not in captured.err
+    err = problem_output(captured.err)
     assert "\x1b" not in err and "\x07" not in err and "\x00" not in err and "\r" not in err
     assert err.rstrip("\n").count("\n") == 0
     assert len(err) < 300

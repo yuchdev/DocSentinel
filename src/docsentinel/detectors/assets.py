@@ -88,6 +88,7 @@ scenario.
 
 from __future__ import annotations
 
+import logging
 import os
 import stat
 from bisect import bisect_right
@@ -98,6 +99,7 @@ from docsentinel import models, rules
 from docsentinel.config import Config
 from docsentinel.detectors.path_boundaries import escapes_via_symlink, is_ds116_owned
 from docsentinel.link_root import link_root_for
+from docsentinel.log import safe
 from docsentinel.markdown_blocks import MarkdownBlockIndex, ReferenceStatus, resolve_local_reference, scan_markdown
 
 #: Stable metadata for ``DS113``, registered as an always-active, default-on fast
@@ -106,6 +108,8 @@ from docsentinel.markdown_blocks import MarkdownBlockIndex, ReferenceStatus, res
 #: Rule metadata severity. The ``ANALYZERS`` wiring at the end of the module runs
 #: :func:`detect` in the fast profile alongside the committed ``tests/assets/ds113/*``
 #: fixtures.
+logger = logging.getLogger(__name__)
+
 DS113 = rules.register_rule(
     rules.Rule(
         code="DS113",
@@ -348,6 +352,7 @@ def check_text(
     findings: list[models.Finding] = []
     seen: set[tuple[int, str]] = set()
     cache: dict[str, Optional[str]] = {}
+    deferred = 0
     for offset, line, raw_target, extension_gated in sorted(candidates):
         target = _first_token(raw_target)
         if not target or target.startswith("#"):
@@ -358,6 +363,7 @@ def check_text(
         # Containment gate (lexical, no filesystem access): DS116 owns every unsafe
         # category, so DS113 must neither resolve nor stat it (R2).
         if is_ds116_owned(root, document_path, target, link_root=base):
+            deferred += 1
             continue
         reference = resolve_local_reference(root, document_path, target, link_root=base)
         if reference.status is not ReferenceStatus.RESOLVED or reference.path is None:
@@ -372,6 +378,7 @@ def check_text(
         if escapes_via_symlink(boundary, reference.path):
             # An in-root symlink pointing outside the root is DS116's finding (R2);
             # never stat it.
+            deferred += 1
             continue
         reason = _classify_path(root, reference.path, cache)
         if reason is None:
@@ -384,6 +391,12 @@ def check_text(
         findings.append(
             models.Finding(rule=DS113.code, path=document_path, message=message, severity=severity, line=line)
         )
+    logger.debug(
+        "DS113 checked %s: %d findings, %d target(s) deferred to DS116",
+        safe(document_path),
+        len(findings),
+        deferred,
+    )
     return tuple(findings)
 
 
@@ -422,7 +435,11 @@ def detect(
     """
     settings = config if config is not None else Config()
     if settings.missing_asset_policy == "off":
+        logger.debug("DS113 inactive: missing_asset_policy is off")
         return ()
+    logger.debug(
+        "DS113 detect: %d documents, missing_asset_policy=%s", len(documents), safe(settings.missing_asset_policy)
+    )
     canonical = Path(os.path.realpath(root))
     base = link_root if link_root is not None else link_root_for(canonical, settings)
     findings: list[models.Finding] = []

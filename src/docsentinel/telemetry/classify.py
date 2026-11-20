@@ -8,16 +8,21 @@ disagree about a finding. The vocabularies follow
 ``docs/specs/fault-classes.md`` row for row (a unit test enforces the parity).
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Final, Optional
 
 from docsentinel.config import Config
+from docsentinel.log import safe
 from docsentinel.models import Finding
-from docsentinel.rules import RULES
+from docsentinel.rules import ENGINE_RULES, RULES
 from docsentinel.telemetry.builtin.domain import DEFAULT_DOMAIN, domain_for
+
+logger = logging.getLogger(__name__)
 
 #: Rule code -> fault class, mirroring every row of ``fault-classes.md``.
 FAULT_CLASSES: Final[dict[str, str]] = {
+    "DS100": "unreadable_document",
     "DS101": "dangling_reference",
     "DS102": "residual_markup",
     "DS103": "unresolvable_path",
@@ -34,6 +39,7 @@ FAULT_CLASSES: Final[dict[str, str]] = {
     "DS116": "path_escape",
     "DS117": "table_malformed",
     "DS118": "naming_policy",
+    "DS124": "dangling_reference",
     "DS201": "high_complexity",
     "DS202": "duplicate_text",
     "DS203": "low_information",
@@ -48,6 +54,7 @@ FAULT_CLASSES: Final[dict[str, str]] = {
 #: on load state. This static copy keeps reports deterministic without importing
 #: scikit-learn/spaCy; a test pins it to the registry once every profile is loaded.
 RULE_TITLES: Final[dict[str, str]] = {
+    "DS100": "Unreadable document",
     "DS101": "Dangling link or anchor",
     "DS102": "Stray HTML comment",
     "DS103": "Unresolvable path-like code span",
@@ -64,6 +71,7 @@ RULE_TITLES: Final[dict[str, str]] = {
     "DS116": "Path traversal outside documentation root",
     "DS117": "Malformed GFM pipe-table structure",
     "DS118": "Documentation file and directory naming policy",
+    "DS124": "Dangling @-document reference",
     "DS201": "High text complexity",
     "DS202": "Duplicated text or facts",
     "DS203": "Low-information content",
@@ -73,6 +81,23 @@ RULE_TITLES: Final[dict[str, str]] = {
 
 #: Fallback class for a rule with no ``fault-classes.md`` row (a review failure).
 UNMAPPED_FAULT_CLASS: Final[str] = "unmapped"
+
+
+def _fault_class(code: str) -> str:
+    """Return the fault class of a rule code, or ``unmapped`` with a ``DEBUG`` record.
+
+    A shipped rule always has a row (a test pins the parity), so an unmapped code is
+    a rule registered at runtime: classification copes by using ``unmapped``, and
+    the ``DEBUG`` record says why reports and events show that class.
+
+    :param code: The finding's rule code.
+    :returns: The class from :data:`FAULT_CLASSES`, or :data:`UNMAPPED_FAULT_CLASS`.
+    """
+    fault_class = FAULT_CLASSES.get(code)
+    if fault_class is not None:
+        return fault_class
+    logger.debug("rule %s has no fault class; it is classified as %s", safe(code, 40), UNMAPPED_FAULT_CLASS)
+    return UNMAPPED_FAULT_CLASS
 
 
 @dataclass(frozen=True)
@@ -122,7 +147,9 @@ def classify(finding: Finding, config: Config, *, strict: bool = False) -> Class
     """Classify a reported finding with the fault-event contract vocabularies.
 
     The tier comes from the producing rule's registered profile (falling back to
-    ``config.profile`` for a rule that is not registered). The outcome follows
+    ``config.profile`` for a rule that is not registered, and for an engine rule
+    such as ``DS100``, which the engine emits in every profile, so a ``DS100``
+    finding of a deep scan is advisory like the deep scan's exit code). The outcome follows
     contract §2.2: every heuristic (deep) finding is ``advisory``; otherwise an
     ``error`` is ``rejected`` and a ``warning`` is ``advisory``, or ``rejected``
     under ``strict`` (the CLI's ``--strict``). Any other severity has no mapped
@@ -140,7 +167,8 @@ def classify(finding: Finding, config: Config, *, strict: bool = False) -> Class
         invalid ``telemetry_domains`` or ``telemetry_extensions`` value.
     """
     rule = RULES.get(finding.rule)
-    tier = tier_for_profile(rule.profile if rule is not None else config.profile)
+    profile = rule.profile if rule is not None and rule.code not in ENGINE_RULES else config.profile
+    tier = tier_for_profile(profile)
     if tier == "heuristic":
         outcome: Optional[str] = "advisory"
     elif finding.severity == "error":
@@ -150,7 +178,7 @@ def classify(finding: Finding, config: Config, *, strict: bool = False) -> Class
     else:
         outcome = None
     return Classification(
-        fault_class=FAULT_CLASSES.get(finding.rule, UNMAPPED_FAULT_CLASS),
+        fault_class=_fault_class(finding.rule),
         tier=tier,
         outcome=outcome,
         domain=domain_for(finding.path, config),

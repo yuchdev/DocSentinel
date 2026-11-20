@@ -22,11 +22,14 @@ from pathlib import Path
 import pytest
 
 from docsentinel import models, rules
-from docsentinel.config import load_config
+from docsentinel.config import Config, load_config
 from docsentinel.detectors import links as new_links
 from docsentinel.detectors import paths as new_paths
 from docsentinel.detectors.path_boundaries import escapes_via_symlink, is_ds116_owned
 from docsentinel.discovery import discover
+
+#: DS103 is opt-in (Milestone 0009 Story 01.0): it evaluates only under reference_scope = "strict".
+STRICT_SCOPE = Config(reference_scope="strict")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REFERENCE_DIR = REPO_ROOT / "tests" / "reference"
@@ -179,7 +182,7 @@ def test_ds101_and_ds103_seeded_corpus_differ_only_by_security_categories(
 
     for old_module, new_module in ((old_links, new_links), (old_paths, new_paths)):
         old_keys = _finding_targets(old_module.detect(tmp_path, documents))
-        new_keys = _finding_targets(new_module.detect(tmp_path, documents))
+        new_keys = _finding_targets(new_module.detect(tmp_path, documents, STRICT_SCOPE))
         appeared = new_keys - old_keys
         disappeared = old_keys - new_keys
 
@@ -200,7 +203,8 @@ def test_repo_docs_diff_matches_security_categories_only(
         When the frozen reference and current DS101 and DS103 detectors both scan every document
         Then under the Story 11.0 code-span ruling nothing appears AND nothing disappears for either
             rule over this repo's docs: DS101 links have no escaping targets here, and DS103 again
-            reports the drive/UNC/backslash code-span examples it momentarily skipped, so new == frozen.
+            reports the drive/UNC/backslash code-span examples it momentarily skipped, so new == frozen,
+            except the ``@`` code spans DS103 now skips (Milestone 0009 Story 01.0, S7).
 
     Boundaries:
         - Focus: reproduces the reviewer's diff method on the real corpus; the allowed difference for
@@ -217,12 +221,14 @@ def test_repo_docs_diff_matches_security_categories_only(
 
     for old_module, new_module in ((old_links, new_links), (old_paths, new_paths)):
         old_keys = _finding_targets(old_module.detect(REPO_ROOT, documents))
-        new_keys = _finding_targets(new_module.detect(REPO_ROOT, documents))
+        new_keys = _finding_targets(new_module.detect(REPO_ROOT, documents, STRICT_SCOPE))
         appeared = new_keys - old_keys
-        disappeared = old_keys - new_keys
+        # Milestone 0009 Story 01.0 (decision S7): DS103 skips every code span starting with
+        # ``@`` (DS124 and DS116 own mentions), so those, and only those, may disappear.
+        disappeared = {key for key in old_keys - new_keys if not (new_module is new_paths and key[2].startswith("@"))}
 
         assert appeared == set(), f"{new_module.__name__}: unexpected new findings over repo docs: {appeared}"
         assert disappeared == set(), (
             f"{new_module.__name__}: findings changed over repo docs; the code-span scope expects an "
-            f"identical diff (0 disappeared) here: {disappeared}"
+            f"identical diff (0 disappeared, apart from DS103's ``@`` spans) here: {disappeared}"
         )

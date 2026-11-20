@@ -32,6 +32,7 @@ markers; DS106 checks visible section content regardless of both").
 from __future__ import annotations
 
 import json
+import logging
 import socket
 import subprocess
 import sys
@@ -99,6 +100,7 @@ FAST_RULE_ORDER: tuple[str, ...] = (
     "DS116",
     "DS117",
     "DS118",
+    "DS124",
 )
 
 #: The legitimate non-DS106 findings a full fast scan adds on these fixtures, each
@@ -447,7 +449,11 @@ def test_reports_are_stable_across_formats(asset_case: Callable[[str, str], Asse
 
     text = render(result, "text")
     assert render(result, "text") == text
-    assert "warning: README.md:5: empty section: 'Appendix' has no visible content" in text
+    assert "\nREADME.md (" in text
+    assert (
+        "  warning DS106 empty or contentless sections, line 5: "
+        "empty section: 'Appendix' has no visible content"
+    ) in text
 
     payload = json.loads(render(result, "json-v1"))
     assert payload["schema_version"] == 1
@@ -1032,27 +1038,36 @@ def test_crlf_line_numbers_point_at_the_empty_heading(tmp_path: Path):
     assert "has no visible content" in findings[0].message
 
 
-def test_invalid_utf8_scan_surfaces_rather_than_false_clean(tmp_path: Path):
+def test_invalid_utf8_scan_is_reported_as_ds100(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """
-    [Integration] detectors contentless section detection ds106: verifies invalid UTF-8 is not a silent clean.
+    [Integration] detectors contentless section detection ds106: verifies an invalid-UTF-8 document is reported as DS100.
 
     Scenario:
         Given a Markdown document holding invalid UTF-8 bytes inside an otherwise empty section
         When a fast scan reads it
-        Then a decode error propagates instead of a misleading zero-finding result.
+        Then the engine withholds the document from every analyzer: it stays in the inventory
+            with exactly one blocking DS100 error finding, and one WARNING names it (owner decision:
+            skip + blocking finding, so the result is never a silent clean).
 
     Boundaries:
-        - Focus: unreadable input raises rather than masquerading as clean (contract B.4)
-        - Fixtures/params: tmp_path
+        - Focus: an unreadable or undecodable document is withheld from analyzers and reported as DS100, never a silent clean
+        - Fixtures/params: tmp_path, caplog
 
     On failure, first check:
-        - The UTF-8 read in sections._read_text
-        - That the engine does not swallow the decode error into a clean scan
+        - engine._partition_readable and its WARNING text
     """
     (tmp_path / "README.md").write_bytes(b"# Title\n\n## Section\n\n\xff\xfe\n")
 
-    with pytest.raises(UnicodeDecodeError):
-        scan(tmp_path, config=Config(profile="fast", select=("DS106",)))
+    with caplog.at_level(logging.WARNING, logger="docsentinel"):
+        result = scan(tmp_path, config=Config(profile="fast", select=("DS100", "DS106")))
+
+    assert [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING] == [
+        "skipped README.md: not valid UTF-8"
+    ]
+    assert [document.path for document in result.documents] == ["README.md"]
+    assert [(finding.rule, finding.severity, finding.message) for finding in result.findings] == [
+        ("DS100", "error", "unreadable document: not valid UTF-8")
+    ]
 
 
 def test_symlinked_markdown_file_is_not_inventoried(tmp_path: Path):

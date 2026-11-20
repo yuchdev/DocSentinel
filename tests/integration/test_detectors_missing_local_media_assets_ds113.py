@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import builtins
 import json
+import logging
 import os
 import socket
 import subprocess
@@ -161,6 +162,7 @@ FAST_RULE_ORDER: tuple[str, ...] = (
     "DS116",
     "DS117",
     "DS118",
+    "DS124",
 )
 
 #: The DS11x rules the genuine ``DS11`` prefix matches today, derived live so the
@@ -406,7 +408,8 @@ def test_scan_matches_expectation_and_ownership_split(case: str, asset_case: Cal
         - Whether DS113 dropped out of enabled_rules (a clean result must mean it ran)
     """
     loaded = asset_case("ds113", case)
-    result = scan(loaded.root, config=Config(profile="fast"))
+    # Strict scope keeps the documented DS103 sibling overlap observable (DS103 is opt-in).
+    result = scan(loaded.root, config=Config(profile="fast", reference_scope="strict"))
 
     assert result.enabled_rules == FAST_RULE_ORDER
     assert result.pending == ()
@@ -976,7 +979,13 @@ def test_reports_are_stable_across_formats(asset_case: Callable[[str, str], Asse
 
     text = render(result, "text")
     assert render(result, "text") == text
-    assert "error: README.md:5: missing asset: media/missing.png" in text
+    assert (
+        "  error   DS113 missing local media and document assets, line 5: missing asset: media/missing.png"
+    ) in text
+    assert (
+        "  error   DS113 missing local media and document assets: README.md, line 5: "
+        "missing asset: media/missing.png"
+    ) in text
 
     payload = json.loads(render(result, "json-v1"))
     assert payload["schema_version"] == 1
@@ -1171,7 +1180,7 @@ def test_cli_doctor_counts_ds113_as_an_ordinary_fast_rule(capsys: pytest.Capture
         Given the installed rule registry
         When the doctor command reports environment readiness
         Then the fast-rule tally reads exactly
-            "16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)",
+            "18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)",
             so DS113 is inside the registered count and is not one of the opt-in rules.
 
     Boundaries:
@@ -1187,7 +1196,7 @@ def test_cli_doctor_counts_ds113_as_an_ordinary_fast_rule(capsys: pytest.Capture
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "DS113" in {rule.code for rule in rules_for_profile("fast")}
-    assert "fast rules: 16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)" in captured.out
+    assert "fast rules: 18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)" in captured.out
 
 
 @pytest.mark.parametrize(
@@ -1250,44 +1259,55 @@ def test_crlf_line_numbers_point_at_the_offending_reference(tmp_path: Path):
     assert findings[0].message == f"{MISSING_PREFIX}missing.png"
 
 
-def test_invalid_utf8_scan_surfaces_rather_than_false_clean(tmp_path: Path):
+def test_invalid_utf8_scan_is_reported_as_ds100(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """
-    [Integration] detectors missing local media assets ds113: verifies invalid UTF-8 is not a silent clean.
+    [Integration] detectors missing local media assets ds113: verifies an invalid-UTF-8 document is reported as DS100.
 
     Scenario:
         Given a Markdown document holding invalid UTF-8 bytes beneath a missing image
         When a fast scan reads it with DS113 selected
-        Then a decode error propagates instead of a misleading zero-finding result.
+        Then the engine withholds the document from every analyzer: it stays in the inventory
+            with exactly one blocking DS100 error finding, and one WARNING names it (owner decision:
+            skip + blocking finding, so the result is never a silent clean).
 
     Boundaries:
-        - Focus: unreadable input raises rather than masquerading as clean (contract B.4)
-        - Fixtures/params: tmp_path
+        - Focus: an unreadable or undecodable document is withheld from analyzers and reported as DS100, never a silent clean
+        - Fixtures/params: tmp_path, caplog
 
     On failure, first check:
-        - The UTF-8 read in assets._read_text
-        - That the engine does not swallow the decode error into a clean scan
+        - engine._partition_readable and its WARNING text
     """
     (tmp_path / "README.md").write_bytes(b"# Title\n\n![x](missing.png)\n\xff\xfe\n")
 
-    with pytest.raises(UnicodeDecodeError):
-        scan(tmp_path, config=Config(profile="fast", select=("DS113",)))
+    with caplog.at_level(logging.WARNING, logger="docsentinel"):
+        result = scan(tmp_path, config=Config(profile="fast", select=("DS100", "DS113")))
+
+    assert [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING] == [
+        "skipped README.md: not valid UTF-8"
+    ]
+    assert [document.path for document in result.documents] == ["README.md"]
+    assert [(finding.rule, finding.severity, finding.message) for finding in result.findings] == [
+        ("DS100", "error", "unreadable document: not valid UTF-8")
+    ]
 
 
-def test_unreadable_file_surfaces_rather_than_false_clean(tmp_path: Path):
+def test_unreadable_file_is_reported_as_ds100(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """
-    [Integration] detectors missing local media assets ds113: verifies an unreadable file is not a silent clean.
+    [Integration] detectors missing local media assets ds113: verifies an unreadable file is reported as DS100.
 
     Scenario:
         Given a Markdown document whose read permission is removed
         When a fast scan tries to read it with DS113 selected
-        Then a PermissionError propagates instead of a misleading zero-finding result.
+        Then the engine withholds the document from every analyzer: it stays in the inventory
+            with exactly one blocking DS100 error finding, and one WARNING names it (owner decision:
+            skip + blocking finding, so the result is never a silent clean).
 
     Boundaries:
-        - Focus: a filesystem read error surfaces instead of masquerading as clean
-        - Fixtures/params: tmp_path (skipped when running as root, which bypasses the mode)
+        - Focus: an unreadable or undecodable document is withheld from analyzers and reported as DS100, never a silent clean
+        - Fixtures/params: tmp_path, caplog (skipped when running as root, which bypasses the mode)
 
     On failure, first check:
-        - Whether the engine swallowed the read error into a clean scan
+        - engine._partition_readable and its WARNING text
         - Whether the test runs as root, where chmod 000 does not block reads
     """
     if hasattr(os, "geteuid") and os.geteuid() == 0:
@@ -1296,8 +1316,15 @@ def test_unreadable_file_surfaces_rather_than_false_clean(tmp_path: Path):
     target.write_text("# Title\n\n![x](missing.png)\n", encoding="utf-8")
     target.chmod(0o000)
     try:
-        with pytest.raises(PermissionError):
-            scan(tmp_path, config=Config(profile="fast", select=("DS113",)))
+        with caplog.at_level(logging.WARNING, logger="docsentinel"):
+            result = scan(tmp_path, config=Config(profile="fast", select=("DS100", "DS113")))
+        assert [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING] == [
+            "skipped README.md: cannot read it (Permission denied)"
+        ]
+        assert [document.path for document in result.documents] == ["README.md"]
+        assert [(finding.rule, finding.severity, finding.message) for finding in result.findings] == [
+            ("DS100", "error", "unreadable document: cannot read it (Permission denied)")
+        ]
     finally:
         target.chmod(0o644)
 
