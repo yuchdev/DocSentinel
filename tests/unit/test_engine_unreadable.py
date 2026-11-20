@@ -309,6 +309,46 @@ def test_ds100_is_reported_in_the_standard_profile(tmp_path: Path):
     assert result.notice.startswith("4 standard rule(s) evaluated")
 
 
+def test_scan_keeps_findings_when_linked_in_root_target_is_not_utf8(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+):
+    """
+    [Unit] engine DS100: an invalid-UTF-8 linked target does not abort the scan (regression).
+
+    Scenario:
+        Given a readable document linking twice to an invalid-UTF-8 in-root target
+        When a fast scan runs
+        Then DS100 and unrelated DS101 findings remain, with one anchor-check warning.
+
+    Boundaries:
+        - Focus: DS101 skips unknown anchors without losing other findings
+        - Fixtures/params: tmp_path, caplog
+        - Scope: one scan across the engine and DS101
+
+    On failure, first check:
+        - anchor_cache and the in-root read in detectors/links.py
+    """
+    caplog.set_level(logging.WARNING, logger="docsentinel")
+    (tmp_path / "a.md").write_text(
+        "# A\n\n[bad](bad.md#one)\n[bad again](bad.md#two)\n"
+        "[missing](missing.md)\n[own](#absent)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "bad.md").write_bytes(b"# Bad\n\xff\n")
+
+    result = scan(tmp_path, config=Config(select=("DS100", "DS101")))
+
+    assert [document.path for document in result.documents] == ["a.md", "bad.md"]
+    assert [(finding.rule, finding.path, finding.message) for finding in result.findings] == [
+        ("DS100", "bad.md", "unreadable document: not valid UTF-8"),
+        ("DS101", "a.md", "dangling link -> missing.md"),
+        ("DS101", "a.md", "missing anchor '#absent' in this file"),
+    ]
+    anchor_warnings = [record for record in _warnings(caplog) if record.name == "docsentinel.detectors.links"]
+    assert len(anchor_warnings) == 1
+    assert "not valid UTF-8" in anchor_warnings[0].getMessage()
+
+
 def test_stderr_skip_warnings_are_capped(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """
     [Unit] engine logging: verifies only the first 20 skipped documents reach stderr, then one summary (security review L4).
