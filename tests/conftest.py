@@ -8,6 +8,7 @@ import re
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+import nltk
 import pytest
 
 from docsentinel.config import USER_SETTINGS_ENV, USER_SETTINGS_OFF
@@ -29,6 +30,29 @@ _ORDER = {
     "integration": 2,
     "e2e": 3,
 }
+
+
+def _ensure_cmudict():
+    """Provision textstat's English syllable corpus, reusing NLTK's existing data cache.
+
+    :raises ValueError: If NLTK cannot download the missing corpus.
+    :raises LookupError: If the corpus is still unavailable after downloading.
+    """
+    try:
+        nltk.data.find("corpora/cmudict")
+    except LookupError:
+        nltk.download("cmudict", quiet=True, raise_on_error=True)
+        nltk.data.find("corpora/cmudict")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _nltk_cmudict():
+    """Provision cmudict once for direct pytest, Stop-hook, and CI test runs.
+
+    Download only during test setup, never at module import; failures abort setup
+    rather than skipping tests or changing DS201's scoring.
+    """
+    _ensure_cmudict()
 
 
 def _classify_item(item: pytest.Item) -> str:
