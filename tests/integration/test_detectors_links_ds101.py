@@ -4,6 +4,7 @@ import importlib
 import types
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import IO, Union
 
 import pytest
 
@@ -721,8 +722,13 @@ def test_target_open_error_is_skipped(
     target = case.path("target.md")
     original_open = Path.open
 
-    def fail_target_read(path: Path, *args, **kwargs):
-        """Simulate read failure when accessing target path."""
+    def fail_target_read(path: Path, *args, **kwargs) -> Union[IO[str], IO[bytes]]:
+        """Simulate read failure when accessing target path.
+
+        :param path: Path to open, failing only for the linked target.
+        :returns: The original text or binary stream for non-target paths.
+        :raises OSError: The parametrized error when opening the target.
+        """
         if path == target:
             raise error_type(13, "target read failed")
         return original_open(path, *args, **kwargs)
