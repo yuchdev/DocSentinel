@@ -283,6 +283,63 @@ def test_append_with_no_previous_line_starts_one():
     assert render_template(template, _context()) == "DS101,DS102,DS103"
 
 
+def test_appended_line_composes_optional_parts():
+    """
+    [Unit] engine: verifies ``"append": true`` line nodes continue the previous line, each under its own guard.
+
+    Scenario:
+        Given a block loop over ``doc.problems`` emitting ``{p.rule}``, then appended ``, line {p.line}`` (when a line
+            is known) and ``: {p.value|neutralize}`` (when a value is known)
+        When rendered over a problem with line and value and one with neither
+        Then each problem is one line holding only the parts whose guards held.
+
+    Boundaries:
+        - Focus: normal case of the line-level ``append`` flag
+        - Fixtures/params: inline context
+        - Scope: render_template, text
+
+    On failure, first check:
+        - The ``node.append and lines.has_line()`` branch in ``_Renderer._nodes``
+    """
+    template = _text(
+        _block(
+            "documents_with_problems",
+            "doc",
+            _block(
+                "doc.problems",
+                "p",
+                _line("{p.rule}", ["p.rule"]),
+                _line(", line {p.line}", ["p.line"], append=True, when={"var": "p.line", "ne": None}),
+                _line(": {p.value|neutralize}", ["p.value"], append=True, when={"var": "p.value", "ne": None}),
+            ),
+        )
+    )
+
+    assert render_template(template, _context()).split("\n")[:2] == ["DS101, line 3: x.md", "DS102"]
+
+
+def test_appended_line_with_no_previous_line_starts_one():
+    """
+    [Unit] engine: verifies an appended line that renders first starts the first output line.
+
+    Scenario:
+        Given a template whose first node is an appended line, followed by a plain line
+        When rendered
+        Then the appended text is line one and the plain line is line two.
+
+    Boundaries:
+        - Focus: edge case: nothing to append to
+        - Fixtures/params: inline context
+        - Scope: render_template, text
+
+    On failure, first check:
+        - The fallback to ``_emit`` in ``_Renderer._nodes``
+    """
+    template = _text(_line("first", [], append=True), _line("second", []))
+
+    assert render_template(template, _context()) == "first\nsecond"
+
+
 def test_group_and_when_guards():
     """
     [Unit] engine: verifies group bodies and line/loop ``when`` guards render only when they hold.

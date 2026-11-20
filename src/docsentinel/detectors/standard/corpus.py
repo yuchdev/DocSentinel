@@ -18,6 +18,7 @@ are not exposed as configuration.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -43,6 +44,8 @@ _LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 _HEADER_RE = re.compile(r"^#{1,6}\s*", re.MULTILINE)
 _BLOCKQUOTE_RE = re.compile(r"^\s*>+\s?", re.MULTILINE)
 _LIST_MARKER_RE = re.compile(r"^\s*([-*+]|\d+\.)\s+", re.MULTILINE)
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -306,6 +309,13 @@ def build_corpus_model(
     paragraphs = tuple(all_paragraphs)
     vectorizer = _create_vectorizer()
 
+    logger.debug(
+        "corpus model built: %d documents, %d paragraphs (min_paragraph_chars=%d, min_paragraph_words=%d)",
+        len(sorted_docs),
+        len(paragraphs),
+        min_paragraph_chars,
+        min_paragraph_words,
+    )
     if not paragraphs:
         empty_matrix = sp.csr_matrix((0, 0), dtype=np.float64)
         return CorpusModel(
@@ -319,8 +329,11 @@ def build_corpus_model(
     try:
         tfidf_matrix = vectorizer.fit_transform(paragraph_texts)
     except ValueError:
+        # An empty vocabulary (every token a stop word) is a property of the corpus.
+        logger.debug("corpus vocabulary is empty; using an empty TF-IDF matrix")
         tfidf_matrix = sp.csr_matrix((len(paragraphs), 0), dtype=np.float64)
 
+    logger.debug("corpus TF-IDF matrix: %d x %d", tfidf_matrix.shape[0], tfidf_matrix.shape[1])
     return CorpusModel(
         documents=sorted_docs,
         paragraphs=paragraphs,

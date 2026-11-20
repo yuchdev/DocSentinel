@@ -27,7 +27,7 @@ from tests.asset_helpers import load_asset_case
 
 #: ``scan`` arguments per profile; deep needs the explicit heuristic confirmation.
 _PROFILE_ARGS: dict[str, tuple[str, ...]] = {
-    "fast": ("--profile", "fast"),
+    "fast": ("--profile", "fast", "--reference-scope", "strict"),  # DS103 is opt-in (Milestone 0009)
     "standard": ("--profile", "standard"),
     "deep": ("--profile", "deep", "--i-understand-deep-is-heuristic"),
 }
@@ -76,6 +76,10 @@ def _render_all(root: Path, profile: str, seed: str) -> dict[str, dict[str, obje
     """
     env = {key: value for key, value in os.environ.items() if not key.startswith("DOCSENTINEL_")}
     env["PYTHONHASHSEED"] = seed
+    # Keep the per-run log file in the test's log directory, and keep the INFO lines (which
+    # carry the elapsed time) off stderr so stderr stays comparable across runs.
+    env["DOCSENTINEL_LOG_DIR"] = os.environ["DOCSENTINEL_LOG_DIR"]
+    env["DOCSENTINEL_LOG_LEVEL"] = "WARNING"
     completed = subprocess.run(
         [
             sys.executable,

@@ -15,6 +15,7 @@ corpus vectorizer (?u)\\b\\w+\\b to ensure that TTR and TF-IDF describe the same
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from pathlib import Path
@@ -40,6 +41,8 @@ DS203 = rules.register_rule(
 _TTR_REF: float = 0.5
 _TFIDF_REF: float = 0.3
 _WORD_PATTERN = re.compile(r"(?u)\b\w+\b")
+
+logger = logging.getLogger(__name__)
 
 
 def type_token_ratio(text: str) -> float:
@@ -118,6 +121,12 @@ def detect(
         min_paragraph_words=config.min_paragraph_words,
     )
     flagged = low_information_chunks(model, config.min_information_score)
+    logger.debug(
+        "DS203: %d paragraphs scored, %d below %.2f",
+        len(model.paragraphs),
+        len(flagged),
+        config.min_information_score,
+    )
     findings: list[models.Finding] = []
     chunks = model.paragraphs
 

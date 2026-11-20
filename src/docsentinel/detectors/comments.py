@@ -1,10 +1,14 @@
 """Detect stray HTML comments in Markdown documents."""
 
+import logging
 import re
 from pathlib import Path
 from typing import Optional
 
 from docsentinel import models, rules
+from docsentinel.log import safe
+
+logger = logging.getLogger(__name__)
 
 DS102 = rules.register_rule(
     rules.Rule(
@@ -57,18 +61,24 @@ def detect(root: Path, documents: tuple[models.Document, ...]) -> tuple[models.F
     :param documents: Documents to inspect in their supplied order.
     :returns: Findings with one-based code-point locations.
     """
+    logger.debug("DS102 checking %d document(s)", len(documents))
     findings: list[models.Finding] = []
     for document in documents:
         if not document.path.endswith(".md"):
+            logger.debug("DS102 skipped %s: not a Markdown document", safe(document.path))
             continue
 
         text = _read_text(root / document.path)
         if "-->" not in text:
+            logger.debug("DS102 checked %s: 0 finding(s)", safe(document.path))
             continue
 
         text = _strip_fenced_blocks(text)
         if "-->" not in text:
+            logger.debug("DS102 checked %s: 0 finding(s)", safe(document.path))
             continue
+
+        before = len(findings)
 
         last_closer_end = text.rfind("-->") + len("-->")
         line = 1
@@ -93,8 +103,10 @@ def detect(root: Path, documents: tuple[models.Document, ...]) -> tuple[models.F
                     line=line,
                     column=start - line_start + 1,
                     type="stray html comment",
+                    value=display_text,
                 )
             )
+        logger.debug("DS102 checked %s: %d finding(s)", safe(document.path), len(findings) - before)
     return tuple(findings)
 
 

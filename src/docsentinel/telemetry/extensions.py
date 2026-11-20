@@ -93,6 +93,7 @@ from __future__ import annotations
 import importlib
 import importlib.machinery
 import importlib.util
+import logging
 import math
 import os
 import re
@@ -107,8 +108,11 @@ from types import MappingProxyType
 from typing import Any, Final, Literal, Optional, Protocol, Union, runtime_checkable
 
 from docsentinel.config import Config, validate_telemetry_extensions
+from docsentinel.log import safe
 from docsentinel.telemetry import builtin
 from docsentinel.telemetry.filters import MAX_MESSAGE, TemplateError, neutralize
+
+logger = logging.getLogger(__name__)
 
 #: Extension name grammar (spec §2, §9); equals the loader's ``_EXTENSION_PATTERN``.
 EXTENSION_NAME_PATTERN: Final[str] = r"^[a-z][a-z0-9_]{0,63}$"
@@ -1346,7 +1350,32 @@ def admit_extensions(objects: Sequence[object]) -> LoadedExtensions:
         raise ExtensionError("extensions must be a sequence of extension objects")
     if len(objects) > MAX_EXTENSIONS:
         raise ExtensionError(f"more than {MAX_EXTENSIONS} extensions")
-    return _registry([_admit(obj, spec="<object>", is_builtin=False) for obj in objects])
+    registry = _registry([_admit(obj, spec="<object>", is_builtin=False) for obj in objects])
+    logger.debug("admitted %d extension object(s): %s", len(registry), ", ".join(safe(name) for name in registry.names))
+    return registry
+
+
+#: Characters of one extension spec echoed in a log record.
+_MAX_LOGGED_SPEC: Final[int] = 80
+
+
+def _log_admitted(registry: LoadedExtensions, *, allow_python: bool):
+    """Log the admitted extensions of one run once: the operation start (``docs/specs/logging.md`` §3).
+
+    Only specs are logged (bounded through :func:`docsentinel.log.safe`), never any
+    extension output.
+
+    :param registry: The admitted registry.
+    :param allow_python: Whether the ``python:`` gate was open.
+    """
+    if not registry:
+        logger.debug("report extensions: none")
+        return
+    logger.info(
+        "report extensions: %s (python gate %s)",
+        ", ".join(safe(extension.spec, _MAX_LOGGED_SPEC) for extension in registry.extensions),
+        "on" if allow_python else "off",
+    )
 
 
 def resolve_extensions(
@@ -1394,6 +1423,7 @@ def resolve_extensions(
         raise ExtensionError("extensions must be a sequence of extension specs")
     origins = _origin_paths(origin_roots)
     ordered = (*configured, *specs)
+    logger.debug("resolving report extensions: %d from config, %d from the invoker", len(configured), len(specs))
     if len(ordered) > MAX_EXTENSIONS:
         raise ExtensionError(f"more than {MAX_EXTENSIONS} extensions")
     parsed: list[_Spec] = []
@@ -1432,7 +1462,9 @@ def resolve_extensions(
         )
         if watch is not None:
             watch.check()
-    return _registry(admitted, watch)
+    registry = _registry(admitted, watch)
+    _log_admitted(registry, allow_python=allow_python is True)
+    return registry
 
 
 # --------------------------------------------------------------------------- template binding (M12, M30)
@@ -1874,9 +1906,13 @@ def apply_report_hooks(
             if twin is not None:
                 twin["ext"] = {}
     budget = _Budget()
+    # Hook calls per (extension, hook), logged once at the end: a per-call record would
+    # be one line per problem (docs/specs/logging.md §3-4).
+    calls: dict[tuple[str, str], int] = {}
     for extension in loaded.extensions:
         if extension.provide_run is not None:
             loaded.check_import_path()
+            calls[extension.name, HOOK_RUN] = calls.get((extension.name, HOOK_RUN), 0) + 1
             value = _run_hook(extension, HOOK_RUN, extension.provide_run, (frozen_model,), budget)
             if value is not None:
                 run_ext[extension.name] = value
@@ -1885,6 +1921,7 @@ def apply_report_hooks(
         for document, frozen_document in zip(documents, frozen_documents, strict=True):
             if extension.provide_document is not None:
                 loaded.check_import_path()
+                calls[extension.name, HOOK_DOCUMENT] = calls.get((extension.name, HOOK_DOCUMENT), 0) + 1
                 value = _run_hook(
                     extension, HOOK_DOCUMENT, extension.provide_document, (frozen_document, frozen_model), budget
                 )
@@ -1894,6 +1931,7 @@ def apply_report_hooks(
                 continue
             for problem, frozen_problem in zip(document["problems"], frozen_document["problems"], strict=True):
                 loaded.check_import_path()
+                calls[extension.name, HOOK_PROBLEM] = calls.get((extension.name, HOOK_PROBLEM), 0) + 1
                 value = _run_hook(
                     extension,
                     HOOK_PROBLEM,
@@ -1907,6 +1945,12 @@ def apply_report_hooks(
                     if twin is not None:
                         twin["ext"][extension.name] = value
     loaded.check_modules()
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "report extension hooks over %d document(s): %s",
+            len(documents),
+            ", ".join(f"{safe(name)}.{hook}={count}" for (name, hook), count in calls.items()) or "no hook calls",
+        )
 
 
 class EventHookGuard:
@@ -1957,6 +2001,14 @@ class EventHookGuard:
                 value = _run_hook(extension, HOOK_PROBLEM, extension.provide_problem, arguments, self._budget)
             except ExtensionError as exc:
                 self._failed.add(extension.name)
+                # The extension's own code failed and the event keeps its core fields
+                # (M29): a coped-with fault in invoker-supplied code. Names only, never
+                # the message, which may echo extension data.
+                logger.warning(
+                    "extension %s disabled for fault events after its %s hook failed",
+                    safe(extension.name),
+                    HOOK_PROBLEM,
+                )
                 self._warn(f"warning: extension {extension.name} disabled for fault events: {exc}")
                 continue
             if value is not None:

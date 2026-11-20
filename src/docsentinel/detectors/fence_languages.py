@@ -40,12 +40,16 @@ wiring land together with the committed ``tests/assets/ds110/*`` fixtures (Story
 07.0 Task 02), never before them.
 """
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 from docsentinel import models, rules
 from docsentinel.config import Config
+from docsentinel.log import safe
 from docsentinel.markdown_blocks import Fence, scan_markdown
+
+logger = logging.getLogger(__name__)
 
 #: Stable metadata for ``DS110``, registered as a ``fast``-profile rule alongside
 #: its committed ``tests/assets/ds110/*`` fixtures (Story 07.0 Task 02).
@@ -202,12 +206,29 @@ def detect(
     :returns: Findings across all documents in document then source order.
     """
     settings = config if config is not None else Config()
+    logger.debug(
+        "DS110 checking %d document(s): require_fence_languages=%s, allow_unlabelled_empty_fences=%s, fence_dialect=%s",
+        len(documents),
+        safe(settings.require_fence_languages),
+        safe(settings.allow_unlabelled_empty_fences),
+        safe(settings.fence_dialect),
+    )
+    if not settings.require_fence_languages:
+        logger.debug("DS110 is off: require_fence_languages is not set")
+    elif settings.fence_dialect != "gfm-subset":
+        logger.warning(
+            "DS110 is not checked: fence_dialect=%s is not supported (only 'gfm-subset')",
+            safe(settings.fence_dialect),
+        )
     findings: list[models.Finding] = []
     for document in documents:
         if not document.path.endswith(".md"):
+            logger.debug("DS110 skipped %s: not a Markdown document", safe(document.path))
             continue
         text = _read_text(root / document.path)
-        findings.extend(check_text(text, document.path, settings))
+        document_findings = check_text(text, document.path, settings)
+        logger.debug("DS110 checked %s: %d finding(s)", safe(document.path), len(document_findings))
+        findings.extend(document_findings)
     return tuple(findings)
 
 
