@@ -449,7 +449,7 @@ def _rotate(directory: Path, current: Path, keep: int):
             logger.debug("deleted old log file %s", safe(name))
 
 
-def shutdown_cli_logging():
+def shutdown_cli_logging() -> "None":
     """Remove and close every handler :func:`configure_cli_logging` added.
 
     Restores the ``docsentinel`` logger level it changed. Safe to call when logging

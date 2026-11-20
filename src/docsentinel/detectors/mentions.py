@@ -346,14 +346,14 @@ def detect(
 ) -> tuple[models.Finding, ...]:
     """Return ``DS124`` findings for Markdown documents in their supplied order.
 
-    :param root: The scan root directory (trusted); canonicalised once with
-        :func:`~docsentinel.detectors.path_boundaries.canonical_root`, as DS116 does.
+    :param root: The scan root directory (trusted); canonicalised once
+        with :func:`~docsentinel.detectors.path_boundaries.canonical_root`, as DS116 does.
     :param documents: Documents to inspect, in scan order.
     :param config: Effective settings supplying ``at_reference_extensions`` and
         ``link_root``; ``None`` uses defaults. The extensions of an injected
         ``Config`` are re-validated here (threat model M20).
-    :param link_root: The engine-validated step-2 boundary; ``None`` falls back to
-        :func:`~docsentinel.link_root.link_root_for`, which accepts only values
+    :param link_root: The engine-validated step-2 boundary; ``None`` falls back
+        to :func:`~docsentinel.link_root.link_root_for`, which accepts only values
         meaning the scan root, so step 2 then stays inside the scan root.
     :returns: Findings across all documents in document then source order.
     :raises ConfigError: When ``at_reference_extensions`` is invalid, or when
