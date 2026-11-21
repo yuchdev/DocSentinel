@@ -9,6 +9,10 @@ from pathlib import Path
 import pytest
 
 from docsentinel import models, rules
+from docsentinel.config import Config
+
+#: DS103 is opt-in (Milestone 0009 Story 01.0): it evaluates only under reference_scope = "strict".
+STRICT_SCOPE = Config(reference_scope="strict")
 
 paths: types.ModuleType
 
@@ -65,4 +69,4 @@ def test_existing_path_produces_no_finding(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(paths, "_read_text", read_fixture)
 
-    assert paths.detect(root, (document,)) == ()
+    assert paths.detect(root, (document,), STRICT_SCOPE) == ()

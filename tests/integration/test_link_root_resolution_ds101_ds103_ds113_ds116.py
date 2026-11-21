@@ -33,6 +33,7 @@ from tests.git_marker_helpers import (
     is_git_marker_probe,
     is_project_marker_probe,
 )
+from tests.log_helpers import problem_output
 from tests.mock.test_path_boundaries_oracle import _install_recorder, _is_under, _Recorder
 
 _CASE = "link_root_repository_absolute"
@@ -88,6 +89,27 @@ def _summary(findings) -> list[tuple[str, int, str]]:
     :returns: The triples, in finding order.
     """
     return [(finding.rule, finding.line, finding.message) for finding in findings]
+
+
+#: Text-report finding line of the missing repository link (DS101, under the README header).
+_MISSING_LINE = "  error   DS101 dangling link, line 7, col 17: /docs/adr/missing.md"
+
+#: Prefix of every DS101 dangling-link finding line in the text report.
+_DANGLING_PREFIX = "  error   DS101 dangling link, line "
+
+
+def _dangling_targets(output: str) -> list[str]:
+    """Return the targets of the DS101 dangling-link finding lines of a text report, in order.
+
+    The text template prints ``<sev> <rule> <type>, line N, col M: <value>`` under each document;
+    the value of a dangling link is its target.
+
+    :param output: The rendered text report.
+    :returns: The targets, one per DS101 dangling-link finding line.
+    """
+    return [
+        line.partition(": ")[2] for line in output.splitlines() if line.startswith(_DANGLING_PREFIX)
+    ]
 
 
 # --- DS101 ----------------------------------------------------------------------------------
@@ -289,8 +311,8 @@ def test_cli_scan_reports_missing_link_and_not_existing_repository_links(
     output = capsys.readouterr().out
 
     assert exit_code == 1
-    assert "dangling link -> /docs/adr/missing.md" in output
-    assert "dangling link -> /docs/adr/README.md" not in output
+    assert _MISSING_LINE in output.splitlines()
+    assert _dangling_targets(output) == ["/docs/adr/missing.md"]  # never /docs/adr/README.md
     assert "/src/app.py" not in output
 
 
@@ -320,8 +342,8 @@ def test_cli_scan_with_dot_link_root_in_config_uses_scan_root(
     output = capsys.readouterr().out
 
     assert exit_code == 1
-    assert "dangling link -> /docs/adr/README.md" in output
-    assert "dangling link -> /src/app.py" in output
+    assert "  error   DS101 dangling link, line 3, col 21: /docs/adr/README.md" in output.splitlines()
+    assert "  error   DS101 dangling link, line 5, col 19: /src/app.py" in output.splitlines()
 
 
 @pytest.mark.parametrize("value", ["adr", "../src", "/abs", "../..", "../../x/..", "../" * 40])
@@ -389,8 +411,8 @@ def test_config_parent_link_root_without_git_needs_a_project_marker(
     assert "pyproject.toml, docsentinel.toml or doc_sentinel.toml" in refused_output.err
     assert refused_output.out == ""
     assert accepted == 1
-    assert "dangling link -> /docs/adr/missing.md" in accepted_output
-    assert "dangling link -> /docs/adr/README.md" not in accepted_output
+    assert _MISSING_LINE in accepted_output.splitlines()
+    assert _dangling_targets(accepted_output) == ["/docs/adr/missing.md"]  # never /docs/adr/README.md
 
 
 def test_config_link_root_with_marker_probes_only_by_lexists(asset_case: Callable[[str, str], AssetCase]):
@@ -493,9 +515,8 @@ def test_cli_link_root_flag_resolves_slash_links_on_a_non_git_tree(
 
     for exit_code, output in ((absolute, absolute_output), (relative, relative_output)):
         assert exit_code == 1
-        assert "dangling link -> /docs/adr/missing.md" in output
-        assert "dangling link -> /docs/adr/README.md" not in output
-        assert "dangling link -> /src/app.py" not in output
+        assert _MISSING_LINE in output.splitlines()
+        assert _dangling_targets(output) == ["/docs/adr/missing.md"]  # neither /docs/adr/README.md nor /src/app.py
 
 
 def test_cli_link_root_flag_overrides_config(
@@ -524,8 +545,8 @@ def test_cli_link_root_flag_overrides_config(
     output = capsys.readouterr().out
 
     assert exit_code == 1
-    assert "dangling link -> /docs/adr/README.md" not in output
-    assert "dangling link -> /docs/adr/missing.md" in output
+    assert _dangling_targets(output) == ["/docs/adr/missing.md"]  # never /docs/adr/README.md
+    assert _MISSING_LINE in output.splitlines()
 
 
 @pytest.mark.parametrize("which", ["filesystem-root", "child", "missing", "sibling"])
@@ -560,7 +581,7 @@ def test_cli_link_root_flag_refuses_root_non_ancestor_and_missing(
     captured = capsys.readouterr()
 
     assert exit_code == 2
-    assert captured.err.startswith("Scan failed: --link-root")
+    assert problem_output(captured.err).startswith("Scan failed: --link-root")
     assert captured.out == ""
 
 
@@ -624,7 +645,7 @@ def test_injected_unbounded_link_root_fails_closed_in_scan_and_detectors(
     with pytest.raises(ConfigError, match="link_root"):
         links.detect(docs, _docs(docs), Config(link_root=".."))
     with pytest.raises(ConfigError, match="link_root"):
-        paths.detect(docs, _docs(docs), Config(link_root=".."))
+        paths.detect(docs, _docs(docs), Config(link_root="..", reference_scope="strict"))
 
 
 def test_ds101_undecodable_linked_markdown_skips_anchor_check(asset_case: Callable[[str, str], AssetCase]):
@@ -679,10 +700,10 @@ def test_ds103_repository_absolute_code_span_resolves_against_git_root(
     """
     _repo, docs = _materialize(asset_case, "ds103")
 
-    assert _summary(paths.detect(docs, _docs(docs), Config(), link_root=_engine_root(docs))) == [
+    assert _summary(paths.detect(docs, _docs(docs), Config(reference_scope="strict"), link_root=_engine_root(docs))) == [
         ("DS103", 4, "unresolvable path -> /src/missing.py")
     ]
-    assert _summary(paths.detect(docs, _docs(docs), Config(link_root="."))) == [
+    assert _summary(paths.detect(docs, _docs(docs), Config(link_root=".", reference_scope="strict"))) == [
         ("DS103", 3, "unresolvable path -> /src/app.py"),
         ("DS103", 4, "unresolvable path -> /src/missing.py"),
     ]

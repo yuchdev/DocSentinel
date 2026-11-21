@@ -54,6 +54,7 @@ structure; detectors should never parse the raw text again.
 | `html_images` | `tuple[HtmlImage, ...]` | HTML `<img>`/`<source>` tags |
 | `html_links` | `tuple[HtmlLink, ...]` | HTML `<a href>` tags |
 | `comments` | `tuple[Comment, ...]` | HTML comment ranges |
+| `at_references` | `tuple[AtReference, ...]` | `@`-document mentions in prose or as a whole code span, in source order (see below) |
 
 Helper methods:
 
@@ -62,6 +63,25 @@ Helper methods:
   DS117.
 - `split_physical_lines(text)` — shared physical-line splitter (handles LF,
   CRLF, lone CR); used by DS105 and DS108 to align line numbering with the index.
+
+### `AtReference` records
+
+`AtReference` (Milestone 0009, Story 01.0) is one `@`-document mention. The scanner records every
+syntactic mention whatever its extension and stays config-free; filtering by
+`at_reference_extensions` is the consumer's job. The grammar is in
+[Story 01.0](/docs/roadmap/0009-improvements/01.0-reference-scope-and-at-references/README.md#at-reference-grammar).
+
+| Field | Contents |
+|-------|----------|
+| `target` | Path token without the `@`, trailing punctuation stripped, each backslash-space replaced by one space (no other decoding) |
+| `raw` | `@` plus the token as written, for a finding `value` |
+| `kind` | Plain `str`: `"relative"`, `"home"` (starts with `~/`) or `"absolute"` (starts with `/`); only `relative` is ever resolved |
+| `in_code_span` | `True` for the whole-code-span form |
+| `span` | Prose form: from the `@`. Code-span form: the very same span object as the `InlineCode` record, so DS116 can drop the span by identity |
+
+The token is capped at 1,024 raw characters (a longer run is not recognised). Nothing is recognised
+in fences, HTML comments, raw HTML tags, link text or destinations, after a backslash, or after a
+letter, digit or `@`.
 
 ### Masking order
 
@@ -112,10 +132,16 @@ from safe unsupported ones (template/glob, which it ignores).
 | Rule | Resolver usage |
 |------|----------------|
 | DS101 | Calls the resolver for every link, image, and reference-definition target. Delegates all `UNSUPPORTED` targets to DS116 via `is_ds116_owned`; never stats an unsafe target. |
-| DS103 | Legacy resolver for inline code spans only. Per the Story 11.0 code-span ruling, DS103 does **not** call `is_ds116_owned`; it skips only genuine root-escape and symlink-out code spans (via `escapes_via_symlink`) and retains its pre-Story-11 behaviour for drive/UNC/backslash/control code spans. |
+| DS103 | Opt-in (`reference_scope = "strict"`). Legacy resolver for inline code spans only. It skips every code span starting with `@` (a mention has one owner, DS124/DS116). Per the Story 11.0 code-span ruling, DS103 does **not** call `is_ds116_owned`; it skips only genuine root-escape and symlink-out code spans (via `escapes_via_symlink`) and retains its pre-Story-11 behaviour for drive/UNC/backslash/control code spans. |
 | DS112 | Calls the resolver for navigation link targets. Delegates `OUTSIDE_ROOT` and `UNSUPPORTED` targets to a DS116 finding (zero filesystem access). |
 | DS113 | Calls the resolver for image/asset targets. Defers `OUTSIDE_ROOT` and `is_ds116_owned` targets entirely to DS116; never stats outside the root. |
-| DS116 | Owns all `OUTSIDE_ROOT` and unsafe `UNSUPPORTED` references. For inline code spans, reports only genuine traversal (root escape or in-root symlink-out); leaves drive/UNC/backslash/control code spans to DS103. |
+| DS116 | Owns all `OUTSIDE_ROOT` and unsafe `UNSUPPORTED` references. For inline code spans, reports only genuine traversal (root escape or in-root symlink-out); leaves drive/UNC/backslash/control code spans to DS103. It also checks every `relative` `@`-mention (any extension) as a document-relative reference, and drops a code span from its own candidates only when the scanner recorded that exact span as a code-span `AtReference`. |
+| DS124 | Reads `AtReference` records (`relative`, extension in `at_reference_extensions`). Resolves first against the scan root, then against the link root, through `resolve_local_reference` and `contained_path`, then one `os.stat` plus `S_ISREG`; never opens a target. A mention that DS116 owns (root escape, symlink out) is left to DS116. A target outside the link root on the fallback step gives no finding. `home` and `absolute` mentions are never probed. |
+
+Ownership of a mention: **DS124 owns the missing target, DS116 owns the escape, DS103 skips `@` spans.**
+Both DS116 and DS124 use the shared containment walker in `path_boundaries.py`: `_walk()` backs
+`contained_path()` and `escapes_via_symlink()`, and `canonical_root()` gives both rules the same
+canonical scan root.
 
 **Never add a second path resolver.** If a detector needs to know whether a
 target is safe, call `is_ds116_owned(resolved_ref)` from `path_boundaries.py`
@@ -179,6 +205,9 @@ Rule(
     severity="warning",  # or "error"
     # For an opt-in rule, name the Config option that enables it:
     opt_in_option="my_option_name",  # omit for always-active rules
+    # Optional: only these option values switch the rule on (exact string match),
+    # as DS103 does with opt_in_option="reference_scope", opt_in_values={"strict"}.
+    opt_in_values=frozenset({"strict"}),
 )
 ```
 

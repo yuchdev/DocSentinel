@@ -23,8 +23,12 @@ from tests.timing_helpers import assert_scales_linearly
 _SIZES = (90, 180, 360, 720)
 #: Findings per synthetic document.
 _PER_DOCUMENT = 3
-#: A token present once per rendered problem in every packaged template (the message, not ``type``).
+#: A token present once per rendered problem in every packaged template except ``text`` (the message,
+#: not ``type``).
 _MARKER = "dangling link ->"
+#: The ``text`` template prints the problem's ``value`` instead of its message, so its problem lines are
+#: counted by the ``<rule> <type>, line`` prefix of a finding line under its document.
+_TEXT_MARKER = " DS101 dangling link, line "
 
 
 def _result(count: int) -> ScanResult:
@@ -67,7 +71,8 @@ def test_rendering_scales_linearly_through_the_358_document_scale(name: str):
     Scenario:
         Given deterministic results of 90, 180, 360 and 720 documents with three findings each
         When each is rendered with the packaged template (CPU time, best of three)
-        Then every problem is rendered (3 per document, counted by its message) and the time scales
+        Then every problem is rendered (3 per document, counted by its message, or in text by its
+            finding-line prefix) and the time scales
             near-linearly: per-doubling ratio <= 6 and log-log slope <= 1.4.
 
     Boundaries:
@@ -84,7 +89,8 @@ def test_rendering_scales_linearly_through_the_358_document_scale(name: str):
     def run(result: ScanResult) -> list[str]:
         """Render ``result`` and return the lines carrying a problem message (text recap excluded)."""
         body = render(result, name).split("\nBlocking findings:", 1)[0]
-        return [line for line in body.split("\n") if _MARKER in line]
+        marker = _TEXT_MARKER if name == "text" else _MARKER
+        return [line for line in body.split("\n") if marker in line]
 
     assert_scales_linearly(
         _result,

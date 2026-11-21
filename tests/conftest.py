@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import inspect
+import os
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
+import nltk
 import pytest
 
+from docsentinel.config import USER_SETTINGS_ENV, USER_SETTINGS_OFF
+from docsentinel.log import LOG_DIR_ENV, LOG_LEVEL_ENV, shutdown_cli_logging
 from tests.asset_helpers import AssetCase, load_asset_case
+
+#: The XDG data directory variable, pointed at an empty directory in every test.
+_XDG_DATA_HOME = "XDG_DATA_HOME"
 
 _DOCSTRING_TAG_RE = re.compile(r"^\s*\[(Unit|Mock|Integration|E2E)\]", re.IGNORECASE)
 
@@ -23,6 +30,29 @@ _ORDER = {
     "integration": 2,
     "e2e": 3,
 }
+
+
+def _ensure_cmudict():
+    """Provision textstat's English syllable corpus, reusing NLTK's existing data cache.
+
+    :raises ValueError: If NLTK cannot download the missing corpus.
+    :raises LookupError: If the corpus is still unavailable after downloading.
+    """
+    try:
+        nltk.data.find("corpora/cmudict")
+    except LookupError:
+        nltk.download("cmudict", quiet=True, raise_on_error=True)
+        nltk.data.find("corpora/cmudict")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _nltk_cmudict():
+    """Provision cmudict once for direct pytest, Stop-hook, and CI test runs.
+
+    Download only during test setup, never at module import; failures abort setup
+    rather than skipping tests or changing DS201's scoring.
+    """
+    _ensure_cmudict()
 
 
 def _classify_item(item: pytest.Item) -> str:
@@ -90,3 +120,54 @@ def asset_case(tmp_path: Path) -> Callable[[str, str], AssetCase]:
         return load_asset_case(rule, case, tmp_path)
 
     return load
+
+
+@pytest.fixture(autouse=True)
+def _isolated_cli_logging(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    """Point the CLI's per-run log files at a fresh temporary directory for every test.
+
+    The directory is separate from ``tmp_path`` so a scan of ``tmp_path`` never sees
+    log files. ``DOCSENTINEL_LOG_LEVEL`` is cleared so the default stderr level
+    applies, and every handler ``cli.main`` attached is closed after the test. The
+    environment is restored by hand rather than with ``monkeypatch``, which would
+    add a mock fixture to every test and change :func:`_classify_item`.
+    """
+    log_dir = tmp_path_factory.mktemp("docsentinel-logs")
+    saved = {name: os.environ.get(name) for name in (LOG_DIR_ENV, LOG_LEVEL_ENV)}
+    os.environ[LOG_DIR_ENV] = str(log_dir)
+    os.environ.pop(LOG_LEVEL_ENV, None)
+    try:
+        yield log_dir
+    finally:
+        shutdown_cli_logging()
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
+@pytest.fixture(autouse=True)
+def _isolated_user_settings(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    """Keep every test away from the developer's real user settings file.
+
+    ``DOCSENTINEL_SETTINGS`` is set to ``off`` and, as a second layer, ``XDG_DATA_HOME``
+    points at an empty per-test directory, so a test that removes the variable
+    resolves the default location there rather than under the real home (threat
+    model 0009-user-settings U12, A7). Tests that exercise the layer set the variable
+    to a file in ``tmp_path``; default-location tests also patch ``Path.home()``. The
+    environment is restored by hand, like the log isolation above, so no mock fixture
+    is added to every test.
+    """
+    data_home = tmp_path_factory.mktemp("docsentinel-data-home")
+    saved = {name: os.environ.get(name) for name in (USER_SETTINGS_ENV, _XDG_DATA_HOME)}
+    os.environ[USER_SETTINGS_ENV] = USER_SETTINGS_OFF
+    os.environ[_XDG_DATA_HOME] = str(data_home)
+    try:
+        yield data_home
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value

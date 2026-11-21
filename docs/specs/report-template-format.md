@@ -76,7 +76,7 @@ escapes (controls, CR/LF, bidi, zero-width, separators, lone surrogates).
 
 | `type` | Purpose | Keys |
 |---|---|---|
-| `line` | One output line. | `text`, `variables_used`, optional `when` |
+| `line` | One output line, or, with `"append": true`, a piece added to the end of the line emitted before it (it starts a new line only when nothing was emitted yet). Use appended lines to compose optional parts, such as `, line N` only when a line is known, without one full-line variant per combination. | `text`, `variables_used`, optional `when`, optional `append` (boolean, default `false`) |
 | `loop` | Iterate a list in context. | `over`, `as`, `placement`, `when`; then `text` + `separator` (inline placements) or `body` (block) |
 | `group` | A conditional run of nodes with no loop. | `when`, `body` |
 
@@ -128,16 +128,20 @@ Operators: `eq`, `ne`, `in`, `gt`, `lt`, `truthy`, `falsy`.
     { "type": "loop", "over": "documents_with_problems", "as": "doc", "placement": "block", "body": [
       { "type": "line", "text": "{doc.path|neutralize} ({doc.bytes} bytes)", "variables_used": ["doc.path", "doc.bytes"] },
       { "type": "loop", "over": "doc.problems", "as": "p", "placement": "block", "body": [
-        { "type": "line", "when": { "var": "p.line", "eq": null },
-          "text": "  {p.severity}: {doc.path|neutralize}: {p.message|neutralize}",
-          "variables_used": ["p.severity", "doc.path", "p.message"] },
+        { "type": "line", "when": { "var": "p.severity", "eq": "error" },
+          "text": "  error   {p.rule}", "variables_used": ["p.rule"] },
+        { "type": "line", "when": { "var": "p.severity", "ne": "error" },
+          "text": "  {p.severity} {p.rule}", "variables_used": ["p.severity", "p.rule"] },
+        { "type": "line", "append": true, "when": { "var": "p.type", "ne": null },
+          "text": " {p.type}", "variables_used": ["p.type"] },
         { "type": "group", "when": { "var": "p.line", "ne": null }, "body": [
-          { "type": "line", "when": { "var": "p.column", "eq": null },
-            "text": "  {p.severity}: {doc.path|neutralize}:{p.line}: {p.message|neutralize}",
-            "variables_used": ["p.severity", "doc.path", "p.line", "p.message"] },
-          { "type": "line", "when": { "var": "p.column", "ne": null },
-            "text": "  {p.severity}: {doc.path|neutralize}:{p.line}:{p.column}: {p.message|neutralize}",
-            "variables_used": ["p.severity", "doc.path", "p.line", "p.column", "p.message"] } ] } ] } ] },
+          { "type": "line", "append": true, "text": ", line {p.line}", "variables_used": ["p.line"] },
+          { "type": "line", "append": true, "when": { "var": "p.column", "ne": null },
+            "text": ", col {p.column}", "variables_used": ["p.column"] } ] },
+        { "type": "line", "append": true, "when": { "var": "p.value", "ne": null },
+          "text": ": {p.value|neutralize}", "variables_used": ["p.value"] },
+        { "type": "line", "append": true, "when": { "var": "p.value", "eq": null },
+          "text": ": {p.message|neutralize}", "variables_used": ["p.message"] } ] } ] },
     { "type": "loop", "over": "pending", "as": "reason", "placement": "block", "body": [
       { "type": "line", "text": "Pending: {reason|neutralize}", "variables_used": ["reason"] } ] },
     { "type": "line", "when": { "var": "blocking_count", "gt": 0 },
@@ -145,15 +149,22 @@ Operators: `eq`, `ne`, `in`, `gt`, `lt`, `truthy`, `falsy`.
     { "type": "loop", "when": { "var": "blocking_count", "gt": 0 }, "over": "findings", "as": "p",
       "placement": "block", "body": [
         { "type": "group", "when": { "var": "p.outcome", "eq": "rejected" }, "body": [
-          "... the same three line/column variants, with {p.document_path|neutralize} ..." ] } ] }
+          "... the same pieces, with \": {p.document_path|neutralize}\" appended after the type ..." ] } ] }
   ]
 }
 ```
 
+Each document path is printed once, on its header line. Each finding beneath it reads
+`<severity> <rule> <type>[, line N[, col M]]: <value>`, following the
+[finding-types standard](finding-types.md#3-text-report-rendering). The severity is padded to 7
+characters, so rule codes line up, and positions are labelled. When a finding has no `value`,
+its `message` takes that place.
+
 The report ends with a **Blocking findings** recap: every finding whose `outcome` is
 `rejected` (errors, and warnings under `--strict`), repeated in `findings` order after
 the per-document groups. It is the reason for exit code `1`, and it is the last thing
-printed, so it stays visible at the end of a long CI log. It is absent when nothing
+printed, so it stays visible at the end of a long CI log. Its lines put the path back:
+`<severity> <rule> <type>: <path>[, line N[, col M]]: <value>`. It is absent when nothing
 blocks, including for every deep-profile run (deep findings are `advisory`).
 
 The `Documents:` header counts inventory documents only (`documents_count`,
@@ -285,7 +296,7 @@ and `$for`/`over` on a non-list `any` is a `TemplateError`.
 
 | Filter | Effect | Sink |
 |---|---|---|
-| `neutralize` | Backslash-escape C0/C1/DEL, bidi, zero-width, line separators, lone surrogates (the existing `_neutralize_controls` table, CR/LF included). | text |
+| `neutralize` | Backslash-escape C0/C1/DEL, bidi, zero-width, line separators, lone surrogates (the existing `_neutralize_controls` table, CR/LF included), and rewrite the GitHub legacy command marker `##[` as `##\[`, so `##[` never reaches the output. | text |
 | `gha_property` | `neutralize` (CR/LF kept) then percent-encode `% \r \n : ,`. | github |
 | `gha_data` | `neutralize` (CR/LF kept) then percent-encode `% \r \n`. | github |
 | `json` | `json.dumps` (ASCII-safe). | any |
@@ -323,7 +334,7 @@ The rule is checked strictly (threat model T1/T2):
 - Every `ext.*` variable is untrusted (Section 6), at every depth.
 - With `"sink": "github"` in `output`, only `gha_property`/`gha_data` count as sinks. Any
   variable (trusted or not) before the second `::` of a command line needs
-  `gha_property`, and so does every variable of an `append` loop. An untrusted variable
+  `gha_property`, and so does every variable of an `append` loop or an appended `line`. An untrusted variable
   after the second `::` needs `gha_data`.
 - With `"sink": "github"`, every emitted line that holds a variable (including inline
   loops, whose `prefix` counts) must start with literal text that is neither empty nor a
@@ -333,9 +344,10 @@ The rule is checked strictly (threat model T1/T2):
   and a literal command name from the closed list `error`, `warning`, `notice`, `debug`,
   `group`, followed by a literal space or `::`. It must also contain a literal second `::`.
   Any other line falls back to the runner's legacy parser, which finds `##[` anywhere in
-  the line, and the `gha_*` filters do not escape `#`, `[` or `]`. Plain lines may carry
-  only trusted variables. So may `append` loops, because the loader cannot prove which
-  line they continue. So `Finding: {p.message|gha_data}`, `::warning {p.message|gha_property}`
+  the line. The `gha_*` filters rewrite the marker `##[` itself as `##\[`, but they do not
+  escape a lone `#`, `[` or `]`, and a literal can still meet a value. Plain lines may carry
+  only trusted variables. So may `append` loops and appended `line` nodes, because the
+  loader cannot prove which line they continue. So `Finding: {p.message|gha_data}`, `::warning {p.message|gha_property}`
   and `::{p.message|gha_property}::...` are rejected.
 - With `"sink": "github"`, a variable may not directly follow a literal ending in `#`
   (the loop `prefix`, and the item text plus `separator` of an inline loop, count). So no
@@ -344,9 +356,11 @@ The rule is checked strictly (threat model T1/T2):
   literals. So a `one-line` loop whose `text` is the whole
   `::error file={p.document_path|gha_property},line={p.line|gha_property}::{p.message|gha_data}`
   command is accepted, and so is one whose `prefix` opens the command.
-- The `terminal` sink does not target GitHub Actions: `neutralize` leaves `::` and `##[`
-  alone. In a workflow, use `--format github` or a `github`-sink template, or wrap text
-  output in `::stop-commands::<random token>`.
+- The `terminal` sink does not target GitHub Actions: `neutralize` leaves `::` alone. It does
+  rewrite every `##[` in a value as `##\[`, because the runner's legacy parser honours that
+  marker anywhere in a line. The same rewrite covers `reporting.neutralize_text`, the CLI
+  `Scan failed:` line and `docsentinel.log.safe()`. In a workflow, use `--format github` or a
+  `github`-sink template, or wrap text output in `::stop-commands::<random token>`.
 
 ## 9. Extensions (variables, calculations, filters)
 

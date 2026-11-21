@@ -3,6 +3,7 @@
 Multi-backtick spans are not parsed; only the specified single-backtick pattern is supported.
 """
 
+import logging
 import os
 import re
 from pathlib import Path, PureWindowsPath
@@ -12,6 +13,9 @@ from docsentinel import models, rules
 from docsentinel.config import Config
 from docsentinel.detectors.path_boundaries import contained_path
 from docsentinel.link_root import link_root_for
+from docsentinel.log import safe
+
+logger = logging.getLogger(__name__)
 
 DS103 = rules.register_rule(
     rules.Rule(
@@ -20,6 +24,10 @@ DS103 = rules.register_rule(
         title="Unresolvable path-like code span",
         description="An inline code span looks like a file path but does not resolve.",
         severity="warning",
+        # Opt-in since Milestone 0009 Story 01.0: inert under the default
+        # reference_scope = "links" (ADR 0004 Contract 1).
+        opt_in_option="reference_scope",
+        opt_in_values=frozenset({"strict"}),
     )
 )
 
@@ -62,10 +70,15 @@ def _read_text(path: Path) -> str:
 
 
 def _is_excluded(candidate: str) -> bool:
-    """Return whether a code span is excluded from path detection."""
+    """Return whether a code span is excluded from path detection.
+
+    A span starting with ``@`` is an ``@``-document mention (or looks like one); it
+    belongs to ``DS124`` and ``DS116`` (Milestone 0009 Story 01.0, decision S7), so
+    DS103 never reports it.
+    """
     if any(character.isspace() for character in candidate):
         return True
-    if candidate.startswith(("-", "$", ">")):
+    if candidate.startswith(("-", "$", ">", "@")):
         return True
     if _VERSION_RE.fullmatch(candidate):
         return True
@@ -134,7 +147,10 @@ def detect(
 
     :param root: The scan root directory.
     :param documents: Documents to inspect in their supplied order.
-    :param config: Effective settings supplying ``link_root``; ``None`` uses defaults.
+    :param config: Effective settings supplying ``reference_scope`` and ``link_root``;
+        ``None`` uses defaults. DS103 is an opt-in rule: unless ``reference_scope``
+        is exactly ``"strict"`` it reports nothing (the default ``"links"`` and any
+        unknown value on an injected ``Config`` keep it inert).
     :param link_root: The engine-validated base for ``/`` targets; ``None`` falls back
         to :func:`~docsentinel.link_root.link_root_for`, which accepts only values
         meaning the scan root.
@@ -142,11 +158,17 @@ def detect(
     :raises ConfigError: When ``link_root`` is invalid for this scan root.
     """
     settings = config if config is not None else Config()
+    if not rules.opt_in_satisfied(DS103, settings):
+        logger.debug("DS103 inert: reference_scope is not strict")
+        return ()
     base = link_root if link_root is not None else link_root_for(Path(os.path.realpath(root)), settings)
+    logger.debug("DS103 checking %d document(s): link_root=%s", len(documents), safe(base))
     findings: list[models.Finding] = []
     for document in documents:
         if not document.path.endswith(".md"):
+            logger.debug("DS103 skipped %s: not a Markdown document", safe(document.path))
             continue
+        before = len(findings)
 
         source = root / document.path
         text = _strip_fenced_blocks(_read_text(source))
@@ -191,6 +213,12 @@ def detect(
             boundary = base if candidate.startswith("/") else root
             resolved = contained_path(boundary, lexical) if lexical is not None else None
             if lexical is not None and resolved is None:
+                logger.debug(
+                    "DS103 %s:%d: code span %s resolves outside its boundary; left to DS116",
+                    safe(document.path),
+                    line,
+                    safe(candidate),
+                )
                 continue
             if resolved is not None and resolved.exists():
                 continue
@@ -207,6 +235,7 @@ def detect(
                     type="unresolvable path",
                 )
             )
+        logger.debug("DS103 checked %s: %d finding(s)", safe(document.path), len(findings) - before)
     return tuple(findings)
 
 

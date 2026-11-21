@@ -16,7 +16,7 @@ from pathlib import Path
 import docsentinel.detectors.loader as loader
 from docsentinel import cli
 from docsentinel.config import Config
-from docsentinel.rules import RULES
+from docsentinel.rules import RULES, Rule, opt_in_hint
 from docsentinel.telemetry.classify import FAULT_CLASSES
 
 # Importing the engine registers the fast rules; DS301 registers on import of its module.
@@ -35,7 +35,7 @@ _COLUMNS: tuple[str, ...] = (
     "config_keys",
 )
 _ROW_RE = re.compile(r"^\|\s*(DS\d{3})\s*\|.*\|\s*$", re.MULTILINE)
-_LISTING_RE = re.compile(r"^  (DS\d{3}): (.+?)(?: \[opt-in: set (\w+)\])?$")
+_LISTING_RE = re.compile(r"^  (DS\d{3}): (.+?)(?: \[opt-in: set (\w+(?: = .+)?)\])?$")
 
 
 def _table_rows() -> dict[str, dict[str, str]]:
@@ -50,9 +50,13 @@ def _table_rows() -> dict[str, dict[str, str]]:
     return rows
 
 
-def _expected_activation(opt_in_option: str) -> str:
-    """Return the Activation cell text the table must carry for a rule."""
-    return f"opt-in: `{opt_in_option}`" if opt_in_option else "always"
+def _expected_activation(rule: Rule) -> str:
+    """Return the Activation cell text the table must carry for a rule.
+
+    The cell repeats :func:`opt_in_hint`: the option for a legacy opt-in rule, or
+    ``option = "value"`` for a rule with enabling values (ADR 0004 Contract 1).
+    """
+    return f"opt-in: `{opt_in_hint(rule)}`" if rule.opt_in_option else "always"
 
 
 def _cli_listing() -> dict[str, tuple[str, str]]:
@@ -114,7 +118,7 @@ def test_row_columns_match_rule_registration():
         code: {
             "profile": rule.profile,
             "severity": rule.severity,
-            "activation": _expected_activation(rule.opt_in_option),
+            "activation": _expected_activation(rule),
             "title": rule.title,
             "description": rule.description,
             "fault_class": f"`{FAULT_CLASSES[code]}`",

@@ -923,6 +923,53 @@ def test_github_append_continuation_is_checked():
     validate_template(_github(head, good))
 
 
+def test_line_append_must_be_boolean():
+    """
+    [Unit] loader: verifies a ``line`` node's ``append`` key accepts only a JSON boolean.
+
+    Scenario:
+        Given a line with ``"append": "yes"`` and another with ``"append": true``
+        When they are validated
+        Then the string is rejected and the boolean is accepted as an appended LineNode.
+
+    Boundaries:
+        - Focus: invalid input for the line-level ``append`` flag
+        - Fixtures/params: none
+        - Scope: validate_template
+
+    On failure, first check:
+        - The ``isinstance(append, bool)`` check in the ``line`` branch of the node parser
+    """
+    _rejects(_text(_line("x", [], append="yes")), "append must be a boolean")
+    template = validate_template(_text(_line("x", [], append=True)))
+
+    assert template.lines[0].append is True
+
+
+def test_github_appended_line_needs_trusted_gha_property():
+    """
+    [Unit] loader: verifies T2 -- an appended ``line`` is held to the same rule as an ``append`` loop.
+
+    Scenario:
+        Given a ``::notice::`` line followed by an appended line carrying ``{doc.path|gha_data}``, then one carrying
+            the trusted `` profile {profile|gha_property}`` (literal lead)
+        When they are validated under the github sink
+        Then the untrusted one is rejected (it may continue a command property) and the trusted one is accepted.
+
+    Boundaries:
+        - Focus: threat model T2 (appended line continuation)
+        - Fixtures/params: none
+        - Scope: validate_template
+
+    On failure, first check:
+        - ``append=append`` passed to ``_emitted_text`` for ``line`` nodes
+    """
+    head = _line("::notice::documents", [])
+    untrusted = _in_loop("documents", "doc", _line("Docs: {doc.path|gha_data}", ["doc.path"], append=True))
+    _rejects(_github(head, untrusted), "command property needs gha_property")
+    validate_template(_github(head, _line(" profile {profile|gha_property}", ["profile"], append=True)))
+
+
 def test_trusted_variable_in_command_property_needs_gha_property():
     """
     [Unit] loader: verifies T2 -- a trusted variable in a command property needs gha_property.

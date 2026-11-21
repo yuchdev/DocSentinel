@@ -138,6 +138,7 @@ catalog.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import stat
@@ -151,6 +152,7 @@ from typing import Optional
 from docsentinel import models, rules
 from docsentinel.config import Config, ConfigError
 from docsentinel.detectors.path_boundaries import escapes_via_symlink, is_ds116_owned
+from docsentinel.log import safe
 from docsentinel.markdown_blocks import (
     InlineCode,
     LocalReference,
@@ -168,6 +170,8 @@ from docsentinel.markdown_blocks import (
 #: ``navigation_indexes``; with ``deprecated_references_file`` empty the rule is
 #: inert, the engine notice names it, and it is not counted among the evaluated
 #: rules.
+logger = logging.getLogger(__name__)
+
 DS115 = rules.register_rule(
     rules.Rule(
         code="DS115",
@@ -667,6 +671,7 @@ def check_text(
         replacement.index for replacement in mapping.replacements if _document_in_scope(replacement, document_path)
     )
     if not in_scope:
+        logger.debug("DS115 checked %s: no mapping entry in scope", safe(document_path))
         return ()
 
     index = scan_markdown(text, document_path)
@@ -685,6 +690,13 @@ def check_text(
             continue
         seen.add(key)
         findings.append(_finding(document_path, occurrence.line, occurrence.replacement, mapping.configured_path))
+    logger.debug(
+        "DS115 checked %s: %d findings (%d of %d mapping entries in scope)",
+        safe(document_path),
+        len(findings),
+        len(in_scope),
+        len(mapping.replacements),
+    )
     return tuple(findings)
 
 
@@ -901,9 +913,23 @@ def detect(
     """
     settings = config if config is not None else Config()
     if not settings.deprecated_references_file:
+        logger.debug("DS115 inactive: deprecated_references_file is not set")
         return ()
     canonical = Path(os.path.realpath(root))
     mapping = load_mapping(canonical, settings.deprecated_references_file)
+    logger.debug(
+        "DS115 mapping %s loaded: %d replacement entries (prose %d, link %d, identifier %d); "
+        "deprecated_check_prose=%s, deprecated_check_links=%s, deprecated_case_sensitive=%s; %d documents",
+        safe(settings.deprecated_references_file),
+        len(mapping.replacements),
+        sum(1 for replacement in mapping.replacements if replacement.kind == _PROSE),
+        sum(1 for replacement in mapping.replacements if replacement.kind == _LINK),
+        sum(1 for replacement in mapping.replacements if replacement.kind == _IDENTIFIER),
+        settings.deprecated_check_prose,
+        settings.deprecated_check_links,
+        settings.deprecated_case_sensitive,
+        len(documents),
+    )
     findings: list[models.Finding] = []
     for document in documents:
         if not document.path.endswith(".md"):

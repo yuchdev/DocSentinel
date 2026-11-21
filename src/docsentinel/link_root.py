@@ -53,22 +53,26 @@ the referring document, and their ``..`` escapes stay bounded by the scan root.
 
 from __future__ import annotations
 
+import logging
 import os
 import stat
 from pathlib import Path
 from typing import Final, Optional, Union
 
 from docsentinel.config import LINK_ROOT_AUTO, Config, ConfigError, validate_link_root
+from docsentinel.log import safe
 
 __all__ = ["LINK_ROOT_RULES", "PROJECT_MARKERS", "link_root_for", "resolve_invoker_link_root", "resolve_link_root"]
 
 #: Rules whose analyzers resolve ``/`` targets against the link root; the engine
 #: resolves (and probes for) the link root only when one of them is active.
-LINK_ROOT_RULES: Final = frozenset({"DS101", "DS103", "DS112", "DS113", "DS116"})
+LINK_ROOT_RULES: Final = frozenset({"DS101", "DS103", "DS112", "DS113", "DS116", "DS124"})
 
 #: Files whose presence (``os.path.lexists`` only) marks a directory without ``.git``
 #: as a project root a configured ``link_root`` may name.
 PROJECT_MARKERS: Final = ("pyproject.toml", "docsentinel.toml", "doc_sentinel.toml")
+
+logger = logging.getLogger(__name__)
 
 
 def _within(candidate: str, ancestor: str) -> bool:
@@ -127,6 +131,7 @@ def _is_home_or_above(directory: Path) -> bool:
         chain = [os.stat(candidate) for candidate in (home, *home.parents)]
     except (RuntimeError, KeyError, OSError):
         # No determinable or stat-able home: nothing to compare against.
+        logger.debug("home directory cannot be determined; the dotfiles-repository check is skipped")
         chain = []
         target = None
     return target is not None and any(os.path.samestat(target, entry) for entry in chain)
@@ -140,6 +145,7 @@ def _trusted_repository(base: Path) -> Optional[Path]:
     """
     repository = _find_git_ancestor(base)
     if repository is not None and _is_home_or_above(repository):
+        logger.debug("git repository %s is the home directory or above; not trusted as link root", safe(repository))
         return None
     return repository
 
@@ -182,6 +188,7 @@ def _bounded_config_candidate(base: Path, value: str) -> Path:
     """
     candidate = _scan_root_or_ancestor(base, value)
     if candidate == os.fspath(base):
+        logger.debug("configured link_root names the scan root")
         return base
     if _is_filesystem_root(candidate):
         raise ConfigError("link_root in a configuration file may not be the filesystem root")
@@ -194,12 +201,14 @@ def _bounded_config_candidate(base: Path, value: str) -> Path:
             )
         if not _within(candidate, os.fspath(repository)):
             raise ConfigError("link_root in a configuration file may not be above the enclosing git repository root")
+        logger.debug("configured link_root is within the git repository %s", safe(repository))
         return Path(candidate)
     if not _has_project_marker(candidate):
         raise ConfigError(
             "link_root in a configuration file may name an ancestor outside git only if it directly contains "
             "pyproject.toml, docsentinel.toml or doc_sentinel.toml"
         )
+    logger.debug("configured link_root ancestor holds a project marker")
     return Path(candidate)
 
 
@@ -251,7 +260,11 @@ def resolve_link_root(scan_root: Path, config: Config) -> Path:
     base = Path(os.path.abspath(scan_root))
     if value == LINK_ROOT_AUTO:
         repository = _trusted_repository(base)
-        return repository if repository is not None else base
+        if repository is not None:
+            logger.debug("link root %s (auto: nearest .git ancestor)", safe(repository))
+            return repository
+        logger.debug("link root %s (auto: no trusted .git ancestor, scan root)", safe(base))
+        return base
 
     # Ancestry and the bounds are decided lexically (plus the fixed .git probe)
     # before any stat, so a refused value is never stat-ed.
@@ -262,6 +275,7 @@ def resolve_link_root(scan_root: Path, config: Config) -> Path:
         raise ConfigError("link_root names a directory that does not exist") from exc
     if not stat.S_ISDIR(info.st_mode):
         raise ConfigError("link_root names a directory that does not exist")
+    logger.debug("link root %s (configured link_root=%s)", safe(candidate), safe(value))
     return candidate
 
 
@@ -293,4 +307,5 @@ def resolve_invoker_link_root(scan_root: Path, value: Union[str, os.PathLike[str
         raise ConfigError("--link-root must be the scan root or one of its ancestors")
     if _is_filesystem_root(candidate):
         raise ConfigError("--link-root may not be the filesystem root")
+    logger.debug("link root %s (invoker override)", safe(candidate))
     return Path(candidate)

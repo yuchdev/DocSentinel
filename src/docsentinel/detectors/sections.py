@@ -54,6 +54,7 @@ committed ``tests/assets/ds106/*`` fixtures (Story 04.0 Task 02), never before
 them.
 """
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -61,7 +62,10 @@ from typing import Optional
 
 from docsentinel import models, rules
 from docsentinel.config import Config
+from docsentinel.log import safe
 from docsentinel.markdown_blocks import Heading, MarkdownBlockIndex, scan_markdown, split_physical_lines
+
+logger = logging.getLogger(__name__)
 
 #: Stable metadata for ``DS106``, registered as a ``fast``-profile rule alongside
 #: its committed ``tests/assets/ds106/*`` fixtures (Story 04.0 Task 02).
@@ -521,12 +525,25 @@ def detect(
     :returns: Findings across all documents in document then source order.
     """
     settings = config if config is not None else Config()
+    logger.debug(
+        "DS106 checking %d document(s): empty_section_policy=%s, placeholder_content_policy=%s, image_content_counts=%s, empty_section_min_text_chars=%s",
+        len(documents),
+        safe(settings.empty_section_policy),
+        safe(settings.placeholder_content_policy),
+        safe(settings.image_content_counts),
+        safe(settings.empty_section_min_text_chars),
+    )
+    if settings.empty_section_policy == "off":
+        logger.debug("DS106 is off: empty_section_policy=off")
     findings: list[models.Finding] = []
     for document in documents:
         if not document.path.endswith(".md"):
+            logger.debug("DS106 skipped %s: not a Markdown document", safe(document.path))
             continue
         text = _read_text(root / document.path)
-        findings.extend(check_text(text, document.path, settings))
+        document_findings = check_text(text, document.path, settings)
+        logger.debug("DS106 checked %s: %d finding(s)", safe(document.path), len(document_findings))
+        findings.extend(document_findings)
     return tuple(findings)
 
 

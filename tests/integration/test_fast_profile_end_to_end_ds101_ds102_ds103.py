@@ -8,7 +8,7 @@ import pytest
 from docsentinel import cli
 from docsentinel.config import Config
 from docsentinel.engine import ANALYZERS, scan
-from docsentinel.rules import rules_for_profile
+from docsentinel.rules import ENGINE_RULES, rules_for_profile
 from tests.asset_helpers import AssetCase
 
 
@@ -41,7 +41,7 @@ def test_importing_engine_registers_all_fast_analyzers():
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by fast profile end to end ds101 ds102 ds103
     """
-    assert tuple(code for code in sorted(ANALYZERS) if code.startswith("DS1")) == (
+    analyzer_codes = (
         "DS101",
         "DS102",
         "DS103",
@@ -58,25 +58,13 @@ def test_importing_engine_registers_all_fast_analyzers():
         "DS116",
         "DS117",
         "DS118",
+        "DS124",
     )
-    assert tuple(rule.code for rule in rules_for_profile("fast")) == (
-        "DS101",
-        "DS102",
-        "DS103",
-        "DS104",
-        "DS105",
-        "DS106",
-        "DS108",
-        "DS109",
-        "DS110",
-        "DS112",
-        "DS113",
-        "DS114",
-        "DS115",
-        "DS116",
-        "DS117",
-        "DS118",
-    )
+    assert tuple(code for code in sorted(ANALYZERS) if code.startswith("DS1")) == analyzer_codes
+    # DS100 is an engine rule: registered in the fast profile, emitted by the engine, never an analyzer.
+    assert ENGINE_RULES == frozenset({"DS100"})
+    assert "DS100" not in ANALYZERS
+    assert tuple(rule.code for rule in rules_for_profile("fast")) == ("DS100", *analyzer_codes)
 
 
 def test_default_fast_scan_reports_all_three_rule_findings(
@@ -102,7 +90,7 @@ def test_default_fast_scan_reports_all_three_rule_findings(
     """
     root, _ = fast_profile_tree
 
-    result = scan(root)
+    result = scan(root, config=Config(reference_scope="strict"))  # DS103 is opt-in (Milestone 0009)
 
     assert tuple((finding.rule, finding.path) for finding in result.findings) == (
         ("DS101", "dangling.md"),
@@ -139,7 +127,7 @@ def test_clean_tree_reports_zero_findings_with_evaluated_notice(
     assert result.findings == ()
     assert (
         result.notice
-        == "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
+        == "12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS103 (set reference_scope = \"strict\"), DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
     )
     assert "not implemented" not in result.notice
     assert result.enabled_rules == (
@@ -159,6 +147,7 @@ def test_clean_tree_reports_zero_findings_with_evaluated_notice(
         "DS116",
         "DS117",
         "DS118",
+        "DS124",
     )
 
 
@@ -183,7 +172,7 @@ def test_ignore_narrows_the_active_set(fast_profile_tree: tuple[Path, Path]):
     """
     root, _ = fast_profile_tree
 
-    result = scan(root, config=Config(ignore=("DS102",)))
+    result = scan(root, config=Config(ignore=("DS102",), reference_scope="strict"))
 
     assert tuple((finding.rule, finding.path) for finding in result.findings) == (
         ("DS101", "dangling.md"),
@@ -205,6 +194,7 @@ def test_ignore_narrows_the_active_set(fast_profile_tree: tuple[Path, Path]):
         "DS116",
         "DS117",
         "DS118",
+        "DS124",
     )
 
 

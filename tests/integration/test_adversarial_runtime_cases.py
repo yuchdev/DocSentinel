@@ -7,7 +7,8 @@ failure), stderr carries no Python traceback, neither stdout nor stderr leaks a 
 control byte (ESC/BEL/NUL/DEL -- the reporter must neutralise them), the run finishes
 under a generous wall-clock ceiling, and two runs produce byte-identical stdout. A
 crash, traceback, timeout or non-determinism here is a real defect, not an expected
-outcome; the config-error and invalid-UTF-8 cases must fail *gracefully* with exit 2.
+outcome; the config-error cases must fail *gracefully* with exit 2, and an invalid-UTF-8
+document is withheld from the analyzers and reported as a blocking DS100 error (exit 1).
 """
 
 import os
@@ -174,7 +175,7 @@ CASES: tuple[tuple[str, Callable[[Path], None], frozenset[int], bool], ...] = (
     ("traversal_and_absolute_targets", build_traversal_and_absolute_targets, frozenset({0, 1}), False),
     ("windows_drive_unc_backslash", build_windows_drive_unc_backslash, frozenset({0, 1}), False),
     ("crlf_and_lone_cr", build_crlf_and_lone_cr, frozenset({0, 1}), False),
-    ("invalid_utf8", build_invalid_utf8, frozenset({2}), False),
+    ("invalid_utf8", build_invalid_utf8, frozenset({1}), False),
     ("bom", build_bom, frozenset({0, 1}), False),
     ("symlink_escapes", build_symlink_escapes, frozenset({0, 1}), True),
     ("config_docsentinel_header", build_config_docsentinel_header, frozenset({2}), False),

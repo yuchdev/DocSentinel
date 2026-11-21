@@ -14,6 +14,7 @@ import pytest
 
 from docsentinel import cli
 from tests.asset_helpers import AssetCase
+from tests.log_helpers import problem_output
 
 
 @pytest.mark.parametrize("flag", ["--output", "-o"])
@@ -109,7 +110,7 @@ def test_scan_output_to_directory_fails_with_exit_2(
     captured = capsys.readouterr()
 
     assert captured.out == ""
-    assert captured.err.startswith("Scan failed:")
+    assert problem_output(captured.err).startswith("Scan failed:")
 
 
 def test_scan_output_not_written_on_template_failure(

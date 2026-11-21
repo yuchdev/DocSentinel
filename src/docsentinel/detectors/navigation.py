@@ -142,6 +142,7 @@ repo and is honestly reported as not-applicable in the engine notice.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import stat
@@ -153,6 +154,7 @@ from docsentinel import models, rules
 from docsentinel.config import Config, ConfigError
 from docsentinel.detectors.path_boundaries import escapes_via_symlink, is_ds116_owned
 from docsentinel.link_root import link_root_for
+from docsentinel.log import safe
 from docsentinel.markdown_blocks import (
     MarkdownBlockIndex,
     ReferenceStatus,
@@ -167,6 +169,8 @@ from docsentinel.markdown_blocks import (
 #: on, exactly as ``DS110`` uses ``require_fence_languages``; with
 #: ``navigation_indexes`` empty the rule is inert, the engine notice names it, and
 #: it is not counted among the evaluated rules.
+logger = logging.getLogger(__name__)
+
 DS112 = rules.register_rule(
     rules.Rule(
         code="DS112",
@@ -497,6 +501,12 @@ def _analyze_index(
         ):
             record(line, f"{_MISSING_TEXT}: {_echo(target)}")
 
+    logger.debug(
+        "DS112 checked index %s: %d navigation target(s), %d findings",
+        safe(index_path),
+        len(identities),
+        len(findings),
+    )
     return findings, identities
 
 
@@ -628,7 +638,17 @@ def detect(
     """
     settings = config if config is not None else Config()
     if not settings.navigation_indexes:
+        logger.debug("DS112 inactive: navigation_indexes is not set")
         return ()
+    logger.debug(
+        "DS112 detect: %d index(es), %d required target(s), navigation_unique_targets=%s, "
+        "navigation_check_missing=%s; %d documents",
+        len(settings.navigation_indexes),
+        len(settings.navigation_required),
+        settings.navigation_unique_targets,
+        settings.navigation_check_missing,
+        len(documents),
+    )
     canonical = Path(os.path.realpath(root))
     base = link_root if link_root is not None else link_root_for(canonical, settings)
 
@@ -654,10 +674,18 @@ def detect(
 
     if settings.navigation_required:
         primary = settings.navigation_indexes[0]
+        unlisted = 0
         for required in settings.navigation_required:
             identity = _required_identity(canonical, required)
             if identity is None or identity not in identities:
+                unlisted += 1
                 findings.append(_finding(primary, f"{_REQUIRED_TEXT}: {_echo(required)}", None))
+        logger.debug(
+            "DS112 required targets: %d of %d not listed across %d index(es)",
+            unlisted,
+            len(settings.navigation_required),
+            len(settings.navigation_indexes),
+        )
 
     return tuple(findings)
 

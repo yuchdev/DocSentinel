@@ -11,6 +11,7 @@ skipped so short notes are never scored. The Flesch-Kincaid grade level is a
 fixed calibration internal of this detector and is not configurable.
 """
 
+import logging
 import re
 from pathlib import Path
 from typing import Optional
@@ -19,6 +20,7 @@ import textstat
 
 from docsentinel import models, rules
 from docsentinel.config import Config, load_config
+from docsentinel.log import safe
 
 DS201 = rules.register_rule(
     rules.Rule(
@@ -38,6 +40,8 @@ _LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 _HEADER_RE = re.compile(r"^#{1,6}\s*", re.MULTILINE)
 _BLOCKQUOTE_RE = re.compile(r"^\s*>+\s?", re.MULTILINE)
 _LIST_MARKER_RE = re.compile(r"^\s*([-*+]|\d+\.)\s+", re.MULTILINE)
+
+logger = logging.getLogger(__name__)
 
 
 def _strip_markdown(text: str) -> str:
@@ -84,9 +88,11 @@ def check_document(
     prose = _strip_markdown(text)
     words = prose.split()
     if len(words) < min_words:
+        logger.debug("DS201 %s: %d prose words, below %d; not scored", safe(doc.path), len(words), min_words)
         return ()
 
     grade = compute_grade_level(prose)
+    logger.debug("DS201 %s: %d prose words, grade %.1f", safe(doc.path), len(words), grade)
     if grade > max_grade:
         return (
             models.Finding(

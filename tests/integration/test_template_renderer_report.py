@@ -133,7 +133,8 @@ def test_severity_routing_github_template_matches_legacy_sink_byte_for_byte():
     lines = rendered.split("\n")
     assert [line.split(" ", 1)[0] for line in lines] == ["::error", "::warning", "::error", "::warning"]
     assert all(neutralize(line) == line for line in lines)
-    assert "##[stop-commands]tok%0D%0A::warning::forged" in lines[0]
+    assert "##\\[stop-commands]tok%0D%0A::warning::forged" in lines[0]
+    assert "##[" not in rendered
 
 
 def test_github_routing_template_pins_gha_property_on_file_and_gha_data_on_message():

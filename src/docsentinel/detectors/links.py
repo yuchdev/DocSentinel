@@ -1,5 +1,6 @@
 """Detect dangling Markdown links and anchors."""
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -9,6 +10,9 @@ from docsentinel import models, rules
 from docsentinel.config import Config
 from docsentinel.detectors.path_boundaries import contained_path, is_ds116_owned
 from docsentinel.link_root import link_root_for
+from docsentinel.log import safe
+
+logger = logging.getLogger(__name__)
 
 DS101 = rules.register_rule(
     rules.Rule(
@@ -30,8 +34,8 @@ _HTML_ANCHOR_RE = re.compile(r'<a\s+[^>]*?(?:id|name)=["\']([^"\']+)["\']', re.I
 #: Most characters read from a linked Markdown file *outside the scan root* (reached
 #: through the link root) to collect its anchors, matching the DS115 mapping cap. A
 #: larger file, or one that is not UTF-8, skips the anchor check instead of stalling
-#: or failing the scan (the link itself still resolves). In-root targets keep the
-#: historical read, whose errors propagate.
+#: or failing the scan (the link itself still resolves). Own and in-root targets
+#: keep the historical unbounded read, but also skip on read errors.
 _MAX_ANCHOR_SOURCE_CHARS = 1_000_000
 
 
@@ -87,25 +91,41 @@ def _anchors_from_lines(lines: list[str]) -> set[str]:
     return anchors
 
 
-def _linked_anchors(path: Path) -> Optional[set[str]]:
+def _linked_anchors(path: Path, *, bounded: bool = True) -> Optional[set[str]]:
     """Return the anchors of a linked Markdown file, or ``None`` to skip the anchor check.
 
-    The read is bounded to :data:`_MAX_ANCHOR_SOURCE_CHARS`; an oversized, non-UTF-8 or
+    By default the read is bounded to :data:`_MAX_ANCHOR_SOURCE_CHARS`; an oversized, non-UTF-8 or
     unreadable file yields ``None`` rather than a truncated (and so misleading) anchor
     set or a scan failure.
 
     :param path: The resolved, existing linked file.
+    :param bounded: Whether to cap the read; own and in-root targets keep unbounded reads.
     :returns: Its anchor set, or ``None`` when it cannot be read within the bound.
     """
     text: Optional[str]
     try:
         with path.open(encoding="utf-8") as stream:
-            text = stream.read(_MAX_ANCHOR_SOURCE_CHARS + 1)
-    except (OSError, UnicodeDecodeError):
+            text = stream.read(_MAX_ANCHOR_SOURCE_CHARS + 1) if bounded else stream.read()
+    except (OSError, UnicodeDecodeError) as exc:
         # An unreadable or non-UTF-8 linked file: its anchors are unknown, so the
         # caller skips the anchor check rather than failing the whole scan.
+        if isinstance(exc, UnicodeDecodeError):
+            logger.warning("DS101 skipped the anchor check for linked file %s: not valid UTF-8", safe(path))
+        else:
+            logger.warning(
+                "DS101 skipped the anchor check for linked file %s: cannot read it (%s)",
+                safe(path),
+                safe(exc.strerror or type(exc).__name__),
+            )
         text = None
-    if text is None or len(text) > _MAX_ANCHOR_SOURCE_CHARS:
+    if text is None:
+        return None
+    if bounded and len(text) > _MAX_ANCHOR_SOURCE_CHARS:
+        logger.warning(
+            "DS101 skipped the anchor check for linked file %s: larger than %d characters",
+            safe(path),
+            _MAX_ANCHOR_SOURCE_CHARS,
+        )
         return None
     return _anchors_from_lines(text.splitlines())
 
@@ -194,7 +214,7 @@ def check_document(
     findings: list[models.Finding] = []
     in_fence = False
     fence_marker: Optional[str] = None
-    anchor_cache: dict[Path, set[str]] = {}
+    anchor_cache: dict[Path, Optional[set[str]]] = {}
 
     for line_number, raw_line in enumerate(_read_lines(source), 1):
         fence = _FENCE_RE.match(raw_line)
@@ -224,12 +244,15 @@ def check_document(
             # scan root (the existence oracle fixed in Story 11.0). Every other
             # target keeps DS101's exact legacy behavior below.
             if is_ds116_owned(root, document.path, target, link_root=base):
+                logger.debug("DS101 %s:%d: target %s left to DS116", safe(document.path), line_number, safe(target))
                 continue
 
             file_part, _, anchor = target.partition("#")
             if file_part == "":
-                anchors = anchor_cache.setdefault(source, heading_anchors(source))
-                if anchor and anchor not in anchors:
+                if source not in anchor_cache:
+                    anchor_cache[source] = _linked_anchors(source, bounded=False)
+                anchors = anchor_cache[source]
+                if anchors is not None and anchor and anchor not in anchors:
                     findings.append(
                         models.Finding(
                             rule=DS101.code,
@@ -252,6 +275,12 @@ def check_document(
             boundary = base if file_part.startswith("/") else root
             resolved = contained_path(boundary, candidate)
             if resolved is None:
+                logger.debug(
+                    "DS101 %s:%d: target %s resolves outside its boundary; left to DS116",
+                    safe(document.path),
+                    line_number,
+                    safe(target),
+                )
                 continue
             if not resolved.exists():
                 findings.append(
@@ -269,18 +298,12 @@ def check_document(
                 continue
             if anchor and resolved.is_file() and resolved.suffix == ".md":
                 if resolved not in anchor_cache:
-                    if resolved.is_relative_to(root):
-                        # In-root target: read exactly as before (errors propagate).
-                        anchor_cache[resolved] = heading_anchors(resolved)
-                    else:
-                        # Outside the scan root, reached through the link root: a
-                        # bounded read that skips an oversized or undecodable file.
-                        linked = _linked_anchors(resolved)
-                        if linked is None:
-                            continue
-                        anchor_cache[resolved] = linked
+                    # Cache skipped checks too; None means unknown, not an empty set.
+                    anchor_cache[resolved] = _linked_anchors(
+                        resolved, bounded=not resolved.is_relative_to(root)
+                    )
                 anchors = anchor_cache[resolved]
-                if anchor not in anchors:
+                if anchors is not None and anchor not in anchors:
                     findings.append(
                         models.Finding(
                             rule=DS101.code,
@@ -293,6 +316,7 @@ def check_document(
                             type="dangling anchor",
                         )
                     )
+    logger.debug("DS101 checked %s: %d finding(s)", safe(document.path), len(findings))
     return tuple(findings)
 
 
@@ -316,6 +340,7 @@ def detect(
     """
     settings = config if config is not None else Config()
     base = link_root if link_root is not None else link_root_for(Path(os.path.realpath(root)), settings)
+    logger.debug("DS101 checking %d document(s): link_root=%s", len(documents), safe(base))
     return tuple(
         finding
         for document in documents

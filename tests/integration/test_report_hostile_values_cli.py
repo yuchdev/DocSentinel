@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 
 from docsentinel import cli
+from tests.log_helpers import problem_output
 
 #: Hostile code points, spelled with ``chr`` so this source file itself stays plain ASCII.
 ESC, BEL, DEL, CSI_C1 = chr(0x1B), chr(0x07), chr(0x7F), chr(0x9B)
@@ -118,6 +119,8 @@ def hostile_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "repo"
     root.mkdir()
     (root / "README.md").write_text(_DOCUMENT, encoding="utf-8")
+    # DS103 carries one of the hostile tokens; it is opt-in since Milestone 0009 Story 01.0.
+    (root / "docsentinel.toml").write_text('reference_scope = "strict"\n', encoding="utf-8")
     real = cli.scan
 
     def with_pending(*args: Any, **kwargs: Any) -> Any:
@@ -133,7 +136,7 @@ def _run(root: Path, args: list[str], capsys: pytest.CaptureFixture[str]) -> tup
     """Run ``docsentinel scan`` over ``root`` with ``args``; return the exit code and stdout."""
     code = cli.main(["scan", str(root), *args])
     captured = capsys.readouterr()
-    assert captured.err == "", captured.err
+    assert problem_output(captured.err) == "", captured.err
     return code, captured.out
 
 

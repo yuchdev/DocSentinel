@@ -19,6 +19,7 @@ never reads the environment, and a ``python:`` spec runs only when the caller pa
 ``allow_python_extensions=True`` (threat model 0007-extensions M2).
 """
 
+import logging
 import os
 from collections.abc import Sequence
 from dataclasses import replace
@@ -26,6 +27,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 from docsentinel.config import Config
+from docsentinel.log import safe
 from docsentinel.models import ScanResult
 from docsentinel.telemetry.engine import render_template
 from docsentinel.telemetry.extensions import (
@@ -39,6 +41,8 @@ from docsentinel.telemetry.filters import TemplateError
 from docsentinel.telemetry.filters import neutralize as _neutralize
 from docsentinel.telemetry.loader import DEFAULT_TEMPLATE, Template, load_named_template, load_template
 from docsentinel.telemetry.model import REPORT_SCHEMA_VERSION, ReportModel
+
+logger = logging.getLogger(__name__)
 
 
 def neutralize_text(value: str) -> str:
@@ -168,6 +172,14 @@ def render(
         settings = replace(settings, telemetry_extensions=loaded.builtin_specs)
     try:
         chosen = _resolve(format, template, settings, root)
+        logger.debug(
+            "render: template %s (%s, %s), %d findings, strict=%s",
+            safe(chosen.name),
+            chosen.origin,
+            chosen.type,
+            len(result.findings),
+            strict,
+        )
         check_template(chosen, loaded)
         context = ReportModel.build(
             result,
@@ -182,4 +194,5 @@ def render(
     except TemplateError as exc:
         raise ValueError(str(exc)) from exc
     loaded.check_modules()
+    logger.debug("render: %d characters", len(report))
     return report

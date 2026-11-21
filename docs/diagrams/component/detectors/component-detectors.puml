@@ -7,10 +7,13 @@ skinparam packageStyle rectangle
 
 [rules.py\nregister_rule / ANALYZERS] as rules
 [config.py] as config
-[markdown_blocks.py\nscan_markdown, resolve_local_reference,\nMarkdownBlockIndex] as mdb
-[path_boundaries.py (DS116)\ncontained_path, is_ds116_owned,\nescapes_via_symlink] as pb
+[markdown_blocks.py\nscan_markdown, resolve_local_reference,\nMarkdownBlockIndex, AtReference] as mdb
+[path_boundaries.py (DS116)\ncontained_path, is_ds116_owned,\nescapes_via_symlink, mention_ds116_reason;\nshared canonical_root() and _walk()] as pb
 
 package "Fast DS1xx - stdlib only, imported eagerly by detectors package init" {
+  package "Emitted by engine (all profiles), no analyzer" {
+    [unreadable.py DS100\nemitted by engine (all profiles)\nin ENGINE_RULES, not in ANALYZERS] as ds100
+  }
   package "Use the shared scanner" {
     [anchors.py DS104] as ds104
     [headings.py DS105] as ds105
@@ -22,11 +25,12 @@ package "Fast DS1xx - stdlib only, imported eagerly by detectors package init" {
     [assets.py DS113] as ds113
     [deprecated_refs.py DS115\nopt-in: deprecated_references_file] as ds115
     [tables.py DS117] as ds117
+    [mentions.py DS124\nwarning, always active\nin link_root.LINK_ROOT_RULES] as ds124
   }
   package "Scanner-free" {
     [links.py DS101] as ds101
     [comments.py DS102] as ds102
-    [paths.py DS103] as ds103
+    [paths.py DS103\nopt-in: reference_scope = "strict"] as ds103
     [document_ids.py DS114\nown frontmatter reader] as ds114
     [naming.py DS118\nopt-in: documentation_naming\npath strings only] as ds118
   }
@@ -60,6 +64,8 @@ cloud "extra: deep" {
   [textacy] as textacy
 }
 
+ds100 ..> rules : register_rule only\n(no Analyzer)
+
 ds104 --> mdb
 ds105 --> mdb
 ds106 --> mdb
@@ -70,6 +76,7 @@ ds112 --> mdb
 ds113 --> mdb
 ds115 --> mdb
 ds117 --> mdb
+ds124 --> mdb : AtReference /\nMarkdownBlockIndex.at_references
 pb --> mdb
 
 ds101 --> pb : contained_path,\nis_ds116_owned
@@ -77,6 +84,7 @@ ds103 --> pb : contained_path
 ds112 --> pb
 ds113 --> pb
 ds115 --> pb
+ds124 --> pb : contained_path,\nmention_ds116_reason
 
 ds112 ..> config : ConfigError (fail-closed)
 ds114 ..> config : ConfigError
@@ -102,6 +110,13 @@ loader ..> errors : ExtraNotInstalledError\nwhen sklearn/textstat/docsig missing
 
 ds101 ..> rules : each detector module\nregisters its Rule + Analyzer\nat import time
 ds301 ..> rules
+
+note right of ds100
+  engine._partition_readable checks every document once;
+  unreadable ones become DS100 errors from the engine and
+  are never passed to any analyzer. Skips the evaluated
+  count of ScanResult.notice.
+end note
 
 note right of pb
   DS116 owns unsafe targets (escape, drive, UNC,

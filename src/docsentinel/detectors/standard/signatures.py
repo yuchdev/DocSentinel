@@ -22,6 +22,7 @@ from __future__ import annotations
 import contextlib
 import importlib
 import io
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +31,7 @@ from typing import Optional
 from docsentinel import models, rules
 from docsentinel.code_discovery import discover_python
 from docsentinel.config import Config, load_config
+from docsentinel.log import safe
 
 DS204 = rules.register_rule(
     rules.Rule(
@@ -43,6 +45,8 @@ DS204 = rules.register_rule(
 
 _HEADER_RE = re.compile(r"^(?:(?P<file>.+):)?(?P<lineno>\d+)\s+in\s+(?P<func>.+)$")
 _VIOLATION_RE = re.compile(r"^\s*(?P<code>SIG\d+):\s*(?P<msg>.+)$")
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -150,6 +154,7 @@ def check_file(root: Path, path: Path) -> tuple[models.Finding, ...]:
                 severity=DS204.severity,
             )
         )
+    logger.debug("DS204 %s: %d docsig violations", safe(rel_path), len(violations))
     return tuple(findings)
 
 

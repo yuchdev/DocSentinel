@@ -19,11 +19,12 @@ Every consumer (CLI, Python library, pytest plugin) goes through the same engine
 
 | Module           | Responsibility                                                                                    |
 |------------------|---------------------------------------------------------------------------------------------------|
-| `config`         | Validates local TOML input and builds the effective `Config`.                                     |
-| `discovery`      | Inventories Markdown files in a stable order.                                                     |
+| `config`         | Loads the layered input (defaults, user settings JSON, project TOML/JSON) and builds the effective `Config`. |
+| `discovery`      | Inventories Markdown files in a stable order; selects by glob, file or directory literal.         |
 | `engine.scan`    | Orchestrates the registered analyzers and applies baseline filters.                               |
 | `reporting`      | `render()`: resolves a report template and renders the shared `ScanResult` through it.            |
 | `telemetry`      | Fault events, finding classification (`classify`) and the report context (`ReportModel`).         |
+| `log`            | Stdlib logging wrapper: library `NullHandler`, CLI stderr and per-run log file ([spec](../specs/logging.md)). |
 | pytest plugin    | Opt-in; calls the same engine.                                                                    |
 
 `engine.scan` forwards the effective `Config` to any analyzer that declares a third `config`
@@ -51,15 +52,63 @@ template.json --> loader/validator --> renderer(template, context) --> sink (str
 
 ## Configuration
 
-Configuration is discovered in this order; the first match wins:
+The effective `Config` is built from four layers, lowest first. A later layer replaces a key as a
+whole value; lists and tables are never merged ([ADR 0005](/docs/adr/0005-layered-configuration-user-settings-json.md)):
 
-1. An explicit configuration path, which bypasses discovery.
-2. A standalone `docsentinel.toml` (alias `doc_sentinel.toml`; both present is a `ConfigError`) at the scan root. Its keys are top-level.
-3. The `[tool.doc_sentinel]` table of a root-level `pyproject.toml`.
-4. Built-in defaults.
+1. The `Config` dataclass defaults.
+2. The **user settings** file, one personal JSON object (skipped when missing; refused keys and a
+   permission gate apply, see below).
+3. The **project configuration**, the first that applies: an explicit path (`--config`, a `.json`
+   suffix selects the JSON reader), a standalone `docsentinel.toml` (alias `doc_sentinel.toml`;
+   both present is a `ConfigError`) at the scan root with top-level keys, or the `[tool.doc_sentinel]`
+   table of a root-level `pyproject.toml`. JSON is never discovered.
+4. Command-line flags, applied by the CLI after loading (for example `--reference-scope`,
+   `--link-root`).
 
-A `Config` injected by a library caller still wins over any discovered file. Such a `Config`
-bypasses load-time validation, so the caller is responsible for passing valid values.
+`load_config_with_sources()` returns the `Config` with a `ConfigSources` (the user file and its
+state, the project file and its kind, and the option names each layer set, never values);
+`load_config()` is the same without the sources. Both validate through one builder, so TOML and JSON
+give identical messages. `engine.scan` calls `load_config` only when the caller passes no `Config`.
+A `Config` injected by a library caller bypasses every layer and load-time validation, so the caller
+is responsible for passing valid values.
+
+The user settings location is resolved by one function, `user_settings_path()`, the only reader of
+`DOCSENTINEL_SETTINGS` (an absolute path, or `off`), `XDG_DATA_HOME` and `HOME`: by default
+`~/.local/share/docsentinel/settings.json`. Three controls keep the file from weakening a scan it
+should not control:
+
+- **Refused keys.** `USER_SETTINGS_REFUSED_KEYS` lists ten repository-relative options
+  (`baseline`, `include`, `exclude`, `docsig_paths`, `navigation_indexes`, `navigation_required`,
+  `deprecated_references_file`, `report_templates_dir`, `link_root`, `telemetry_domains`); naming
+  one is a `ConfigError` before any value is validated. `python:` extensions stay refused at every
+  level.
+- **Permission gate (POSIX).** The file, the directory holding the path, each symlink's directory
+  and the directory holding the final target must be owned by the effective user or root and not
+  group- or world-writable (sticky directories allowed); a violation exits `2`. The decision on the
+  file is made on the opened descriptor, with one open and one bounded read.
+- **Strict JSON.** At most 1 MiB, no BOM, strict UTF-8, no duplicate keys, no `NaN`/`Infinity`, no
+  `null`, no lone surrogates.
+
+CI sets `DOCSENTINEL_SETTINGS: "off"` at job level so a persistent runner home never carries a
+settings file between jobs. Home paths in messages and log lines use the tilde form.
+
+The load sequence, the refusal branch and the injected-`Config` bypass are drawn in
+[config-layered-load](/docs/diagrams/sequence/config-layered-load/config-layered-load.svg). The
+user-facing rules are in the [configuration reference](/docs/user/reference/configuration.md#how-to-set-options).
+
+### Document selection
+
+`discovery` walks the scan root top-down and applies `include` and `exclude` as
+[ADR 0006](/docs/adr/0006-invoker-include-exclude-and-directory-selectors.md) defines. A pattern
+with `*`, `?` or `[` is a glob and matches as it always did; any other pattern is a literal that
+means a file, or a directory and everything below it (a directory include admits only `.md`
+files, and a literal exclude prunes the walk). The invoker adds a fifth input beside the config
+layers: `scan(include=, exclude=)`, which the CLI fills from `--include`/`--exclude`. The engine
+passes the values to `normalize_invoker_selectors`, which validates them lexically, contains each
+literal with `contained_path()` and `os.lstat`-es it once, then merges them into the effective
+`Config` (`include` replaces, `exclude` appends, exclude wins) without mutating the input. An
+invoker selection that admits no document is a `ConfigError`; a configured one is not. A
+single-file scan target ignores the selectors after a shape check.
 
 ## Rule codes and selection
 
@@ -69,6 +118,10 @@ bypasses load-time validation, so the caller is responsible for passing valid va
 | `DS2xx` | `standard` |
 | `DS3xx` | `deep`     |
 
+- `DS100` (unreadable document) is an engine rule in `rules.ENGINE_RULES`: it has no analyzer, is
+  registered by `/src/docsentinel/detectors/unreadable.py` in the `fast` profile so it is listed, and is emitted by
+  `engine.scan` itself in every profile (advisory in `deep`). It obeys `select`/`ignore` and is not
+  counted among the evaluated rules.
 - Profiles are **exact, not cumulative**: a `deep` run contains only `deep` findings.
 - `select` accepts exact codes or prefixes such as `DS1`. An empty list selects every rule in the
   active profile.
@@ -156,6 +209,13 @@ consumed. Options are grouped by the rule that reads them.
 | `decode_percent_paths` | `true`     | Whether percent-encoded paths are decoded once before checking.               |
 | `windows_path_policy`  | `portable` | `off` or `portable`: whether Windows-specific path forms are reported.        |
 
+### Reference scope - `DS103`, `DS124`
+
+| Option                    | Default                                                          | Meaning                                                                                  |
+|---------------------------|------------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| `reference_scope`         | `links`                                                          | `links` or `strict`: `strict` switches the opt-in rule `DS103` on. `--reference-scope` overrides it. |
+| `at_reference_extensions` | `md, markdown, mdx, txt, rst, toml, json, yaml, yml, py`         | Extensions a `relative` `@`-mention must have for `DS124` to check it (1 to 64 entries).  |
+
 ### Tables - `DS117`
 
 | Option               | Default      | Meaning                                                                         |
@@ -216,7 +276,7 @@ both config file forms and are validated like the policy options above:
 
 The registered [Story 02.0](../roadmap/0001-generic-implementation/02.0-fast-profile-structural-detectors/README.md)
 `fast` rules run locally with the standard library only. No external service, network or model is
-used. Rules `DS104` to `DS118` build on the shared `markdown_blocks.py` scanner, except `DS114` and
+used. `DS100` is emitted by the engine itself (see above). Rules `DS104` to `DS118` and `DS124` build on the shared `markdown_blocks.py` scanner, except `DS114` and
 `DS118` (noted below).
 
 The [rules table](../user/reference/rules.md) lists every rule with its severity, activation, fault
@@ -355,6 +415,15 @@ Its scope differs by reference kind (Story 11.0 code-span ruling):
   Drive, UNC, backslash, control and regex or escape snippets are left to `DS103`, which keeps its
   exact pre-Story-11 behavior for them and skips only the root-escape and symlink-out code spans
   `DS116` owns.
+- **`@`-document mentions** (`relative` kind, any extension) are checked as document-relative
+  references.
+
+Since Story 01.0 the shared walker also reports, for every reference kind, a nested symlink inside a
+symlink's target that points outside the root, a symlink-out reached after more than 64 plain path
+components, and a committed symlink whose target leaves the root and re-enters it (for example
+`../outside/../root/d`; `escapes_via_symlink` walks it component by component with `lstat`). A plain
+link target written that way was already a lexical escape. `DS101` and
+`DS113` defer to `DS116` in these cases.
 
 The shared `ResolvedReference.reason` field carries the typed sub-category (`drive`, `unc`,
 `backslash`, `control`, `template`, `glob`) that lets `DS116` separate unsafe targets from safe ones.
@@ -362,6 +431,29 @@ The detector never reads a path outside the root and echoes only a bounded, repr
 author's raw target. See the
 [DS116 threat model](../security/threat-model-ds116-path-boundaries-2026-10-22.md), including its
 "Rulings during implementation" section.
+
+### `DS124` - dangling `@`-document mentions
+
+Always active, `warning` severity, in the new `/src/docsentinel/detectors/mentions.py` (Milestone
+0009 Story 01.0, [ADR 0004](../adr/0004-reference-scope-and-at-document-references.md)). The shared
+scanner records each `@`-mention as an `AtReference` (`MarkdownBlockIndex.at_references`): the prose
+form, or an inline code span that is exactly one `@path` token. The token is capped at 1,024
+characters and only a backslash-space is decoded. The scanner stays config-free; `DS124` filters
+`relative` mentions by `at_reference_extensions`.
+
+- Resolves each mention in two steps, both through `resolve_local_reference()` and
+  `contained_path()`: relative to the document, then relative to the link root (the engine passes
+  the validated `link_root=`; `DS124` is in `link_root.LINK_ROOT_RULES`). Step 2 applies to every
+  relative mention, so under `link_root = "auto"` a mention is a one-bit existence oracle for the
+  enclosing checkout; `link_root = "."` keeps it inside the scan root. Only the contained path is
+  stat-ed (`os.stat` plus `S_ISREG`); a target is never opened.
+- Splits ownership with its neighbours: `DS116` owns a mention that escapes the root or leaves it
+  through a symlink (`DS124` stops and skips step 2), `DS124` owns the missing target, and `DS103`
+  skips every `@` code span. `DS116` drops a code span from its own candidates by `MarkdownSpan`
+  identity, because the code-span `AtReference` reuses the `InlineCode` span.
+- `home` and `absolute` mentions are recorded but never resolved; a step-2 refusal gives no finding.
+- `path_boundaries.py` has one containment walker, `_walk()`, behind both `contained_path()` and
+  `escapes_via_symlink()`, and `canonical_root()` gives `DS116` and `DS124` the same scan root.
 
 ### `DS117` - pipe tables
 
@@ -390,28 +482,34 @@ from each discovered document's relative POSIX path.
 
 ## Opt-in policy rules
 
-Four rules (`DS110`, `DS112`, `DS115`, `DS118`) implement an *opt-in policy* that is inert until a
+Five rules (`DS103`, `DS110`, `DS112`, `DS115`, `DS118`) implement an *opt-in policy* that is inert until a
 project configures it. `rules.Rule` carries an optional `opt_in_option` field naming the `Config`
 option that switches the policy on (empty for ordinary always-active rules).
 `rules.opt_in_satisfied(rule, config)` returns whether that option is set to an enabling value:
-truthy and not the string `"off"`, covering boolean, tuple and string option shapes.
+truthy and not the string `"off"`, covering boolean, tuple and string option shapes. A rule may
+also carry `opt_in_values`: when non-empty, the option must be exactly one of those strings.
+`DS103` registers with `opt_in_option="reference_scope"` and `opt_in_values={"strict"}`, so it runs
+only with `reference_scope = "strict"` (or `--reference-scope strict`).
+`rules.opt_in_hint(rule)` renders the text that names the enabling setting.
 
 Opt-in status is reported, never hidden:
 
 - **`ScanResult.notice`** counts only genuinely evaluated rules and names any active opt-in rule
   whose policy is off, for example:
-  `12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming).`
+  `12 fast rule(s) evaluated; opt-in rule(s) not enabled: DS103 (set reference_scope = "strict"), DS110 (set require_fence_languages), DS112 (set navigation_indexes), DS115 (set deprecated_references_file), DS118 (set documentation_naming).`
   The notice is built from two structured `ScanResult` fields, `rules_evaluated` (int) and
   `opt_in_off` (`(code, option)` pairs), so templates can loop over the off rules. JSON schema v1,
   exit codes and `enabled_rules` semantics are unchanged: selection stays orthogonal to whether an
   opt-in policy fires.
 - **`docsentinel rules`** marks such a rule, for example:
+  - `DS103: Unresolvable path-like code span [opt-in: set reference_scope = "strict"]`
   - `DS110: Missing language labels on code fences [opt-in: set require_fence_languages]`
   - `DS112: Declared documentation navigation integrity [opt-in: set navigation_indexes]`
   - `DS115: Deprecated names and migrated references [opt-in: set deprecated_references_file]`
   - `DS118: Documentation file and directory naming policy [opt-in: set documentation_naming]`
 - **`docsentinel doctor`** counts them separately, for example:
-  `fast rules: 16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)`.
+  `fast rules: 18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)`,
+  followed by a `reference scope: links (DS103 off)` line.
 
 ## Standard profile
 

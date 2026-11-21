@@ -1,0 +1,97 @@
+@startuml config-layered-load
+title Layered configuration load (as built, config.py / cli.py)
+skinparam shadowing false
+skinparam sequenceMessageAlign left
+
+participant "CLI\ncli.py" as cli
+participant "Library / plugin\nscan(config=...)" as lib
+participant "engine.scan" as engine
+participant "load_config_with_sources" as lcs
+participant "user_settings_path\n(location resolver)" as loc
+participant "R3 / R2 gate\n_check_user_settings_directories,\n_check_user_settings_descriptor" as gate
+participant "_read_config_once +\n_parse_json_options" as json
+participant "_read_project_options\n(_load_toml_table / load_json_options)" as proj
+participant "_build_config" as build
+
+== Entry points ==
+cli -> lcs : scan, baseline, doctor:\nroot, ~-~-config, user_settings = not ~-~-no-user-settings
+lib -> engine : scan(root, config=None)
+engine -> lcs : load_config(root) (user_settings on)
+lib -> engine : scan(root, config=Config(...))
+note right of engine
+  Injected Config bypass: used verbatim.
+  No file, no environment, no user layer,
+  no C6 check, no _build_config.
+end note
+
+== Layer 2: user settings JSON ==
+alt user_settings is False (~-~-no-user-settings)
+  lcs --> lcs : state off, environment not read
+else
+  lcs -> loc : user_settings_path()
+  alt DOCSENTINEL_SETTINGS == "off"
+    loc --> lcs : None, off
+  else DOCSENTINEL_SETTINGS set
+    loc --> lcs : absolute path, env\n(relative or control char: ConfigError, value not echoed)
+  else XDG_DATA_HOME absolute
+    loc --> lcs : XDG_DATA_HOME/docsentinel/settings.json, default
+  else home known
+    loc --> lcs : HOME/.local/share/docsentinel/settings.json, default
+  else home unknown or relative
+    loc --> lcs : None, no-home
+  end
+  opt path found
+    lcs -> lcs : 1. _user_settings_exist (os.stat, lexists)
+    alt absent and state default
+      lcs --> lcs : state missing, layer empty
+    else absent and state env, dangling link or other OSError
+      lcs --> lcs : ConfigError "not readable"
+    else exists
+      lcs -> gate : 2. R3 directory checks over the symlink chain\n(POSIX: owner is euid or root, no group/other write\nunless sticky; links in sticky dirs owned by user)
+      gate --> lcs : ok or ConfigError
+      lcs -> json : 3. open once (O_NONBLOCK, O_NOCTTY)
+      json -> gate : fstat of the opened descriptor (R2):\nregular file, owner trusted, no group/other write
+      gate --> json : ok or ConfigError
+      json --> lcs : 4. bounded read, strict JSON parse\n(duplicate keys, NaN, non-object refused)
+      lcs -> lcs : 5. C6: keys in USER_SETTINGS_REFUSED_KEYS?\nyes: ConfigError, no value validation
+      lcs -> build : 6. validate the user mapping alone
+      build --> lcs : ok or ConfigError
+      lcs --> lcs : state loaded, user options
+    end
+  end
+end
+
+== Layer 3: project configuration ==
+lcs -> proj : root, explicit ~-~-config path or None
+alt explicit pyproject.toml or other TOML
+  proj --> lcs : options, kind pyproject or toml
+else explicit *.json
+  proj --> lcs : options via strict JSON loader, kind json
+else discovery
+  proj --> lcs : docsentinel.toml / doc_sentinel.toml,\nelse pyproject.toml, else none\n(both standalone names: ConfigError)
+end
+
+== Merge and validate ==
+lcs -> build : 7. {~*~*user options, ~*~*project options}\n(project replaces a key as a whole)\nskipped when both layers are empty: Config()
+build --> lcs : Config or ConfigError\n(a failure here is a project value, unprefixed)
+lcs --> cli : (Config, ConfigSources)
+lcs --> engine : Config (load_config drops ConfigSources)
+
+== Layer 4: CLI flags ==
+cli -> cli : dataclasses.replace(settings, profile, reference_scope, ...)\nINFO "config: ..." line lists option names only, tilde form
+cli -> engine : scan(root, config=settings, link_root=...,\ninclude=args.include, exclude=args.exclude)\n(include and exclude only when given)
+engine -> engine : _apply_invoker_selection:\ndataclasses.replace(settings, include=..., exclude=...)\ninclude replaced, exclude appended to the effective\nexclude and de-duplicated; the Config is never mutated
+note right of engine
+  Include and exclude are not CLI-side replace() fields:
+  the engine merges them after normalisation.
+  See sequence/scan-selection.
+end note
+
+== Failure ==
+note over lcs, cli
+  A user-file failure is raised as
+  "user settings <path>: <reason>" (path in tilde form: the home\n  directory is shown as a tilde, never the absolute path).
+  cli.py prints "Scan failed:" (or "Baseline generation failed:")
+  and exits 2. doctor prints one error line instead of source lines.
+end note
+@enduml

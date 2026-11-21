@@ -2,8 +2,12 @@
 
 import builtins
 import importlib
+import logging
 
 from docsentinel.errors import ExtraNotInstalledError
+from docsentinel.log import safe
+
+logger = logging.getLogger(__name__)
 
 _STANDARD_PACKAGES: frozenset[str] = frozenset({"sklearn", "textstat", "docsig"})
 _standard_loaded: bool = False
@@ -18,9 +22,13 @@ def ensure_standard_loaded():
         builtins.__import__("docsentinel.detectors.standard")
     except ImportError as exc:
         if exc.name in _STANDARD_PACKAGES:
+            # Not logged at WARNING/ERROR here: the caller decides (doctor/rules show
+            # install guidance, a scan reports the error once at the CLI).
+            logger.debug("standard extra unavailable: %s is not installed", safe(exc.name))
             raise ExtraNotInstalledError("standard", exc) from exc
         raise
     _standard_loaded = True
+    logger.debug("standard detectors loaded")
 
 
 def clear_standard_caches():

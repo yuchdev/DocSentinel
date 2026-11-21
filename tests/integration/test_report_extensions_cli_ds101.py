@@ -21,6 +21,7 @@ import pytest
 from docsentinel import cli
 from docsentinel.telemetry import builtin
 from tests.asset_helpers import AssetCase, load_asset_case
+from tests.log_helpers import problem_output
 
 ESC = chr(0x1B)
 
@@ -161,8 +162,8 @@ def test_failing_hook_is_exit_two_with_empty_stdout(
 
     assert code == 2
     assert captured.out == ""
-    assert captured.err.startswith("Scan failed: extension calc: provide_problem failed:")
-    assert ESC not in captured.err and len(captured.err) < 600
+    assert problem_output(captured.err).startswith("Scan failed: extension calc: provide_problem failed:")
+    assert ESC not in captured.err and len(problem_output(captured.err)) < 600
 
 
 def test_missing_extension_fails_before_any_detector_runs(

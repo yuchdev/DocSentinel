@@ -68,13 +68,17 @@ committed ``tests/assets/ds108/*`` fixtures (Story 05.0 Task 02), never before
 them.
 """
 
+import logging
 import re
 from pathlib import Path
 from typing import Optional
 
 from docsentinel import models, rules
 from docsentinel.config import Config
+from docsentinel.log import safe
 from docsentinel.markdown_blocks import MarkdownBlockIndex, normalize_label, scan_markdown, split_physical_lines
+
+logger = logging.getLogger(__name__)
 
 #: Stable metadata for ``DS108``, registered as a ``fast``-profile rule alongside
 #: its committed ``tests/assets/ds108/*`` fixtures (Story 05.0 Task 02).
@@ -369,12 +373,27 @@ def detect(
     :returns: Findings across all documents in document then source order.
     """
     settings = config if config is not None else Config()
+    logger.debug(
+        "DS108 checking %d document(s): unused_reference_definitions=%s, duplicate_reference_definitions=%s, reference_label_normalization=%s",
+        len(documents),
+        safe(settings.unused_reference_definitions),
+        safe(settings.duplicate_reference_definitions),
+        safe(settings.reference_label_normalization),
+    )
+    if settings.reference_label_normalization != "commonmark":
+        logger.warning(
+            "DS108 is not checked: reference_label_normalization=%s is not supported (only 'commonmark')",
+            safe(settings.reference_label_normalization),
+        )
     findings: list[models.Finding] = []
     for document in documents:
         if not document.path.endswith(".md"):
+            logger.debug("DS108 skipped %s: not a Markdown document", safe(document.path))
             continue
         text = _read_text(root / document.path)
-        findings.extend(check_text(text, document.path, settings))
+        document_findings = check_text(text, document.path, settings)
+        logger.debug("DS108 checked %s: %d finding(s)", safe(document.path), len(document_findings))
+        findings.extend(document_findings)
     return tuple(findings)
 
 

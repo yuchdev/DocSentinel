@@ -78,3 +78,5 @@ Do not add `-p docsentinel.pytest_plugin` to a coverage run: the plugin imports 
 3. An integration file `tests/integration/test_*_dsNNN.py` with explicit expectation tables, both the pure `detect` path and the shared `scan` path, config-file forms, CLI exit codes, and safety cases.
 4. Update every test that hardcodes the registered fast-rule list or counts (search for the neighbouring rule codes), and the rule lists in `CLAUDE.md`, `README.md` and `docs/architecture/README.md`.
 5. For security-sensitive rules, add a filesystem-recorder test and at least four mutation checks.
+
+For the hand-run checks of the user settings file and JSON configuration, see [the user settings checklist](user-settings.md).
