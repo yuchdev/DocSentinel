@@ -61,6 +61,7 @@ pins that explicitly rather than leaving the N/A dimensions unexercised.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import socket
 import subprocess
@@ -222,20 +223,23 @@ FAST_RULE_ORDER: tuple[str, ...] = (
     "DS116",
     "DS117",
     "DS118",
+    "DS124",
 )
 
 #: The engine notice when every opt-in fast rule is off (the default): DS118 is named, not
-#: counted, alongside the other three off opt-in rules.
+#: counted, alongside the other four off opt-in rules.
 NOTICE_ALL_OPT_IN_OFF = (
     "12 fast rule(s) evaluated; opt-in rule(s) not enabled: "
+    'DS103 (set reference_scope = "strict"), '
     "DS110 (set require_fence_languages), DS112 (set navigation_indexes), "
     "DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
 )
 
 #: The engine notice when only DS118 is configured: DS118 drops out of the not-enabled list
-#: and the evaluated count rises by one, while the other three opt-in rules stay named.
+#: and the evaluated count rises by one, while the other four opt-in rules stay named.
 NOTICE_DS118_ON = (
     "13 fast rule(s) evaluated; opt-in rule(s) not enabled: "
+    'DS103 (set reference_scope = "strict"), '
     "DS110 (set require_fence_languages), DS112 (set navigation_indexes), "
     "DS115 (set deprecated_references_file)."
 )
@@ -505,7 +509,7 @@ def test_cli_doctor_counts_ds118_among_the_four_opt_in_rules(capsys: pytest.Capt
         Given the installed rule registry
         When the doctor command reports environment readiness
         Then the fast-rule tally reads exactly
-            "16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)", so DS118 is inside
+            "18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)", so DS118 is inside
             the registered count and is one of the four opt-in rules alongside DS110, DS112 and DS115.
 
     Boundaries:
@@ -521,7 +525,7 @@ def test_cli_doctor_counts_ds118_among_the_four_opt_in_rules(capsys: pytest.Capt
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "DS118" in {rule.code for rule in rules_for_profile("fast")}
-    assert "fast rules: 16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)" in captured.out
+    assert "fast rules: 18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)" in captured.out
 
 
 def test_cli_fast_json_scan_reports_ds118_warning_and_exits_zero(
@@ -1128,32 +1132,43 @@ def test_nfc_and_nfd_paths_are_both_flagged_with_the_same_suggestion():
     assert nfc_finding.message != nfd_finding.message
 
 
-def test_content_is_irrelevant_so_crlf_and_utf8_are_not_applicable(tmp_path: Path):
+def test_content_is_irrelevant_so_crlf_and_utf8_are_not_applicable(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """
     [Integration] detectors documentation path naming ds118: documents why CRLF/UTF-8 cases are N/A.
 
     Scenario:
-        Given a real document with a policy-violating name whose *content* is CRLF-terminated and ends in
-            invalid UTF-8 bytes, scanned with DS118 selected under the kebab style
+        Given a real document with a policy-violating name whose *content* is CRLF-terminated, and a
+            second policy-violating document whose content ends in invalid UTF-8 bytes, scanned with DS118
+            selected under the kebab style
         When the engine runs DS118
-        Then the single path-only finding is produced without any decode and without crashing - proving CRLF,
-            invalid UTF-8, unreadable content and very long *lines* are not applicable to DS118, which reads
-            only Document.path and never opens the file body.
+        Then the CRLF document yields its single path-only finding (DS118 never decodes the body), while
+            the invalid-UTF-8 document is withheld by the engine from every analyzer, DS118 included, with a
+            WARNING; it stays in the inventory, and with DS100 not selected it gets no DS100 finding either.
 
     Boundaries:
-        - Focus: the one-sentence N/A justification for the content-dependent edge dimensions
-        - Fixtures/params: tmp_path
+        - Focus: the one-sentence N/A justification for the content-dependent edge dimensions, and the
+            engine-level skip that now precedes every analyzer
+        - Fixtures/params: tmp_path, caplog
 
     On failure, first check:
-        - Whether DS118 (or the engine, for a DS118-only select) began reading document content
+        - Whether DS118 began reading document content
+        - engine._partition_readable and its WARNING text
     """
     root = Path(os.path.realpath(tmp_path))
     (root / "docs").mkdir()
-    (root / "docs" / "Bad Name.md").write_bytes(b"# Title\r\n\r\nbody\r\n\xff\xfe\n")
+    (root / "docs" / "Bad Name.md").write_bytes(b"# Title\r\n\r\nbody\r\n")
+    (root / "docs" / "Worse Name.md").write_bytes(b"# Title\r\n\r\nbody\r\n\xff\xfe\n")
 
-    result = scan(root, config=Config(profile="fast", select=("DS118",), documentation_naming="kebab"))
+    with caplog.at_level(logging.WARNING, logger="docsentinel"):
+        result = scan(root, config=Config(profile="fast", select=("DS118",), documentation_naming="kebab"))
+
     assert [finding.message for finding in _ds118(result.findings)] == [
         'file name "Bad Name.md" does not match the kebab naming policy; suggested rename "bad-name.md"'
+    ]
+    assert [document.path for document in result.documents] == ["docs/Bad Name.md", "docs/Worse Name.md"]
+    assert [finding.rule for finding in result.findings] == ["DS118"]
+    assert [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING] == [
+        "skipped docs/Worse Name.md: not valid UTF-8"
     ]
 
 
@@ -1298,7 +1313,8 @@ def test_reports_are_stable_across_formats(asset_case: Callable[[str, str], Asse
 
     text = render(result, "text")
     assert render(result, "text") == text
-    assert f"warning: docs/GettingStarted.md: {expected}" in text
+    assert "\ndocs/GettingStarted.md (" in text
+    assert f"  warning DS118 documentation file and directory naming policy: {expected}" in text
 
     payload = json.loads(render(result, "json-v1"))
     assert payload["schema_version"] == 1

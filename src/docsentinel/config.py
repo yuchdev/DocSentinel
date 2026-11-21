@@ -1,12 +1,22 @@
 """Configuration for local, deterministic scans."""
 
+import json
+import logging
+import math
+import os
 import re
+import stat
 import tomllib
+import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Final, Optional
 
+from docsentinel.log import safe
 from docsentinel.telemetry.filters import neutralize
+
+logger = logging.getLogger(__name__)
 
 _CONFIG_OPTIONS = {
     "include",
@@ -92,10 +102,75 @@ _CONFIG_OPTIONS = {
     "telemetry_domains",
     # Site-root-absolute link base (``/``-targets; DS101, DS103, DS112, DS113, DS116).
     "link_root",
+    # Milestone 0009 Story 01.0 — reference scope (DS103 opt-in) and @-document references (DS124).
+    "reference_scope",
+    "at_reference_extensions",
 }
 # Standalone config file names accepted at the scan root: the preferred name first, then the alias.
 STANDALONE_CONFIG_NAMES = ("docsentinel.toml", "doc_sentinel.toml")
 _SELECTOR_PATTERN = re.compile(r"DS\d*")
+
+#: Largest JSON configuration file read, in bytes (plan C7; threat model 0009-user-settings
+#: M11). One byte more is read so an over-long file is detected without reading it all.
+MAX_JSON_CONFIG_BYTES: Final = 1_048_576
+
+#: Longest duplicate JSON key echoed in a message, in characters (threat model U9).
+_JSON_DUPLICATE_KEY_ECHO_LIMIT: Final = 80
+
+#: A UTF-16 surrogate code point, which is never valid on its own in decoded text.
+_LONE_SURROGATE_PATTERN: Final = re.compile("[\ud800-\udfff]")
+
+#: Flags of the single open of a JSON config file (threat model R7): never blocks on a
+#: FIFO that replaced the file after the pre-check, never acquires a controlling terminal.
+_JSON_OPEN_FLAGS: Final = (
+    os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOCTTY", 0) | getattr(os, "O_BINARY", 0)
+)
+
+#: Environment variable naming the user settings file, or ``off`` (ADR 0005 S4). Read
+#: only by :func:`user_settings_path`.
+USER_SETTINGS_ENV: Final = "DOCSENTINEL_SETTINGS"
+
+#: The exact :data:`USER_SETTINGS_ENV` value that disables the user settings layer.
+USER_SETTINGS_OFF: Final = "off"
+
+#: Repository-relative options a user settings file may not set (plan C6, ADR 0005
+#: Contract 4). A new repository-relative option is added here in the same change.
+USER_SETTINGS_REFUSED_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "baseline",
+        "include",
+        "exclude",
+        "docsig_paths",
+        "navigation_indexes",
+        "navigation_required",
+        "deprecated_references_file",
+        "report_templates_dir",
+        "link_root",
+        "telemetry_domains",
+    }
+)
+
+#: Environment variable of the XDG data directory (ADR 0005 S3).
+_XDG_DATA_HOME_ENV: Final = "XDG_DATA_HOME"
+
+#: The user settings file below the data directory (ADR 0005 S3).
+_USER_SETTINGS_RELATIVE: Final = Path("docsentinel") / "settings.json"
+
+#: The data directory below the home directory when ``XDG_DATA_HOME`` is not usable.
+_HOME_DATA_RELATIVE: Final = Path(".local") / "share"
+
+#: Unicode categories refused in a settings path from the environment: controls,
+#: format (bidi, zero-width), separators and surrogates.
+_PATH_REFUSED_CATEGORIES: Final = frozenset({"Cc", "Cf", "Cs", "Zl", "Zp"})
+
+#: Fixed messages of the user settings permission gate (threat model R6).
+_GATE_FILE_OWNER: Final = "owned by another user"
+_GATE_FILE_MODE: Final = "writable by group or others (run chmod go-w on it)"
+_GATE_DIRECTORY: Final = "its directory is owned by another user or writable by others"
+_GATE_TOO_MANY_LINKS: Final = "too many symbolic links"
+
+#: Most symbolic links followed while checking the user settings directories (T04-1).
+_MAX_SYMLINK_HOPS: Final = 40
 
 #: A ``telemetry_extensions`` entry: ``builtin:`` plus an extension name matching
 #: ``docsentinel.telemetry.extensions.EXTENSION_NAME_PATTERN`` (a test pins parity).
@@ -104,6 +179,14 @@ _BUILTIN_EXTENSION_SPEC_PATTERN = re.compile(r"builtin:[a-z][a-z0-9_]{0,63}")
 
 #: Most ``telemetry_extensions`` entries accepted.
 MAX_TELEMETRY_EXTENSIONS = 32
+
+#: Most ``at_reference_extensions`` entries accepted (threat model 0009 M20).
+MAX_AT_REFERENCE_EXTENSIONS = 64
+
+#: One ``at_reference_extensions`` entry (used with ``fullmatch``): 1 to 16 ASCII
+#: letters or digits, no dot. The entries themselves are only ever compared by set
+#: membership, never compiled into a pattern or a glob (M20).
+_AT_REFERENCE_EXTENSION_PATTERN = re.compile(r"[A-Za-z0-9]{1,16}")
 
 #: Bounds of the ``telemetry_domains`` table (threat model 0007-extensions M22).
 MAX_TELEMETRY_DOMAINS = 256
@@ -150,6 +233,7 @@ _ENUM_OPTIONS: dict[str, frozenset[str]] = {
     "windows_path_policy": frozenset({"off", "portable"}),
     "document_id_scope": frozenset({"corpus", "directory"}),
     "documentation_naming": frozenset({"off", "kebab", "snake"}),
+    "reference_scope": frozenset({"links", "strict"}),
 }
 
 # Boolean-valued options, paired with the ``Config`` attribute defaults.
@@ -318,6 +402,17 @@ class Config:
         in :func:`docsentinel.link_root.resolve_link_root`,
         which also re-validates an injected ``Config``. Relative targets are never
         affected.
+    :ivar reference_scope: Which path-like references are checked (Milestone 0009
+        Story 01.0). ``"links"`` (the default) checks links, images and
+        ``@``-mentions and leaves ``DS103`` inert; ``"strict"`` also enables
+        ``DS103`` for path-like inline code spans. ``--reference-scope`` overrides
+        it for one run. An injected ``Config`` holding any other value keeps
+        ``DS103`` inert (:func:`docsentinel.rules.opt_in_satisfied`).
+    :ivar at_reference_extensions: File extensions (lowercase, without the dot) a
+        relative ``@``-mention must end in to be checked by ``DS124``. 1 to 64
+        entries of 1 to 16 ASCII letters or digits, compared case-insensitively;
+        validated by :func:`validate_at_reference_extensions`, which stores them
+        lowercased. An empty list is refused: use ``ignore = ["DS124"]`` instead.
     """
 
     include: tuple[str, ...] = ("*.md", "**/*.md")
@@ -385,6 +480,19 @@ class Config:
     telemetry_extensions: tuple[str, ...] = ()
     telemetry_domains: tuple[tuple[str, str], ...] = ()
     link_root: str = "auto"
+    reference_scope: str = "links"
+    at_reference_extensions: tuple[str, ...] = (
+        "md",
+        "markdown",
+        "mdx",
+        "txt",
+        "rst",
+        "toml",
+        "json",
+        "yaml",
+        "yml",
+        "py",
+    )
 
 
 def domain_glob_segments(glob: object, where: str) -> tuple[str, ...]:
@@ -508,6 +616,43 @@ def validate_telemetry_extensions(value: object) -> tuple[str, ...]:
             raise ConfigError(f"telemetry_extensions[{position}] repeats an earlier entry")
         seen.add(item)
     return tuple(value)
+
+
+def validate_at_reference_extensions(value: object) -> tuple[str, ...]:
+    """Return the validated ``at_reference_extensions``, lowercased, in configured order (M20).
+
+    Each entry must be a ``str`` of 1 to 16 ASCII letters or digits (no dot, no
+    whitespace); entries are compared case-insensitively, so two entries equal
+    after ASCII lowercasing are a duplicate. The list must hold 1 to
+    :data:`MAX_AT_REFERENCE_EXTENSIONS` entries. The rejected value is never
+    echoed: it is repository-controlled.
+
+    :param value: The configured list (a ``list`` from TOML, or the ``tuple`` of an
+        injected :class:`Config`).
+    :returns: The lowercased entries as a tuple.
+    :raises ConfigError: For a non-list, an empty list, more than
+        :data:`MAX_AT_REFERENCE_EXTENSIONS` entries, a malformed entry, or a duplicate.
+    """
+    if not isinstance(value, (list, tuple)):
+        raise ConfigError("at_reference_extensions must be a list of file extensions")
+    if not value:
+        raise ConfigError(
+            'at_reference_extensions must not be empty; to turn off @-reference checks use ignore = ["DS124"]'
+        )
+    if len(value) > MAX_AT_REFERENCE_EXTENSIONS:
+        raise ConfigError(f"at_reference_extensions holds more than {MAX_AT_REFERENCE_EXTENSIONS} entries")
+    lowered: list[str] = []
+    for position, item in enumerate(value):
+        if type(item) is not str or _AT_REFERENCE_EXTENSION_PATTERN.fullmatch(item) is None:
+            raise ConfigError(
+                f"at_reference_extensions[{position}] must be 1 to 16 ASCII letters or digits, without a dot"
+            )
+        # The entry is ASCII, so str.lower() is exactly ASCII lowercasing here.
+        extension = item.lower()
+        if extension in lowered:
+            raise ConfigError(f"at_reference_extensions[{position}] repeats an earlier entry (case-insensitive)")
+        lowered.append(extension)
+    return tuple(lowered)
 
 
 #: The ``link_root`` value selecting the ``.git`` ancestor walk.
@@ -657,50 +802,286 @@ def _require_root_path_list(name: str, value: object) -> tuple[str, ...]:
     return tuple(value)
 
 
+def _require_known_options(options: dict[str, object]):
+    """Raise ``ConfigError`` when ``options`` holds a key outside the configuration schema.
+
+    Shared by the TOML and JSON readers so both give the same message.
+
+    :param options: The raw options mapping.
+    :raises ConfigError: Naming every unknown key, sorted and comma-joined.
+    """
+    unknown = set(options) - _CONFIG_OPTIONS
+    if unknown:
+        raise ConfigError(f"Unknown config options: {', '.join(sorted(unknown))}")
+
+
 def _load_toml_table(source: Path, *, wrapped: bool) -> dict[str, object]:
-    """Load and validate options from a standalone or pyproject TOML table.
+    """Load the raw options of a standalone or pyproject TOML table.
+
+    A number beyond Python's integer-string conversion limit is a ``ConfigError``
+    (``number out of range``) instead of a stray ``ValueError`` (threat model
+    0009-user-settings F1), so ``doctor`` survives a repository's TOML.
 
     :param source: The TOML file to read.
     :param wrapped: Whether to unwrap a ``[tool.doc_sentinel]`` table.
     :returns: The raw options mapping.
+    :raises ConfigError: For an unreadable or malformed file or an unknown option.
     """
     try:
         with source.open("rb") as stream:
             data = tomllib.load(stream)
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         raise ConfigError(f"Cannot read {source}: {exc}") from exc
+    except ValueError as exc:
+        # tomllib lets the integer-string digit limit escape as a plain ValueError.
+        raise ConfigError(f"Cannot read {source}: number out of range") from exc
 
     options: object = data
     if wrapped:
         tool = data.get("tool")
         if not isinstance(tool, dict) or "doc_sentinel" not in tool:
+            logger.debug("%s has no [tool.doc_sentinel] table; using defaults", safe(source))
             return {}
         options = tool["doc_sentinel"]
         if not isinstance(options, dict):
             raise ConfigError("Unknown config options: tool.doc_sentinel must be a table")
 
-    unknown = set(options) - _CONFIG_OPTIONS
-    if unknown:
-        raise ConfigError(f"Unknown config options: {', '.join(sorted(unknown))}")
+    _require_known_options(options)
     return options
 
 
-def load_config(root: Path, path: Optional[Path] = None) -> Config:
-    """Load an explicit config or discover root-level DocSentinel settings.
+def _json_config_error(reason: str) -> ConfigError:
+    """Return the path-free ``ConfigError`` of a JSON config failure (ADR 0005 Contract 5).
 
-    A standalone ``docsentinel.toml`` (or its alias ``doc_sentinel.toml``) wins
-    over ``[tool.doc_sentinel]`` in ``pyproject.toml``; when none exists,
-    defaults are returned. Both standalone names in one root is ambiguous and
-    raises :class:`ConfigError`. An explicit ``path`` bypasses discovery. A :class:`Config` injected directly by a
-    library caller is used verbatim by the engine and never consults files.
+    :param reason: One of the fixed reason phrases; never file content.
+    :returns: ``Cannot read JSON config: <reason>``.
+    """
+    return ConfigError(f"Cannot read JSON config: {reason}")
+
+
+def _read_config_once(
+    source: Path,
+    *,
+    check_descriptor: Optional[Callable[[os.stat_result], None]] = None,
+) -> bytes:
+    """Open ``source`` once and return at most ``MAX_JSON_CONFIG_BYTES + 1`` bytes from it.
+
+    The order is fixed (threat model 0009-user-settings R7, amendment A1): an
+    ``os.stat()`` pre-check refuses a non-regular file before any open, so a FIFO or
+    device is never opened; one ``os.open()`` with ``O_NONBLOCK | O_NOCTTY``; then
+    ``os.fstat()`` of that descriptor, which is authoritative, refuses a non-regular
+    file again and runs ``check_descriptor`` (the user settings layer passes its
+    ownership and mode gate here); then a bounded read from the same descriptor,
+    closed in ``finally``. The file is never reopened.
+
+    :param source: The file to read.
+    :param check_descriptor: Optional extra check on the descriptor's
+        ``os.fstat()`` result. It must raise only ``ConfigError`` to refuse the file:
+        an ``OSError`` it raises is rewritten as ``not readable``. Checks of the
+        holding directories (threat model R3) belong before this call.
+    :returns: The bytes read; a result longer than ``MAX_JSON_CONFIG_BYTES`` means
+        the file is too large.
+    :raises ConfigError: ``not a regular file``, ``not readable`` for any
+        ``OSError``, or whatever ``check_descriptor`` raises (unchanged).
+    """
+    try:
+        if not stat.S_ISREG(os.stat(source).st_mode):
+            raise _json_config_error("not a regular file")
+        descriptor = os.open(source, _JSON_OPEN_FLAGS)
+    except OSError:
+        raise _json_config_error("not readable") from None
+    try:
+        status = os.fstat(descriptor)
+        if not stat.S_ISREG(status.st_mode):
+            raise _json_config_error("not a regular file")
+        if check_descriptor is not None:
+            check_descriptor(status)
+        chunks: list[bytes] = []
+        remaining = MAX_JSON_CONFIG_BYTES + 1
+        while remaining > 0:
+            chunk = os.read(descriptor, remaining)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
+    except OSError:
+        raise _json_config_error("not readable") from None
+    finally:
+        os.close(descriptor)
+
+
+def _json_object_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """``object_pairs_hook`` refusing a duplicate key at any depth (threat model U9).
+
+    :param pairs: The decoded key/value pairs of one JSON object, in file order.
+    :returns: The object as a ``dict``.
+    :raises ConfigError: Naming the duplicate key, bounded to 80 characters and
+        neutralised.
+    """
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _json_config_error(f"duplicate key {safe(key, _JSON_DUPLICATE_KEY_ECHO_LIMIT)}")
+        result[key] = value
+    return result
+
+
+def _json_refuse_constant(_name: str) -> object:
+    """``parse_constant`` refusing ``NaN``, ``Infinity`` and ``-Infinity``.
+
+    :param _name: The constant's spelling (not echoed).
+    :raises ConfigError: Always.
+    """
+    raise _json_config_error("NaN and Infinity are not allowed")
+
+
+def _json_finite_float(text: str) -> float:
+    """``parse_float`` refusing a literal that overflows to infinity (``1e400``).
+
+    :param text: The numeric literal (not echoed).
+    :returns: The finite float.
+    :raises ConfigError: ``number out of range`` for a non-finite result.
+    """
+    number = float(text)
+    if not math.isfinite(number):
+        raise _json_config_error("number out of range")
+    return number
+
+
+def _json_check_values(value: object):
+    """Refuse ``null`` and lone surrogates anywhere in a parsed JSON value.
+
+    JSON can spell a lone surrogate (``"\\ud800"``) that TOML cannot; in a path option it
+    would surface later as a ``UnicodeEncodeError`` rather than a ``ConfigError``
+    (threat model 0009-user-settings T03-1), so every ``str`` key and value is
+    checked. The walk is iterative (an explicit stack), so a value nested as deeply
+    as the C scanner accepts can never raise ``RecursionError`` here (threat model
+    M13). Neither the offending key nor the value is echoed.
+
+    :param value: The parsed value.
+    :raises ConfigError: ``null is not allowed; omit the key`` or
+        ``lone surrogate is not allowed``.
+    """
+    stack: list[object] = [value]
+    while stack:
+        item = stack.pop()
+        if item is None:
+            raise _json_config_error("null is not allowed; omit the key")
+        if type(item) is str:
+            if _LONE_SURROGATE_PATTERN.search(item) is not None:
+                raise _json_config_error("lone surrogate is not allowed")
+        elif type(item) is dict:
+            stack.extend(item.keys())
+            stack.extend(item.values())
+        elif type(item) is list:
+            stack.extend(item)
+
+
+def _parse_json_options(data: bytes) -> dict[str, object]:
+    """Parse the bytes of one JSON config file strictly into a raw options mapping.
+
+    Steps 2 to 6 of ADR 0005 Contract 2's ``load_json_options()``: size cap, strict
+    UTF-8 without a byte-order mark (only the decoded ``str`` reaches
+    ``json.loads()``), duplicate keys, non-finite numbers, nesting, the integer-string
+    limit, the top-level shape, ``null`` or a lone surrogate anywhere and unknown keys. No message echoes
+    file content.
+
+    :param data: The bytes read by :func:`_read_config_once`.
+    :returns: The raw options mapping.
+    :raises ConfigError: With a fixed, path-free reason phrase.
+    """
+    if len(data) > MAX_JSON_CONFIG_BYTES:
+        raise _json_config_error("larger than 1 MiB")
+    if data.startswith(b"\xef\xbb\xbf"):
+        raise _json_config_error("starts with a byte-order mark")
+    try:
+        text = data.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise _json_config_error("not valid UTF-8") from exc
+    try:
+        parsed = json.loads(
+            text,
+            object_pairs_hook=_json_object_pairs,
+            parse_constant=_json_refuse_constant,
+            parse_float=_json_finite_float,
+        )
+    except ConfigError:
+        raise
+    except RecursionError as exc:
+        raise _json_config_error("nested too deeply") from exc
+    except json.JSONDecodeError as exc:
+        raise _json_config_error(f"invalid JSON at line {exc.lineno}, column {exc.colno}") from exc
+    except ValueError as exc:
+        # The integer-string digit limit (a plain ValueError from int()).
+        raise _json_config_error("number out of range") from exc
+    if type(parsed) is not dict:
+        raise _json_config_error("the top level must be an object")
+    _json_check_values(parsed)
+    _require_known_options(parsed)
+    return parsed
+
+
+def load_json_options(source: Path) -> dict[str, object]:
+    """Read one JSON config object strictly; raise ``ConfigError`` on any deviation.
+
+    Follows ADR 0005 Contract 2: one open through the open-once reader (no ownership
+    or mode check here), at most ``MAX_JSON_CONFIG_BYTES`` bytes, strict UTF-8
+    without a byte-order mark, no duplicate key at any depth, no ``NaN``,
+    ``Infinity`` or overflowing number, no ``null``, an object at the top level and
+    only known option names. ``5`` stays an ``int`` and ``5.0`` a ``float``, as in
+    TOML, so the shared validators behave the same. Messages carry no path and no
+    file content. The file is read once and nothing is cached.
+
+    :param source: The JSON file to read.
+    :returns: The raw options mapping, to be validated by the shared builder.
+    :raises ConfigError: ``Cannot read JSON config: <reason>`` or the shared
+        ``Unknown config options: ...`` message.
+    """
+    return _parse_json_options(_read_config_once(source))
+
+
+def _finite_number(value: object) -> Optional[float]:
+    """Return ``value`` as a finite ``float``, or ``None`` when it is not one.
+
+    Booleans, non-numbers, ``nan``, infinities and integers too large for a float
+    all give ``None``, so each caller raises its option's existing message (threat
+    model 0009-user-settings U8, amendment A6).
+
+    :param value: The configured value.
+    :returns: The finite float, or ``None``.
+    """
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except OverflowError:
+        # An integer too large for a float is out of range like an infinity.
+        number = math.inf
+    return number if math.isfinite(number) else None
+
+
+def _read_project_options(root: Path, path: Optional[Path]) -> tuple[Optional[dict[str, object]], Optional[Path], str]:
+    """Read the raw options of the explicit or discovered project configuration.
+
+    An explicit ``path`` named ``pyproject.toml`` is read as a wrapped table, one
+    whose suffix is ``.json`` (case-insensitive) as strict JSON, anything else as
+    standalone TOML. Discovery is unchanged: a standalone ``docsentinel.toml`` (or
+    its alias ``doc_sentinel.toml``), else ``pyproject.toml``.
 
     :param root: The scan root directory used for discovery.
     :param path: An explicit config file, or ``None`` to discover one.
-    :returns: The validated :class:`Config`.
+    :returns: The raw options mapping (``None`` when no configuration file exists),
+        the file read (or ``None``) and its kind: ``toml``, ``pyproject``, ``json``
+        or ``none`` (ADR 0005 Contract 2, ``ConfigSources.project_kind``).
+    :raises ConfigError: For both standalone names in one root, or any read error.
     """
     if path is not None:
         source = path
         wrapped = source.name == "pyproject.toml"
+        if not wrapped and source.suffix.lower() == ".json":
+            logger.debug("loading config %s (json)", safe(source))
+            return load_json_options(source), source, "json"
     else:
         standalones = [root / name for name in STANDALONE_CONFIG_NAMES if (root / name).exists()]
         pyproject = root / "pyproject.toml"
@@ -714,9 +1095,417 @@ def load_config(root: Path, path: Optional[Path] = None) -> Config:
             source = pyproject
             wrapped = True
         else:
-            return Config()
+            logger.debug("no config file in %s; using defaults", safe(root))
+            return None, None, "none"
 
-    options = _load_toml_table(source, wrapped=wrapped)
+    logger.debug("loading config %s%s", safe(source), " ([tool.doc_sentinel])" if wrapped else "")
+    return _load_toml_table(source, wrapped=wrapped), source, "pyproject" if wrapped else "toml"
+
+
+@dataclass(frozen=True)
+class ConfigSources:
+    """Where the layers of an effective :class:`Config` came from (ADR 0005 Contract 2).
+
+    It holds option *names* only, never values. It is never logged as an object and
+    never enters a report context, because its paths are absolute (threat model
+    0009-user-settings U11, A7); render a path through the tilde form instead.
+
+    :ivar user: The loaded user settings file as resolved from the environment (not
+        symlink-resolved), or ``None``.
+    :ivar user_state: ``loaded``, ``missing``, ``off`` or ``no-home``.
+    :ivar project: The loaded project configuration file, or ``None``.
+    :ivar project_kind: ``toml``, ``pyproject``, ``json`` or ``none``.
+    :ivar user_options: Option names set by the user file, sorted.
+    :ivar project_options: Option names set by the project file, sorted.
+    """
+
+    user: Optional[Path]
+    user_state: str
+    project: Optional[Path]
+    project_kind: str
+    user_options: tuple[str, ...] = ()
+    project_options: tuple[str, ...] = ()
+
+
+def _home_directory() -> Optional[Path]:
+    """Return the absolute home directory, or ``None`` when it is unknown or unsafe.
+
+    ``Path.home()`` failing, a relative home (``HOME=.``), the filesystem root (an
+    empty ``HOME``) or one holding a control, format or separator character all give
+    ``None``, so a home can never turn the user settings path into a
+    current-directory path (threat model 0009-user-settings U3, A4). No filesystem
+    call is made.
+
+    :returns: The home directory, or ``None``.
+    """
+    try:
+        home = Path.home()
+    except (RuntimeError, KeyError, OSError, ValueError) as exc:
+        # Only the exception type: its text may hold a user name.
+        logger.debug("user settings: home directory unknown (%s)", type(exc).__name__)
+        return None
+    if not home.is_absolute() or home == Path(home.anchor) or not _is_plain_path_text(str(home)):
+        # A filesystem-root home (``Path.home()`` maps an empty ``HOME`` to ``/``) is
+        # no real home either.
+        return None
+    return home
+
+
+def _is_plain_path_text(text: str) -> bool:
+    """Return whether ``text`` holds no control, format, separator or surrogate character.
+
+    :param text: A path string from the environment.
+    :returns: ``True`` when every character is printable path text.
+    """
+    return not any(unicodedata.category(char) in _PATH_REFUSED_CATEGORIES for char in text)
+
+
+def user_settings_path() -> tuple[Optional[Path], str]:
+    """Resolve the user settings file from the environment, without touching the filesystem.
+
+    The only reader of ``DOCSENTINEL_SETTINGS``, ``XDG_DATA_HOME`` and (through
+    ``Path.home()``) ``HOME`` (ADR 0005 Contract 1; threat model U13). The states are:
+
+    * ``off``: ``DOCSENTINEL_SETTINGS`` is exactly ``off``; the path is ``None``.
+    * ``env``: ``DOCSENTINEL_SETTINGS`` names an absolute path; it must exist.
+    * ``default``: the file under ``XDG_DATA_HOME`` when it is set, absolute and
+      plain, else under ``$HOME/.local/share``; a missing file is skipped.
+    * ``no-home``: no override and the home directory is unknown or relative; the
+      path is ``None``.
+
+    An empty ``DOCSENTINEL_SETTINGS`` counts as unset. Every returned path is absolute.
+
+    :returns: The settings path (or ``None``) and its state.
+    :raises ConfigError: When ``DOCSENTINEL_SETTINGS`` is relative or holds a control
+        character. The value is never echoed.
+    """
+    override = os.environ.get(USER_SETTINGS_ENV, "")
+    if override == USER_SETTINGS_OFF:
+        return None, "off"
+    if override:
+        if not _is_plain_path_text(override) or not os.path.isabs(override):
+            raise ConfigError(f'{USER_SETTINGS_ENV} must be an absolute path or "{USER_SETTINGS_OFF}"')
+        return Path(override), "env"
+    data_home = os.environ.get(_XDG_DATA_HOME_ENV, "")
+    if data_home and os.path.isabs(data_home) and _is_plain_path_text(data_home):
+        return Path(data_home) / _USER_SETTINGS_RELATIVE, "default"
+    home = _home_directory()
+    if home is None:
+        return None, "no-home"
+    candidate = home / _HOME_DATA_RELATIVE / _USER_SETTINGS_RELATIVE
+    if not candidate.is_absolute():
+        # Defensive: the home was checked, but never stat a relative path (threat model A4).
+        return None, "no-home"
+    return candidate, "default"
+
+
+def _tilde_path(path: Path) -> str:
+    """Return ``path`` for a message or log line, with the home directory shown as ``~``.
+
+    The home matches lexically or through its real path (threat model U11, M15);
+    the symlink target of ``path`` itself is never shown. The result passes through
+    :func:`~docsentinel.log.safe`, so it is neutralised and bounded.
+
+    :param path: The user settings path.
+    :returns: The display form.
+    """
+    text = str(path)
+    home = _home_directory()
+    if home is not None:
+        for base in dict.fromkeys((str(home), os.path.realpath(home))):
+            base = base.rstrip(os.sep)
+            if not base:
+                continue  # A home of "/" would make every path "~".
+            if text == base:
+                text = "~"
+                break
+            if text.startswith(base + os.sep):
+                text = "~" + text[len(base) :]
+                break
+    return safe(text)
+
+
+def _user_settings_exist(path: Path, *, required: bool) -> bool:
+    """Return whether the user settings file exists (ADR 0005 Contract 3 step 1).
+
+    The file is absent only when ``os.stat()`` raises ``FileNotFoundError`` or
+    ``NotADirectoryError`` and ``os.path.lexists()`` is false, so a dangling symlink
+    or any other ``OSError`` fails closed (threat model U7, A5).
+
+    :param path: The absolute settings path.
+    :param required: Whether the invoker named the file (``DOCSENTINEL_SETTINGS``);
+        then an absent file is an error too.
+    :returns: ``False`` for an absent default-location file, else ``True``.
+    :raises ConfigError: ``Cannot read JSON config: not readable``.
+    """
+    try:
+        os.stat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        if required or os.path.lexists(path):
+            raise _json_config_error("not readable") from None
+        return False
+    except (OSError, ValueError):
+        raise _json_config_error("not readable") from None
+    return True
+
+
+def _owner_trusted(uid: int) -> bool:
+    """Return whether ``uid`` may own a user settings object (threat model R2-R4).
+
+    The effective user or root; when running as root only root.
+
+    :param uid: The ``st_uid`` of the file or directory.
+    :returns: ``True`` when the owner is trusted.
+    """
+    return uid in (os.geteuid(), 0)
+
+
+def _user_settings_link_directories(path: Path, *, final_is_directory: bool = False) -> dict[str, list[int]]:
+    """Return the physical directories R3 applies to, walking every symbolic link.
+
+    The path is resolved one component at a time, as the kernel does, with
+    ``os.lstat()`` and ``os.readlink()`` only (nothing is opened). The directory
+    holding each symbolic link met on the way, a file link or a directory link at any
+    depth of the chain, is collected, then the directory holding the final target.
+    Without a symlink that is just the directory holding the file. Ancestors that
+    hold no link are not collected (residual U1). A relative link target resolves
+    against the directory holding the link, and ``..`` against the physical directory
+    reached so far (threat model 0009-user-settings T04-1). The ``lstat()`` owner of
+    each link is kept beside its directory, so a link planted by another user in a
+    shared sticky directory can be refused (T04-4).
+
+    :param path: The absolute settings path, known to exist.
+    :param final_is_directory: Collect the final target itself instead of the
+        directory holding it; ``init --user`` passes the deepest existing directory
+        it is about to create entries in (threat model U15).
+    :returns: The directories, physical and absolute, in walk order without repeats,
+        each mapped to the owners of the links met in it (empty for the directory
+        holding only the final target).
+    :raises ConfigError: ``too many symbolic links`` after
+        :data:`_MAX_SYMLINK_HOPS` links, or ``Cannot read JSON config: not
+        readable`` for any ``OSError``.
+    """
+    text = str(path)
+    current = os.sep
+    pending = [part for part in text.split(os.sep) if part]
+    directories: dict[str, list[int]] = {}
+    hops = 0
+    while pending:
+        name = pending.pop(0)
+        if name == ".":
+            continue
+        if name == "..":
+            current = os.path.dirname(current)
+            continue
+        candidate = os.path.join(current, name)
+        try:
+            link_status = os.lstat(candidate)
+            is_link = stat.S_ISLNK(link_status.st_mode)
+            target = os.readlink(candidate) if is_link else ""
+        except (OSError, ValueError):
+            # ``from None``: the OSError text would carry the absolute path (T04-2).
+            raise _json_config_error("not readable") from None
+        if not is_link:
+            current = candidate
+            continue
+        hops += 1
+        if hops > _MAX_SYMLINK_HOPS:
+            raise ConfigError(_GATE_TOO_MANY_LINKS)
+        directories.setdefault(current, []).append(link_status.st_uid)
+        if os.path.isabs(target):
+            current = os.sep
+        pending[:0] = [part for part in target.split(os.sep) if part]
+    directories.setdefault(current if final_is_directory else os.path.dirname(current), [])
+    return directories
+
+
+def _check_user_settings_directories(path: Path, *, final_is_directory: bool = False):
+    """Apply threat model R3 to every directory holding a link or the user settings file.
+
+    The directory holding the configured path, the directory holding each symbolic
+    link of the chain (file and directory links alike) and the directory holding
+    the final target must each be owned by the effective user or root and have no
+    group/other write bit unless the sticky bit is set (T04-1). In such a shared
+    sticky directory every link must also be owned by the effective user or root,
+    the ``protected_symlinks`` rule that macOS and BSD lack (T04-4). Ancestors
+    holding no link are not checked (residual U1).
+
+    :param path: The absolute settings path, known to exist.
+    :param final_is_directory: ``path`` is an existing directory that is checked
+        itself, with every link on the way to it (``init --user`` before it creates
+        anything, threat model U15).
+    :raises ConfigError: ``its directory is owned by another user or writable by
+        others``, ``too many symbolic links`` or ``Cannot read JSON config: not
+        readable``.
+    """
+    for directory, link_owners in _user_settings_link_directories(path, final_is_directory=final_is_directory).items():
+        try:
+            status = os.stat(directory)
+        except (OSError, ValueError):
+            raise _json_config_error("not readable") from None
+        writable = status.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+        if not _owner_trusted(status.st_uid) or (writable and not status.st_mode & stat.S_ISVTX):
+            raise ConfigError(_GATE_DIRECTORY)
+        if writable and not all(_owner_trusted(uid) for uid in link_owners):
+            # A sticky shared directory: a link another user planted there is refused.
+            raise ConfigError(_GATE_DIRECTORY)
+
+
+def _check_user_settings_descriptor(status: os.stat_result):
+    """Apply threat model R2 to ``os.fstat()`` of the descriptor the file is read from.
+
+    Passed to :func:`_read_config_once` as ``check_descriptor``, so the decision is
+    made on the opened object, not on a path that may have been swapped (U2). It
+    raises only :class:`ConfigError` (threat model T03-3).
+
+    :param status: ``os.fstat()`` of the opened descriptor (a regular file).
+    :raises ConfigError: ``owned by another user`` or ``writable by group or others
+        (run chmod go-w on it)``.
+    """
+    if not _owner_trusted(status.st_uid):
+        raise ConfigError(_GATE_FILE_OWNER)
+    if status.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise ConfigError(_GATE_FILE_MODE)
+
+
+def _read_user_options(path: Path) -> dict[str, object]:
+    """Gate, read, parse and C6-check one user settings file (ADR 0005 Contract 3 steps 2-5).
+
+    The order is threat model R7: R3 directory checks, then the open-once reader with
+    the R2 check on the descriptor's ``fstat()``, then a bounded read from the same
+    descriptor. Ownership and mode are skipped on non-POSIX with one ``DEBUG`` line
+    (R1). Refused C6 keys are rejected before any value validation, then the mapping
+    is validated alone so a bad value is attributed to this file.
+
+    :param path: The absolute settings path, known to exist.
+    :returns: The raw user options.
+    :raises ConfigError: Unprefixed; the caller adds the ``user settings`` prefix.
+    """
+    check_descriptor: Optional[Callable[[os.stat_result], None]] = None
+    if os.name == "posix":
+        _check_user_settings_directories(path)
+        check_descriptor = _check_user_settings_descriptor
+    else:
+        logger.debug("user settings: permission check skipped (non-POSIX)")
+    options = _parse_json_options(_read_config_once(path, check_descriptor=check_descriptor))
+    refused = sorted(set(options) & USER_SETTINGS_REFUSED_KEYS)
+    if refused:
+        raise ConfigError(f"repository-relative options cannot be set in user settings: {', '.join(refused)}")
+    _build_config(options)
+    return options
+
+
+def _load_user_layer(user_settings: bool) -> tuple[dict[str, object], Optional[Path], str]:
+    """Locate and load the user settings layer (ADR 0005 Contract 3 steps 1-5).
+
+    :param user_settings: ``False`` turns the layer off without reading the
+        environment (threat model U13).
+    :returns: The user options (empty unless loaded), the loaded path (or ``None``)
+        and the ``ConfigSources.user_state``.
+    :raises ConfigError: For a bad ``DOCSENTINEL_SETTINGS`` value (unprefixed) or any
+        failure of an existing or invoker-named file, prefixed
+        ``user settings <tilde path>: ``.
+    """
+    if not user_settings:
+        logger.debug("user settings: disabled")
+        return {}, None, "off"
+    path, state = user_settings_path()
+    if state == "off":
+        logger.debug("user settings: disabled")
+        return {}, None, "off"
+    if path is None:
+        logger.debug("user settings: no home directory")
+        return {}, None, "no-home"
+    try:
+        if not _user_settings_exist(path, required=state == "env"):
+            logger.debug("user settings: missing")
+            return {}, None, "missing"
+        options = _read_user_options(path)
+    except ConfigError as exc:
+        raise ConfigError(f"user settings {_tilde_path(path)}: {exc}") from None
+    # Only option names (already checked against the known set), never their values.
+    logger.debug("user settings %s: loaded, options set: %s", _tilde_path(path), ", ".join(sorted(options)) or "none")
+    return options, path, "loaded"
+
+
+def load_config_with_sources(
+    root: Path, path: Optional[Path] = None, *, user_settings: bool = True
+) -> tuple[Config, ConfigSources]:
+    """Resolve configuration layers 1 to 3 and report where each came from.
+
+    Layers, lowest first (plan C1, ADR 0005 Contract 1): the :class:`Config`
+    defaults, the user settings JSON file (unless off; never the C6 keys), then the
+    project configuration, explicit ``path`` or discovered exactly as by
+    :func:`load_config`. A key's value is replaced as a whole, never merged. Command
+    line flags (layer 4) are applied by the caller. The user file is read once per
+    call; nothing is cached.
+
+    :param root: The scan root directory used for discovery.
+    :param path: An explicit project config file, or ``None`` to discover one. It
+        replaces discovery only, never the user layer.
+    :param user_settings: ``False`` skips the user layer and never reads the
+        environment.
+    :returns: The effective :class:`Config` and its :class:`ConfigSources`.
+    :raises ConfigError: For an unreadable, malformed, refused or invalid
+        configuration. A user-file failure is prefixed ``user settings <tilde
+        path>: ``; project messages are unchanged.
+    """
+    user_options, user_path, user_state = _load_user_layer(user_settings)
+    project_options, project_path, project_kind = _read_project_options(root, path)
+    if project_options is not None:
+        # Only option names (already checked against the known set), never their values.
+        logger.debug("config options set: %s", ", ".join(sorted(project_options)) or "none")
+    sources = ConfigSources(
+        user=user_path,
+        user_state=user_state,
+        project=project_path,
+        project_kind=project_kind,
+        user_options=tuple(sorted(user_options)),
+        project_options=tuple(sorted(project_options or {})),
+    )
+    if not user_options and project_options is None:
+        return Config(), sources
+    # Every validator is per key and the user mapping was validated alone, so a
+    # failure here comes from a project value and keeps its unprefixed message.
+    return _build_config({**user_options, **(project_options or {})}), sources
+
+
+def load_config(root: Path, path: Optional[Path] = None, *, user_settings: bool = True) -> Config:
+    """Load the user settings layer and an explicit or discovered project config.
+
+    A standalone ``docsentinel.toml`` (or its alias ``doc_sentinel.toml``) wins
+    over ``[tool.doc_sentinel]`` in ``pyproject.toml``; when none exists,
+    defaults are returned. Both standalone names in one root is ambiguous and
+    raises :class:`ConfigError`. An explicit ``path`` bypasses discovery; one whose
+    suffix is ``.json`` (case-insensitive) is read by :func:`load_json_options`. TOML
+    and JSON options are validated by the same builder, so they give the same
+    messages. The user settings file (``DOCSENTINEL_SETTINGS``, else under
+    ``XDG_DATA_HOME`` or ``~/.local/share``) is layered beneath the project
+    configuration; see :func:`load_config_with_sources`. A :class:`Config` injected
+    directly by a library caller is used verbatim by the engine and never consults
+    files or the environment.
+
+    :param root: The scan root directory used for discovery.
+    :param path: An explicit config file, or ``None`` to discover one.
+    :param user_settings: ``False`` skips the user settings layer.
+    :returns: The validated :class:`Config`.
+    :raises ConfigError: For an unreadable, malformed or invalid configuration.
+    """
+    return load_config_with_sources(root, path, user_settings=user_settings)[0]
+
+
+def _build_config(options: dict[str, object]) -> Config:
+    """Validate a raw options mapping and build the :class:`Config` from it.
+
+    The single validation path for every configuration source (ADR 0005 Contract 2):
+    TOML, the pyproject table and JSON all reach :class:`Config` only through here.
+    Every validator is per key. Float-valued options must be finite and
+    float-convertible (threat model 0009-user-settings A6).
+
+    :param options: The raw options mapping; keys are already known option names.
+    :returns: The validated :class:`Config`.
+    :raises ConfigError: For the first invalid option.
+    """
     defaults = Config()
     include = options.get("include", list(defaults.include))
     exclude = options.get("exclude", list(defaults.exclude))
@@ -724,9 +1513,9 @@ def load_config(root: Path, path: Optional[Path] = None) -> Config:
     select = options.get("select", list(defaults.select))
     ignore = options.get("ignore", list(defaults.ignore))
     baseline = options.get("baseline", defaults.baseline)
-    max_grade_level = options.get("max_grade_level", defaults.max_grade_level)
-    duplicate_similarity = options.get("duplicate_similarity", defaults.duplicate_similarity)
-    min_information_score = options.get("min_information_score", defaults.min_information_score)
+    max_grade_level = _finite_number(options.get("max_grade_level", defaults.max_grade_level))
+    duplicate_similarity = _finite_number(options.get("duplicate_similarity", defaults.duplicate_similarity))
+    min_information_score = _finite_number(options.get("min_information_score", defaults.min_information_score))
     docsig_paths = options.get("docsig_paths", list(defaults.docsig_paths))
     deep_confirm = options.get("deep_confirm", defaults.deep_confirm)
     for name, value in (("include", include), ("exclude", exclude)):
@@ -743,19 +1532,11 @@ def load_config(root: Path, path: Optional[Path] = None) -> Config:
         raise ConfigError("profile must be fast, standard, or deep")
     if baseline is not None and (not isinstance(baseline, str) or not baseline):
         raise ConfigError("baseline must be a nonempty string")
-    if not isinstance(max_grade_level, (int, float)) or isinstance(max_grade_level, bool) or max_grade_level <= 0:
+    if max_grade_level is None or max_grade_level <= 0:
         raise ConfigError("max_grade_level must be a positive number")
-    if (
-        not isinstance(duplicate_similarity, (int, float))
-        or isinstance(duplicate_similarity, bool)
-        or not (0.0 <= float(duplicate_similarity) <= 1.0)
-    ):
+    if duplicate_similarity is None or not (0.0 <= duplicate_similarity <= 1.0):
         raise ConfigError("duplicate_similarity must be a number between 0 and 1")
-    if (
-        not isinstance(min_information_score, (int, float))
-        or isinstance(min_information_score, bool)
-        or not (0.0 <= float(min_information_score) <= 1.0)
-    ):
+    if min_information_score is None or not (0.0 <= min_information_score <= 1.0):
         raise ConfigError("min_information_score must be a number between 0 and 1")
     if not isinstance(deep_confirm, bool):
         raise ConfigError("deep_confirm must be true or false")
@@ -769,9 +1550,9 @@ def load_config(root: Path, path: Optional[Path] = None) -> Config:
         select=tuple(select),
         ignore=tuple(ignore),
         baseline=baseline,
-        max_grade_level=float(max_grade_level),
-        duplicate_similarity=float(duplicate_similarity),
-        min_information_score=float(min_information_score),
+        max_grade_level=max_grade_level,
+        duplicate_similarity=duplicate_similarity,
+        min_information_score=min_information_score,
         docsig_paths=tuple(docsig_paths),
         deep_confirm=deep_confirm,
         **extra,
@@ -781,7 +1562,7 @@ def load_config(root: Path, path: Optional[Path] = None) -> Config:
 def _load_extra_options(options: dict[str, object], defaults: Config) -> dict[str, object]:
     """Validate the Story 02–14 and Milestone 0007 typed options into ``Config`` keyword arguments.
 
-    :param options: The raw options mapping from the TOML table.
+    :param options: The raw options mapping (from TOML or JSON).
     :param defaults: A default :class:`Config` used to source field defaults.
     :returns: A mapping of validated keyword arguments for :class:`Config`.
     """
@@ -851,5 +1632,8 @@ def _load_extra_options(options: dict[str, object], defaults: Config) -> dict[st
         options.get("telemetry_domains", list(defaults.telemetry_domains))
     )
     extra["link_root"] = validate_link_root(options.get("link_root", defaults.link_root))
+    extra["at_reference_extensions"] = validate_at_reference_extensions(
+        options.get("at_reference_extensions", list(defaults.at_reference_extensions))
+    )
 
     return extra

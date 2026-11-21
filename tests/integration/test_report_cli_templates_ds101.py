@@ -18,6 +18,7 @@ import pytest
 from docsentinel import cli, deep_support
 from docsentinel.telemetry.loader import packaged_template_names
 from tests.asset_helpers import AssetCase, load_asset_case
+from tests.log_helpers import problem_output
 
 ESC = chr(0x1B)
 
@@ -84,7 +85,7 @@ def test_scan_renders_every_packaged_template_on_each_profile(
 
     captured = capsys.readouterr()
     assert exit_code == (1 if profile == "fast" else 0), captured.err
-    assert captured.err == ""
+    assert problem_output(captured.err) == ""
     if name.startswith("json"):
         json.loads(captured.out)
     if profile == "fast" and name in ("text", "github"):
@@ -161,7 +162,9 @@ def test_show_clean_documents_lists_clean_documents_in_text(
     assert not any(line.startswith("guide/clean.md") for line in hidden)
     assert any(line.startswith("guide/clean.md (") and line.endswith(" bytes)") for line in shown)
     assert configured == shown
-    assert any(line.startswith("  error: README.md:") for line in shown)
+    assert "README.md" in [line.split(" (", 1)[0] for line in shown]
+    assert any(line.startswith("  error   DS101 dangling ") for line in shown)
+    assert any(line.startswith("  error   DS101 dangling link: README.md, line ") for line in shown)
 
 
 def test_legacy_text_and_github_shapes_are_intentionally_gone(
@@ -327,7 +330,7 @@ def test_template_errors_exit_2_with_scan_failed(
     assert captured.out == ""
     assert captured.err.startswith("Scan failed: ")
     assert expected in captured.err
-    assert captured.err.count("\n") == 1
+    assert problem_output(captured.err).count("\n") == 1
 
 
 def test_template_error_line_is_neutralized(
@@ -357,7 +360,7 @@ def test_template_error_line_is_neutralized(
     err = capsys.readouterr().err
     assert exit_code == 2
     assert ESC not in err
-    assert err.count("\n") == 1
+    assert problem_output(err).count("\n") == 1
 
 
 def test_doctor_lists_templates(

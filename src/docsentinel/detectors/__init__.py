@@ -11,6 +11,7 @@ from docsentinel.detectors import (
     fences,
     headings,
     links,
+    mentions,
     naming,
     navigation,
     path_boundaries,
@@ -18,6 +19,7 @@ from docsentinel.detectors import (
     references,
     sections,
     tables,
+    unreadable,
 )
 
 __all__ = [
@@ -31,6 +33,7 @@ __all__ = [
     "fences",
     "headings",
     "links",
+    "mentions",
     "naming",
     "navigation",
     "path_boundaries",
@@ -38,4 +41,5 @@ __all__ = [
     "references",
     "sections",
     "tables",
+    "unreadable",
 ]

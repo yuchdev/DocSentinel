@@ -4,6 +4,7 @@ import importlib
 import types
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import IO, Union
 
 import pytest
 
@@ -633,30 +634,34 @@ def test_invalid_utf8_read_error_is_propagated(tmp_path: Path):
         links.detect(tmp_path, (document,))
 
 
-def test_invalid_utf8_target_heading_read_is_propagated(asset_case: Callable[[str, str], AssetCase]):
+def test_invalid_utf8_target_heading_read_is_skipped(
+    asset_case: Callable[[str, str], AssetCase], caplog: pytest.LogCaptureFixture
+):
     """
-    [Integration] detectors links ds101: verifies invalid utf8 target heading read is propagated.
+    [Integration] detectors links ds101: verifies invalid UTF-8 target heading reads are skipped.
 
     Scenario:
-        Given test inputs and fixtures for invalid utf8 target heading read is propagated
-        When test_invalid_utf8_target_heading_read_is_propagated executes the target flow
-        Then the expected outcome for invalid utf8 target heading read is propagated is confirmed.
+        Given a readable source linking to an invalid UTF-8 target
+        When DS101 inspects the source
+        Then the anchor check is skipped with a warning, without aborting the detector.
 
     Boundaries:
-        - Focus: invalid utf8 target heading read is propagated
-        - Fixtures/params: asset_case
+        - Focus: invalid UTF-8 target heading read is skipped
+        - Fixtures/params: asset_case, caplog
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
-        - Assertion details tied to invalid utf8 target heading read is propagated
+        - _linked_anchors in detectors/links.py
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by detectors links ds101
     """
     case = asset_case("ds101", "invalid_utf8_target_heading")
     case.path("target.md").write_bytes(b"\xff")
 
-    with pytest.raises(UnicodeDecodeError):
-        links.detect(case.root, case.documents("README.md"))
+    assert links.detect(case.root, case.documents("README.md")) == ()
+    assert [record.getMessage() for record in caplog.records if record.name == links.__name__] == [
+        f"DS101 skipped the anchor check for linked file {case.path('target.md')}: not valid UTF-8"
+    ]
 
 
 def test_os_read_error_is_propagated(tmp_path: Path):
@@ -689,43 +694,51 @@ def test_os_read_error_is_propagated(tmp_path: Path):
     (OSError, PermissionError),
     ids=("os-error", "permission-error"),
 )
-def test_target_open_error_is_propagated(
+def test_target_open_error_is_skipped(
     asset_case: Callable[[str, str], AssetCase],
     monkeypatch: pytest.MonkeyPatch,
     error_type: type[OSError],
+    caplog: pytest.LogCaptureFixture,
 ):
     """
-    [Integration] detectors links ds101: verifies target open error is propagated.
+    [Integration] detectors links ds101: verifies target open errors are skipped.
 
     Scenario:
-        Given test inputs and fixtures for target open error is propagated
-        When test_target_open_error_is_propagated executes the target flow
-        Then the expected outcome for target open error is propagated is confirmed.
+        Given a readable source linking to a target that cannot be opened
+        When DS101 inspects the source
+        Then the anchor check is skipped with a warning, without aborting the detector.
 
     Boundaries:
-        - Focus: target open error is propagated
-        - Fixtures/params: asset_case, monkeypatch, error_type (parametrized, 2 cases)
+        - Focus: target open error is skipped
+        - Fixtures/params: asset_case, monkeypatch, error_type, caplog (parametrized, 2 cases)
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
-        - Assertion details tied to target open error is propagated
+        - _linked_anchors in detectors/links.py
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by detectors links ds101
     """
     case = asset_case("ds101", "target_read_error")
     target = case.path("target.md")
-    original_read_lines = links._read_lines
+    original_open = Path.open
 
-    def fail_target_read(path: Path) -> list[str]:
-        """Simulate read failure when accessing target path."""
+    def fail_target_read(path: Path, *args, **kwargs) -> Union[IO[str], IO[bytes]]:
+        """Simulate read failure when accessing target path.
+
+        :param path: Path to open, failing only for the linked target.
+        :returns: The original text or binary stream for non-target paths.
+        :raises OSError: The parametrized error when opening the target.
+        """
         if path == target:
-            raise error_type("target read failed")
-        return original_read_lines(path)
+            raise error_type(13, "target read failed")
+        return original_open(path, *args, **kwargs)
 
-    monkeypatch.setattr(links, "_read_lines", fail_target_read)
+    monkeypatch.setattr(Path, "open", fail_target_read)
 
-    with pytest.raises(error_type, match="target read failed"):
-        links.detect(case.root, case.documents("README.md"))
+    assert links.detect(case.root, case.documents("README.md")) == ()
+    assert [record.getMessage() for record in caplog.records if record.name == links.__name__] == [
+        f"DS101 skipped the anchor check for linked file {target}: cannot read it (target read failed)"
+    ]
 
 
 def test_findings_preserve_supplied_document_and_link_order(asset_case: Callable[[str, str], AssetCase]):

@@ -28,11 +28,14 @@ Mitigations implemented here (``docs/security/threat-model-0007-extensions-2026-
 * **M23** -- array order is kept; first match wins.
 """
 
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final, Optional
 
 from docsentinel.config import Config, validate_telemetry_domains, validate_telemetry_extensions
+
+logger = logging.getLogger(__name__)
 
 #: Domain of a document no ``telemetry_domains`` entry matches, and of every document
 #: while ``builtin:domain`` is not loaded. Re-exported as
@@ -174,7 +177,9 @@ def _build(config: Config) -> DomainTable:
     extensions = validate_telemetry_extensions(config.telemetry_extensions)
     pairs = validate_telemetry_domains(config.telemetry_domains)
     entries = tuple((tuple(glob.split("/")), glob, domain) for glob, domain in pairs)
-    return DomainTable(EXTENSION_SPEC in extensions, entries)
+    enabled = EXTENSION_SPEC in extensions
+    logger.debug("domain table built: %d entries, %s %s", len(entries), EXTENSION_SPEC, "on" if enabled else "off")
+    return DomainTable(enabled, entries)
 
 
 #: The last ``(config, table)`` built: a strong reference, so ``is`` identifies it.

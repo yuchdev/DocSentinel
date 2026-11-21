@@ -32,12 +32,16 @@ registration gated: registration and engine wiring land together with the
 committed ``tests/assets/ds105/*`` fixtures (Task 02), never before them.
 """
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 from docsentinel import models, rules
 from docsentinel.config import Config
+from docsentinel.log import safe
 from docsentinel.markdown_blocks import Heading, MarkdownBlockIndex, scan_markdown, split_physical_lines
+
+logger = logging.getLogger(__name__)
 
 #: Stable metadata for ``DS105``, registered as a ``fast``-profile rule alongside
 #: its committed ``tests/assets/ds105/*`` fixtures (Task 02).
@@ -225,12 +229,23 @@ def detect(
     :returns: Findings across all documents in document then source order.
     """
     settings = config if config is not None else Config()
+    logger.debug(
+        "DS105 checking %d document(s): heading_level_policy=%s, first_heading_level=%s, multiple_h1_policy=%s, setext_heading_support=%s",
+        len(documents),
+        safe(settings.heading_level_policy),
+        safe(settings.first_heading_level),
+        safe(settings.multiple_h1_policy),
+        safe(settings.setext_heading_support),
+    )
     findings: list[models.Finding] = []
     for document in documents:
         if not document.path.endswith(".md"):
+            logger.debug("DS105 skipped %s: not a Markdown document", safe(document.path))
             continue
         text = _read_text(root / document.path)
-        findings.extend(check_text(text, document.path, settings))
+        document_findings = check_text(text, document.path, settings)
+        logger.debug("DS105 checked %s: %d finding(s)", safe(document.path), len(document_findings))
+        findings.extend(document_findings)
     return tuple(findings)
 
 

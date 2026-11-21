@@ -11,6 +11,9 @@ are in `assets/`.
 | [0001](0001-config-loading-via-layered-settings.md) *(example - delete once you have a real ADR)* | Config Loading via Layered pydantic-settings Sources | Accepted | 2026-01-15 |
 | [0002](0002-fault-telemetry-event-emission.md) | Fault-Telemetry Event Emission via a Written Contract and Pluggable Sinks | Accepted | 2026-10-26 |
 | [0003](0003-template-driven-reporting-on-telemetry.md) | Template-Driven Reporting Built on a Telemetry Package | Proposed | 2026-10-30 |
+| [0004](0004-reference-scope-and-at-document-references.md) | Reference Scope and @-Document References | Accepted | 2026-11-14 |
+| [0005](0005-layered-configuration-user-settings-json.md) | Layered Configuration: User Settings JSON under Project TOML | Accepted | 2026-11-17 |
+| [0006](0006-invoker-include-exclude-and-directory-selectors.md) | Invoker Include/Exclude and Directory Selectors | Accepted | 2026-11-18 |
 
 ## Example ADR (delete before this project ships)
 

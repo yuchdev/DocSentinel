@@ -1,6 +1,6 @@
 # Finding Types — the DocSentinel finding standard
 
-**Status:** Proposed (2026-11-11), pending owner sign-off.
+**Status:** Partly implemented (2026-11-13). The §3 text layout ships in `text.json`. The §4 type labels and the `value`/`detail` split are still Proposed; until a rule is migrated, its type is its rule title and its `message` stands in for `value`.
 **Scope:** every finding any rule emits: its type label, message shape, severity and
 fault class, and how the text report prints it.
 **Single source:** this document is the standard. `src/docsentinel/finding_types.py`
@@ -78,6 +78,7 @@ migration can be traced.
 
 | Rule | Type label | `value` | `detail` | Sev | Was |
 |---|---|---|---|---|---|
+| DS100 | `unreadable document` | reason: `not valid UTF-8`, `not a regular file` or `cannot read it (<OS error>)` | — | error | none (new; the document was skipped with a log warning only) |
 | DS101 | `dangling link` | link target | — | error | `dangling link -> T` |
 | DS101 | `dangling anchor` | `#anchor` or `file#anchor` | — | error | `missing anchor 'a' in F` |
 | DS102 | `stray html comment` | comment start, at most 80 chars | — | warning | `stray HTML comment: '…'` |
@@ -116,6 +117,7 @@ migration can be traced.
 | DS117 | `malformed table alignment` | marker | — | warning | `table delimiter row has a malformed alignment marker: 'x'` |
 | DS118 opt | `file naming violation` | file name | `<style>; suggested rename 'x'` | warning | `file name 'X' does not match the kebab naming policy; …` |
 | DS118 opt | `directory naming violation` | directory name | `<style>; suggested rename 'x'` | warning | `directory name 'X' does not match …` |
+| DS124 | `dangling document mention` | the `@` mention as written, at most 200 chars | — | warning | none (new rule; message `dangling @-reference -> @M`) |
 
 ### Standard profile
 
@@ -145,5 +147,9 @@ migration can be traced.
 
 ## 6. Changelog
 
+- 2026-11-14: Added DS100 `unreadable document` (message `unreadable document: <reason>`). The
+  engine emits it, in every profile, for a discovered document it cannot read or decode;
+  the document stays in the inventory and no other rule checks it.
+- 2026-11-13: §3 text layout implemented (`line` nodes gained `"append": true`). DS102 now sets `value`.
 - 2026-11-11: Proposed. It replaces free-form messages; only DS101–DS103 set `type`
   before this.

@@ -58,12 +58,14 @@ this module, alongside its committed ``tests/assets/ds117/*`` fixtures (Story 08
 Task 02). It carries no ``opt_in_option``, so it is evaluated by default.
 """
 
+import logging
 import re
 from pathlib import Path
 from typing import Optional
 
 from docsentinel import models, rules
 from docsentinel.config import Config
+from docsentinel.log import safe
 from docsentinel.markdown_blocks import (
     MarkdownBlockIndex,
     backtick_runs_by_length,
@@ -71,6 +73,8 @@ from docsentinel.markdown_blocks import (
     scan_markdown,
     split_physical_lines,
 )
+
+logger = logging.getLogger(__name__)
 
 #: Stable metadata for ``DS117``, registered as an always-active ``fast``-profile
 #: rule alongside its committed ``tests/assets/ds117/*`` fixtures (Story 08.0 Task 02).
@@ -412,12 +416,30 @@ def detect(
     :returns: Findings across all documents in document then source order.
     """
     settings = config if config is not None else Config()
+    logger.debug(
+        "DS117 checking %d document(s): table_enable=%s, table_dialect=%s, table_strict_cells=%s",
+        len(documents),
+        safe(settings.table_enable),
+        safe(settings.table_dialect),
+        safe(settings.table_strict_cells),
+    )
+    if not settings.table_enable:
+        logger.debug("DS117 is off: table_enable=false")
+    elif settings.table_dialect != _SUPPORTED_DIALECT:
+        logger.warning(
+            "DS117 is not checked: table_dialect=%s is not supported (only '%s')",
+            safe(settings.table_dialect),
+            _SUPPORTED_DIALECT,
+        )
     findings: list[models.Finding] = []
     for document in documents:
         if not document.path.endswith(".md"):
+            logger.debug("DS117 skipped %s: not a Markdown document", safe(document.path))
             continue
         text = _read_text(root / document.path)
-        findings.extend(check_text(text, document.path, settings))
+        document_findings = check_text(text, document.path, settings)
+        logger.debug("DS117 checked %s: %d finding(s)", safe(document.path), len(document_findings))
+        findings.extend(document_findings)
     return tuple(findings)
 
 

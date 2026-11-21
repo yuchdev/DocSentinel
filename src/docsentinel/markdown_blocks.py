@@ -23,6 +23,7 @@ conformance).
 import bisect
 import enum
 import html as _html
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -42,6 +43,7 @@ __all__ = [
     "Image",
     "HtmlAnchor",
     "TableRow",
+    "AtReference",
     "MarkdownBlockIndex",
     "ReferenceStatus",
     "ResolvedReference",
@@ -51,6 +53,11 @@ __all__ = [
     "normalize_label",
     "resolve_local_reference",
 ]
+
+#: Module logger. The scanner is a per-character hot path called once per detector per
+#: document, so it deliberately emits nothing (docs/specs/logging.md section 4); the
+#: detectors log per document instead.
+logger = logging.getLogger(__name__)
 
 _LINE_SPLIT = re.compile(r"\r\n|\r|\n")
 _FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
@@ -81,6 +88,24 @@ _REF_DEF_RE = re.compile(r"^ {0,3}(?:>\s?)*\[([^\]]+)\]:\s*(\S+)")
 _DELIM_CELL_RE = re.compile(r"^:?-+:?$")
 _SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 _WINDOWS_RE = re.compile(r"^[A-Za-z]:[\\/]|^\\\\")
+
+# ``@``-mention grammar (Milestone 0009 Story 01.0, threat-model amendment A2).
+# Every class is spelled out as ASCII so recognition never depends on Unicode
+# ``str.isalnum``/``str.isspace`` tables (threat model M19).
+_ASCII_LETTERS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+_ASCII_DIGITS = frozenset("0123456789")
+#: Characters a path token is made of, besides the two-character escaped space.
+_AT_TOKEN_CHARS = _ASCII_LETTERS | _ASCII_DIGITS | frozenset("._~+-/")
+#: Characters after which an ``@`` may start a prose mention (also: line start).
+_AT_BOUNDARY_CHARS = frozenset(" \t([\"'")
+#: Trailing punctuation stripped from a recognised token.
+_AT_TRAILING_PUNCTUATION = ".,;:!?"
+#: The escaped space (backslash, space): the only escape the token admits.
+_AT_ESCAPED_SPACE = "\\ "
+#: Maximum raw token length as written, each escaped space counting as two.
+AT_TOKEN_MAX_CHARS = 1024
+#: Characters of an HTML tag name after its first letter.
+_TAG_NAME_CHARS = _ASCII_LETTERS | _ASCII_DIGITS | frozenset("-")
 
 
 @dataclass(frozen=True)
@@ -292,6 +317,41 @@ class TableRow:
 
 
 @dataclass(frozen=True)
+class AtReference:
+    """An ``@``-document mention recognised in prose or as a whole inline code span.
+
+    The scanner records every syntactic mention whose last path component has an
+    extension containing a letter, whatever that extension is; filtering by
+    ``at_reference_extensions`` is the consumer's job (``DS124`` checks that the
+    mention resolves, ``DS116`` checks that it stays inside the scan root). The
+    grammar is the one of Milestone 0009 Story 01.0 "At-reference grammar",
+    including threat-model amendment A2. Nothing here touches the filesystem.
+
+    :ivar target: The path token without the ``@``, trailing punctuation stripped
+        and each two-character backslash-space sequence replaced by one space.
+        It holds only ASCII letters, digits, ``._~+-/`` and U+0020.
+    :ivar raw: ``"@"`` plus the token exactly as written (escapes kept, stripped
+        punctuation excluded), for a finding ``value``. At most 1,025 characters.
+    :ivar kind: ``"home"`` (starts with ``~/``), ``"absolute"`` (starts with
+        ``/``) or ``"relative"`` (everything else). Only ``relative`` mentions are
+        ever resolved by a consumer.
+    :ivar in_code_span: Whether the mention is the code-span form
+        (`` `@path` ``) rather than the prose form.
+    :ivar span: For the prose form, the range from the ``@`` through the end of
+        :attr:`raw`. For the code-span form, the very same span as the
+        :class:`InlineCode` record (delimiters included), so ``DS116`` can match
+        the two by equality; the ``@`` then sits after the opening backticks and
+        any trimmed leading spaces.
+    """
+
+    target: str
+    raw: str
+    kind: str
+    in_code_span: bool
+    span: MarkdownSpan
+
+
+@dataclass(frozen=True)
 class MarkdownBlockIndex:
     """An immutable index of tokens scanned from one Markdown document.
 
@@ -311,6 +371,9 @@ class MarkdownBlockIndex:
     :ivar explicit_anchors: Explicit ``<a>`` anchors with attribute kind, raw
         spelling, and source position, extracted only from non-fenced,
         non-comment, non-inline-code text.
+    :ivar at_references: ``@``-document mentions (prose and code-span forms) in
+        source order. Additive and defaulted, so consumers that predate it are
+        unchanged; ``DS124`` and ``DS116`` read it.
     """
 
     path: str
@@ -325,6 +388,7 @@ class MarkdownBlockIndex:
     table_rows: tuple[TableRow, ...] = ()
     html_anchors: tuple[str, ...] = field(default=())
     explicit_anchors: tuple[HtmlAnchor, ...] = ()
+    at_references: tuple[AtReference, ...] = ()
 
     def anchor_names(self) -> frozenset[str]:
         """Return heading slugs and explicit HTML anchors for this document.
@@ -877,6 +941,234 @@ def _mask_line(
     return (content if chars is None else "".join(chars)), comment_cursor
 
 
+def _find_html_tags(content: str) -> list[tuple[int, int]]:
+    """Return the half-open ranges of raw HTML open and closing tags on one line.
+
+    A tag is ``<`` (or ``</``), an ASCII letter, more letters, digits or hyphens,
+    then whitespace, ``/`` or ``>``, through the next ``>`` on the line. A ``<``
+    with no later ``>`` closes nothing, comments (``<!--``), declarations and
+    autolinks such as ``<https://x>`` are not tags. Mentions inside a tag are not
+    recognised (Story 01.0 grammar). The scan is linear: the ``>`` closer is
+    tracked with a forward-only cursor and every tag-name character is examined
+    once.
+
+    :param content: One masked line (inline code and comments already blanked).
+    :returns: ``(start, end)`` ranges in ascending, non-overlapping order.
+    """
+    tags: list[tuple[int, int]] = []
+    length = len(content)
+    gt_cursor = -1
+    index = content.find("<")
+    while index != -1:
+        cursor = index + 1
+        if cursor < length and content[cursor] == "/":
+            cursor += 1
+        if cursor < length and content[cursor] in _ASCII_LETTERS:
+            cursor += 1
+            while cursor < length and content[cursor] in _TAG_NAME_CHARS:
+                cursor += 1
+            if cursor >= length or content[cursor] in " \t/>":
+                if gt_cursor < cursor:
+                    gt_cursor = content.find(">", cursor)
+                if gt_cursor == -1:
+                    # No ``>`` remains, so no later tag on this line can close.
+                    break
+                tags.append((index, gt_cursor + 1))
+                index = content.find("<", gt_cursor + 1)
+                continue
+        index = content.find("<", index + 1)
+    return tags
+
+
+def _merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Return the sorted union of half-open ranges as disjoint ranges.
+
+    Nested inline links (``[[a](b)](c)``) produce overlapping ranges; merging
+    them once keeps the per-``@`` exclusion check a forward-only pointer walk
+    instead of a scan over every range.
+
+    :param ranges: Half-open ``(start, end)`` ranges in any order.
+    :returns: Disjoint ranges in ascending order.
+    """
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(ranges):
+        if merged and start <= merged[-1][1]:
+            if end > merged[-1][1]:
+                merged[-1] = (merged[-1][0], end)
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _consume_at_token(content: str, start: int) -> int:
+    """Return the end of the path-token run that starts at ``start``.
+
+    The run is ASCII letters, digits and ``._~+-/`` plus the two-character escaped
+    space. A backslash followed by anything else (or by nothing) ends the run
+    before the backslash. Every character is examined once.
+
+    :param content: One line of text.
+    :param start: Offset just after the ``@``.
+    :returns: The exclusive end offset of the run (``start`` for an empty run).
+    """
+    length = len(content)
+    cursor = start
+    while cursor < length:
+        char = content[cursor]
+        if char in _AT_TOKEN_CHARS:
+            cursor += 1
+        elif char == "\\" and cursor + 1 < length and content[cursor + 1] == " ":
+            cursor += 2
+        else:
+            break
+    return cursor
+
+
+def _at_token(raw_token: str) -> Optional[tuple[str, str, str]]:
+    """Validate one consumed token run and return its mention fields.
+
+    Applies, in order: the 1,024-raw-character cap, the trailing-punctuation
+    strip, the leading/trailing escaped-space rejection (amendment A2), the
+    letter-bearing extension requirement on the last component, the literal
+    escaped-space decode (each backslash-space pair becomes one space, once; no
+    other decoding) and the ``kind`` classification.
+
+    :param raw_token: The run as written, without the ``@``.
+    :returns: ``(target, raw_without_at, kind)``, or ``None`` when the run is not
+        a mention.
+    """
+    if len(raw_token) > AT_TOKEN_MAX_CHARS:
+        return None
+    token = raw_token.rstrip(_AT_TRAILING_PUNCTUATION)
+    if not token or token.startswith(_AT_ESCAPED_SPACE) or token.endswith(_AT_ESCAPED_SPACE):
+        return None
+    target = token.replace(_AT_ESCAPED_SPACE, " ")
+    last_component = target.rpartition("/")[2]
+    dot = last_component.rfind(".")
+    # A leading dot names a hidden file, not an extension (``.bashrc``).
+    if dot <= 0 or not any(char in _ASCII_LETTERS for char in last_component[dot + 1 :]):
+        return None
+    if target.startswith("~/"):
+        kind = "home"
+    elif target.startswith("/"):
+        kind = "absolute"
+    else:
+        kind = "relative"
+    return target, token, kind
+
+
+def _find_prose_at_references(
+    content: str, masked: str, excluded: list[tuple[int, int]]
+) -> list[tuple[int, int, str, str, str]]:
+    """Find prose-form ``@``-mentions on one non-fenced line in a single pass.
+
+    An ``@`` starts a mention only at line start or after an ASCII space, tab,
+    ``(``, ``[``, ``"`` or ``'`` in the source line, and only when the masked line
+    still shows it (inline code and HTML comments are blanked there) and it lies in
+    no ``excluded`` range (inline link text and destination, reference labels, raw
+    HTML tags). A run over the cap is skipped as a whole and the scan resumes after
+    its end, so each character is examined a bounded number of times (threat model
+    M8). No regular expression is involved.
+
+    :param content: One line of source text.
+    :param masked: The same line with inline code and comments blanked.
+    :param excluded: Disjoint, ascending ``(start, end)`` ranges to skip.
+    :returns: ``(at_offset, end_offset, target, raw, kind)`` tuples in order;
+        ``raw`` includes the ``@``.
+    """
+    found: list[tuple[int, int, str, str, str]] = []
+    excluded_index = 0
+    excluded_count = len(excluded)
+    position = masked.find("@")
+    while position != -1:
+        resume = position + 1
+        if position == 0 or content[position - 1] in _AT_BOUNDARY_CHARS:
+            while excluded_index < excluded_count and excluded[excluded_index][1] <= position:
+                excluded_index += 1
+            inside = excluded_index < excluded_count and excluded[excluded_index][0] <= position
+            run_end = _consume_at_token(content, position + 1)
+            # Resume after the whole run whatever the outcome, so an over-long or
+            # rejected run is never rescanned from its next character.
+            resume = max(run_end, resume)
+            if not inside and run_end > position + 1:
+                fields = _at_token(content[position + 1 : run_end])
+                if fields is not None:
+                    target, token, kind = fields
+                    found.append((position, position + 1 + len(token), target, "@" + token, kind))
+        position = masked.find("@", resume)
+    return found
+
+
+def _find_shortcut_labels(content: str) -> list[tuple[int, int, str]]:
+    """Find bracketed texts that could be shortcut reference labels and hold an ``@``.
+
+    A candidate is ``[text]`` with a non-empty ``text`` that holds no ``[`` or ``]``
+    and is not followed by ``(`` or ``[`` (so it is neither an inline link nor the
+    first bracket of a full or collapsed reference use). Whether it really is a
+    shortcut reference depends on a matching definition anywhere in the document,
+    which :func:`scan_markdown` checks once every definition is known. The scan is
+    linear: the closing bracket found for one opener is reused for every nested
+    opener before it, so no stretch of the line is searched twice.
+
+    :param content: One line of text without its terminator.
+    :returns: ``(start, end, text)`` tuples in source order; ``start`` is the offset
+        of ``[`` and ``end`` the exclusive offset after ``]``.
+    """
+    found: list[tuple[int, int, str]] = []
+    length = len(content)
+    opener = content.find("[")
+    while opener != -1:
+        close = content.find("]", opener + 1)
+        if close == -1:
+            break
+        nested = content.find("[", opener + 1, close)
+        while nested != -1:
+            opener = nested
+            nested = content.find("[", opener + 1, close)
+        inner = content[opener + 1 : close]
+        if inner and "@" in inner and not (close + 1 < length and content[close + 1] in "(["):
+            found.append((opener, close + 1, inner))
+        opener = content.find("[", close + 1)
+    return found
+
+
+def _offset_in_ranges(starts: list[int], ranges: list[tuple[int, int]], offset: int) -> bool:
+    """Return whether ``offset`` falls in one of the sorted, disjoint half-open ``ranges``.
+
+    :param starts: The start offset of each range, in the same order as ``ranges``.
+    :param ranges: Sorted, non-overlapping ``(start, end)`` ranges.
+    :param offset: A character offset into the document.
+    :returns: ``True`` when some range contains ``offset``.
+    """
+    position = bisect.bisect_right(starts, offset) - 1
+    return position >= 0 and offset < ranges[position][1]
+
+
+def _code_span_at_reference(inner: str) -> Optional[tuple[str, str, str]]:
+    """Return the mention fields when an inline code span is exactly one mention.
+
+    The span text is trimmed of ASCII spaces and tabs; what remains must be ``@``
+    plus one path-token run that reaches its end (so no unescaped whitespace or
+    other character), then passes the same checks as the prose form.
+
+    :param inner: The code span's inner text.
+    :returns: ``(target, raw, kind)`` with ``raw`` including the ``@``, or ``None``.
+    """
+    trimmed = inner.strip(" \t")
+    if len(trimmed) < 2 or trimmed[0] != "@":
+        return None
+    if _consume_at_token(trimmed, 1) != len(trimmed):
+        return None
+    fields = _at_token(trimmed[1:])
+    if fields is None:
+        return None
+    target, token, kind = fields
+    if len(token) != len(trimmed) - 1:
+        # Stripped trailing punctuation means the token did not consume the span.
+        return None
+    return target, "@" + token, kind
+
+
 def _split_table_cells(content: str) -> tuple[str, ...]:
     """Split a pipe-table row into trimmed cells, honoring escaped pipes.
 
@@ -1147,7 +1439,9 @@ def scan_markdown(text: str, path: str = "") -> MarkdownBlockIndex:
 
     The scan is single-origin and deterministic: every token carries character
     offsets and one-based line numbers into ``text`` exactly as supplied, and
-    no file, network, or subprocess I/O occurs.
+    no file, network, or subprocess I/O occurs. ``@``-document mentions are
+    recognised over each non-fenced line's masked text (see :class:`AtReference`)
+    for the ``DS124`` and ``DS116`` consumers, without logging or config access.
 
     :param text: The Markdown source text.
     :param path: POSIX-style relative path recorded in token spans.
@@ -1159,6 +1453,7 @@ def scan_markdown(text: str, path: str = "") -> MarkdownBlockIndex:
     # anchor extraction on every line they cover, including multi-line comments.
     comments = _scan_comments(path, text, lines, fenced)
     comment_ranges = [(comment.span.start_offset, comment.span.end_offset) for comment in comments]
+    comment_starts = [comment_start for comment_start, _ in comment_ranges]
 
     headings: list[Heading] = []
     inline_code: list[InlineCode] = []
@@ -1168,6 +1463,9 @@ def scan_markdown(text: str, path: str = "") -> MarkdownBlockIndex:
     images: list[Image] = []
     html_anchors: list[str] = []
     explicit_anchors: list[HtmlAnchor] = []
+    at_references: list[AtReference] = []
+    # Bracketed ``@`` texts that are shortcut reference labels if a definition matches.
+    shortcut_candidates: list[tuple[int, int, str]] = []
     seen_slugs: dict[str, int] = {}
     previous_paragraph: Optional[tuple[int, str, int, int]] = None
     comment_cursor = 0
@@ -1246,12 +1544,29 @@ def scan_markdown(text: str, path: str = "") -> MarkdownBlockIndex:
         else:
             previous_paragraph = (line_number, content, start, end)
 
+        # ``@``-mentions found on this line, as ``(start_offset, AtReference)`` so the
+        # code-span and prose forms can be merged into source order below.
+        line_mentions: list[tuple[int, AtReference]] = []
         for code_start, code_end, backticks, inner in inline_spans:
             span = MarkdownSpan(path, line_number, line_number, start + code_start, start + code_end)
             inline_code.append(InlineCode(text=inner, backticks=backticks, span=span))
+            # A code span inside an HTML comment is not rendered, so it is no mention.
+            if "@" in inner and not _offset_in_ranges(comment_starts, comment_ranges, start + code_start):
+                mention = _code_span_at_reference(inner)
+                if mention is not None:
+                    target, raw, kind = mention
+                    line_mentions.append(
+                        (code_start, AtReference(target=target, raw=raw, kind=kind, in_code_span=True, span=span))
+                    )
 
+        # Ranges of this line where a prose mention is never recognised: inline link
+        # and image spans (text and destination), reference labels, raw HTML tags.
+        excluded: list[tuple[int, int]] = []
         definition = _REF_DEF_RE.match(content)
         if definition:
+            excluded.append((definition.start(1) - 1, definition.end(1) + 1))
+            # The definition target is a link destination (DS101/DS113 own it), never a mention.
+            excluded.append((definition.start(2), definition.end(2)))
             span = MarkdownSpan(path, line_number, line_number, start, end)
             reference_definitions.append(
                 ReferenceDefinition(
@@ -1265,6 +1580,7 @@ def scan_markdown(text: str, path: str = "") -> MarkdownBlockIndex:
             for link_start, link_end, is_image, link_text, raw_destination in _find_inline_links(content):
                 raw_target = _strip_angle_brackets(raw_destination)
                 path_component, _, fragment = raw_target.partition("#")
+                excluded.append((link_start, link_end))
                 span = MarkdownSpan(path, line_number, line_number, start + link_start, start + link_end)
                 if is_image:
                     images.append(Image(raw_target=raw_target, alt=link_text, html=False, span=span))
@@ -1284,6 +1600,48 @@ def scan_markdown(text: str, path: str = "") -> MarkdownBlockIndex:
                 raw_label = second_label if second_label else first_label
                 span = MarkdownSpan(path, line_number, line_number, start + use_start, start + use_end)
                 reference_uses.append(ReferenceUse(label=normalize_label(raw_label), raw_label=raw_label, span=span))
+                # The label is the second bracket of a full use and the first of a
+                # collapsed ``[label][]`` use (whose empty second bracket is included).
+                label_start = use_start + len(first_label) + 2 if second_label else use_start
+                excluded.append((label_start, use_end))
+            if "@" in content:
+                shortcut_candidates.extend(
+                    (start + label_start, start + label_end, normalize_label(label))
+                    for label_start, label_end, label in _find_shortcut_labels(content)
+                )
+
+        if line_mentions or "@" in masked:
+            excluded.extend(_find_html_tags(masked))
+            merged = _merge_ranges(excluded)
+            if line_mentions and merged:
+                # The code-span form obeys the same exclusions as the prose form: a code
+                # span in link text, a reference label or a raw HTML tag is no mention.
+                merged_starts = [low for low, _ in merged]
+                line_mentions = [
+                    item for item in line_mentions if not _offset_in_ranges(merged_starts, merged, item[0])
+                ]
+            if "@" in masked:
+                for at_start, at_end, target, raw, kind in _find_prose_at_references(content, masked, merged):
+                    span = MarkdownSpan(path, line_number, line_number, start + at_start, start + at_end)
+                    line_mentions.append(
+                        (at_start, AtReference(target=target, raw=raw, kind=kind, in_code_span=False, span=span))
+                    )
+        if line_mentions:
+            line_mentions.sort(key=lambda item: item[0])
+            at_references.extend(mention for _, mention in line_mentions)
+
+    # A shortcut reference ``[label]`` whose label is defined in this document is a
+    # link label (DS108/DS101 own it), so a mention inside it is dropped. Definitions
+    # may follow their use, which is why this runs after every line is scanned.
+    defined_labels = {definition.label for definition in reference_definitions}
+    label_ranges = [(low, high) for low, high, label in shortcut_candidates if label in defined_labels]
+    if label_ranges and at_references:
+        label_starts = [low for low, _ in label_ranges]
+        at_references = [
+            mention
+            for mention in at_references
+            if not _offset_in_ranges(label_starts, label_ranges, mention.span.start_offset)
+        ]
 
     table_rows = _scan_tables(path, lines, fenced)
 
@@ -1300,6 +1658,7 @@ def scan_markdown(text: str, path: str = "") -> MarkdownBlockIndex:
         table_rows=table_rows,
         html_anchors=tuple(html_anchors),
         explicit_anchors=tuple(explicit_anchors),
+        at_references=tuple(at_references),
     )
 
 

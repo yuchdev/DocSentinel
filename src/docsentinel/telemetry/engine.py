@@ -86,6 +86,7 @@ Security contract (``docs/security/threat-model-0007-template-engine-2026-10-31.
 from __future__ import annotations
 
 import json
+import logging
 import math
 from collections.abc import Mapping, Sequence
 from json.encoder import encode_basestring_ascii
@@ -131,6 +132,11 @@ from docsentinel.telemetry.loader import (
     TextOutput,
     VarRef,
 )
+
+logger = logging.getLogger(__name__)
+
+#: Characters of a template name, type or origin kept in the per-render log line.
+_LOG_NAME_LIMIT: Final[int] = 64
 
 #: Cap on rendered characters (M13). Rendering stops with an error once passed.
 MAX_OUTPUT_CHARS: Final[int] = 64 * 1024 * 1024
@@ -721,6 +727,14 @@ class _Renderer:
         self._sizes: dict[int, tuple[JsonValue, int]] = {}
         self._defaults: dict[int, tuple[JsonVar, JsonValue, int]] = {}
 
+    @property
+    def steps_used(self) -> int:
+        """Return the render steps charged so far (for the per-render log line).
+
+        :returns: The step count of this render's budget.
+        """
+        return self._budget.steps
+
     def _bounded_size(self, value: JsonValue) -> int:
         """Return :func:`_size` of ``value`` against the remaining budget.
 
@@ -957,7 +971,11 @@ class _Renderer:
             step()
             if isinstance(node, LineNode):
                 if self._holds(node.when):
-                    self._emit(lines, self._interpolate(node.text))
+                    text = self._interpolate(node.text)
+                    if node.append and lines.has_line():
+                        lines.extend(text)
+                    else:
+                        self._emit(lines, text)
             elif isinstance(node, GroupNode):
                 if self._holds(node.when):
                     self._nodes(node.body, lines)
@@ -1150,6 +1168,32 @@ def _check_extensions(
     return MappingProxyType({})
 
 
+def _rendered(template: Template, renderer: _Renderer, output: str) -> str:
+    """Log one ``DEBUG`` line for a finished render and return its output unchanged.
+
+    Logged once per render, never inside the node loops, so it costs no render step.
+    The engine may import only the stdlib and telemetry siblings, so instead of
+    ``docsentinel.log.safe`` the name is capped and passed through the same
+    ``neutralize`` table (a validated name is already plain ASCII; this guards a
+    hand-built :class:`Template`).
+
+    :param template: The rendered template.
+    :param renderer: The renderer that produced ``output``; its budget holds the steps used.
+    :param output: The rendered report.
+    :returns: ``output``.
+    """
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "rendered template %s (%s, origin %s): %d characters, %d steps",
+            neutralize(str(template.name)[:_LOG_NAME_LIMIT]),
+            neutralize(str(template.type)[:_LOG_NAME_LIMIT]),
+            neutralize(str(template.origin)[:_LOG_NAME_LIMIT]),
+            len(output),
+            renderer.steps_used,
+        )
+    return output
+
+
 def render_template(
     template: Template,
     context: Mapping[str, JsonValue],
@@ -1181,9 +1225,9 @@ def render_template(
         _check_context(context)
         renderer = _Renderer(MappingProxyType(context), extension_filters)
         if template.type == TYPE_TEXT:
-            return renderer.text(template)
+            return _rendered(template, renderer, renderer.text(template))
         if template.type == TYPE_JSON:
-            return renderer.json(template)
+            return _rendered(template, renderer, renderer.json(template))
     except RecursionError:
         raise TemplateError("template nesting is too deep to render") from None
     except ExtensionError:

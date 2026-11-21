@@ -2,38 +2,93 @@
   "template_version": 1,
   "name": "text",
   "type": "text",
-  "description": "Human-readable report: findings directly under their document, clean documents hidden unless show_clean_documents is set.",
+  "description": "Human-readable report: each document path once, its findings beneath as '<severity> <rule> <type>, line N, col M: <value>', clean documents hidden unless show_clean_documents is set, then a Blocking findings recap that names the path.",
   "requires_extensions": [],
-  "output": { "join": "\n", "trailing_newline": false, "sink": "terminal" },
+  "output": {
+    "join": "\n",
+    "trailing_newline": false,
+    "sink": "terminal"
+  },
   "lines": [
-    { "type": "line", "text": "Schema version: {schema_version}", "variables_used": ["schema_version"] },
-    { "type": "line", "text": "Profile: {profile}", "variables_used": ["profile"] },
+    {
+      "type": "line",
+      "text": "Schema version: {schema_version}",
+      "variables_used": [
+        "schema_version"
+      ]
+    },
+    {
+      "type": "line",
+      "text": "Profile: {profile}",
+      "variables_used": [
+        "profile"
+      ]
+    },
     {
       "type": "line",
       "text": "Documents: {documents_count} ({documents_with_problems_count} with problems)",
-      "variables_used": ["documents_count", "documents_with_problems_count"]
+      "variables_used": [
+        "documents_count",
+        "documents_with_problems_count"
+      ]
     },
-    { "type": "line", "text": "Enabled rules: {enabled_rules|json}", "variables_used": ["enabled_rules"] },
-    { "type": "line", "text": "{notice}", "variables_used": ["notice"] },
-    { "type": "line", "when": { "var": "advisory", "truthy": true }, "text": "{advisory}", "variables_used": ["advisory"] },
+    {
+      "type": "line",
+      "text": "Enabled rules: {enabled_rules|json}",
+      "variables_used": [
+        "enabled_rules"
+      ]
+    },
+    {
+      "type": "line",
+      "text": "{notice}",
+      "variables_used": [
+        "notice"
+      ]
+    },
+    {
+      "type": "line",
+      "when": {
+        "var": "advisory",
+        "truthy": true
+      },
+      "text": "{advisory}",
+      "variables_used": [
+        "advisory"
+      ]
+    },
     {
       "type": "loop",
-      "when": { "var": "show_clean_documents", "falsy": true },
+      "when": {
+        "var": "show_clean_documents",
+        "falsy": true
+      },
       "over": "documents_with_problems",
       "as": "doc",
       "placement": "block",
       "body": [
         {
           "type": "line",
-          "when": { "var": "doc.bytes", "ne": null },
+          "when": {
+            "var": "doc.bytes",
+            "ne": null
+          },
           "text": "{doc.path|neutralize} ({doc.bytes} bytes)",
-          "variables_used": ["doc.path", "doc.bytes"]
+          "variables_used": [
+            "doc.path",
+            "doc.bytes"
+          ]
         },
         {
           "type": "line",
-          "when": { "var": "doc.bytes", "eq": null },
+          "when": {
+            "var": "doc.bytes",
+            "eq": null
+          },
           "text": "{doc.path|neutralize}",
-          "variables_used": ["doc.path"]
+          "variables_used": [
+            "doc.path"
+          ]
         },
         {
           "type": "loop",
@@ -43,26 +98,80 @@
           "body": [
             {
               "type": "line",
-              "when": { "var": "p.line", "eq": null },
-              "text": "  {p.severity}: {doc.path|neutralize}: {p.message|neutralize}",
-              "variables_used": ["p.severity", "doc.path", "p.message"]
+              "when": {
+                "var": "p.severity",
+                "eq": "error"
+              },
+              "text": "  error   {p.rule} {p.type|default(\"finding\")}",
+              "variables_used": [
+                "p.rule",
+                "p.type"
+              ]
+            },
+            {
+              "type": "line",
+              "when": {
+                "var": "p.severity",
+                "ne": "error"
+              },
+              "text": "  {p.severity} {p.rule} {p.type|default(\"finding\")}",
+              "variables_used": [
+                "p.severity",
+                "p.rule",
+                "p.type"
+              ]
             },
             {
               "type": "group",
-              "when": { "var": "p.line", "ne": null },
+              "when": {
+                "var": "p.line",
+                "ne": null
+              },
               "body": [
                 {
                   "type": "line",
-                  "when": { "var": "p.column", "eq": null },
-                  "text": "  {p.severity}: {doc.path|neutralize}:{p.line}: {p.message|neutralize}",
-                  "variables_used": ["p.severity", "doc.path", "p.line", "p.message"]
+                  "append": true,
+                  "text": ", line {p.line}",
+                  "variables_used": [
+                    "p.line"
+                  ]
                 },
                 {
                   "type": "line",
-                  "when": { "var": "p.column", "ne": null },
-                  "text": "  {p.severity}: {doc.path|neutralize}:{p.line}:{p.column}: {p.message|neutralize}",
-                  "variables_used": ["p.severity", "doc.path", "p.line", "p.column", "p.message"]
+                  "when": {
+                    "var": "p.column",
+                    "ne": null
+                  },
+                  "append": true,
+                  "text": ", col {p.column}",
+                  "variables_used": [
+                    "p.column"
+                  ]
                 }
+              ]
+            },
+            {
+              "type": "line",
+              "when": {
+                "var": "p.value",
+                "ne": null
+              },
+              "append": true,
+              "text": ": {p.value|neutralize}",
+              "variables_used": [
+                "p.value"
+              ]
+            },
+            {
+              "type": "line",
+              "when": {
+                "var": "p.value",
+                "eq": null
+              },
+              "append": true,
+              "text": ": {p.message|neutralize}",
+              "variables_used": [
+                "p.message"
               ]
             }
           ]
@@ -71,22 +180,36 @@
     },
     {
       "type": "loop",
-      "when": { "var": "show_clean_documents", "truthy": true },
+      "when": {
+        "var": "show_clean_documents",
+        "truthy": true
+      },
       "over": "documents",
       "as": "doc",
       "placement": "block",
       "body": [
         {
           "type": "line",
-          "when": { "var": "doc.bytes", "ne": null },
+          "when": {
+            "var": "doc.bytes",
+            "ne": null
+          },
           "text": "{doc.path|neutralize} ({doc.bytes} bytes)",
-          "variables_used": ["doc.path", "doc.bytes"]
+          "variables_used": [
+            "doc.path",
+            "doc.bytes"
+          ]
         },
         {
           "type": "line",
-          "when": { "var": "doc.bytes", "eq": null },
+          "when": {
+            "var": "doc.bytes",
+            "eq": null
+          },
           "text": "{doc.path|neutralize}",
-          "variables_used": ["doc.path"]
+          "variables_used": [
+            "doc.path"
+          ]
         },
         {
           "type": "loop",
@@ -96,26 +219,80 @@
           "body": [
             {
               "type": "line",
-              "when": { "var": "p.line", "eq": null },
-              "text": "  {p.severity}: {doc.path|neutralize}: {p.message|neutralize}",
-              "variables_used": ["p.severity", "doc.path", "p.message"]
+              "when": {
+                "var": "p.severity",
+                "eq": "error"
+              },
+              "text": "  error   {p.rule} {p.type|default(\"finding\")}",
+              "variables_used": [
+                "p.rule",
+                "p.type"
+              ]
+            },
+            {
+              "type": "line",
+              "when": {
+                "var": "p.severity",
+                "ne": "error"
+              },
+              "text": "  {p.severity} {p.rule} {p.type|default(\"finding\")}",
+              "variables_used": [
+                "p.severity",
+                "p.rule",
+                "p.type"
+              ]
             },
             {
               "type": "group",
-              "when": { "var": "p.line", "ne": null },
+              "when": {
+                "var": "p.line",
+                "ne": null
+              },
               "body": [
                 {
                   "type": "line",
-                  "when": { "var": "p.column", "eq": null },
-                  "text": "  {p.severity}: {doc.path|neutralize}:{p.line}: {p.message|neutralize}",
-                  "variables_used": ["p.severity", "doc.path", "p.line", "p.message"]
+                  "append": true,
+                  "text": ", line {p.line}",
+                  "variables_used": [
+                    "p.line"
+                  ]
                 },
                 {
                   "type": "line",
-                  "when": { "var": "p.column", "ne": null },
-                  "text": "  {p.severity}: {doc.path|neutralize}:{p.line}:{p.column}: {p.message|neutralize}",
-                  "variables_used": ["p.severity", "doc.path", "p.line", "p.column", "p.message"]
+                  "when": {
+                    "var": "p.column",
+                    "ne": null
+                  },
+                  "append": true,
+                  "text": ", col {p.column}",
+                  "variables_used": [
+                    "p.column"
+                  ]
                 }
+              ]
+            },
+            {
+              "type": "line",
+              "when": {
+                "var": "p.value",
+                "ne": null
+              },
+              "append": true,
+              "text": ": {p.value|neutralize}",
+              "variables_used": [
+                "p.value"
+              ]
+            },
+            {
+              "type": "line",
+              "when": {
+                "var": "p.value",
+                "eq": null
+              },
+              "append": true,
+              "text": ": {p.message|neutralize}",
+              "variables_used": [
+                "p.message"
               ]
             }
           ]
@@ -127,47 +304,122 @@
       "over": "pending",
       "as": "reason",
       "placement": "block",
-      "body": [{ "type": "line", "text": "Pending: {reason|neutralize}", "variables_used": ["reason"] }]
+      "body": [
+        {
+          "type": "line",
+          "text": "Pending: {reason|neutralize}",
+          "variables_used": [
+            "reason"
+          ]
+        }
+      ]
     },
     {
       "type": "line",
-      "when": { "var": "blocking_count", "gt": 0 },
+      "when": {
+        "var": "blocking_count",
+        "gt": 0
+      },
       "text": "Blocking findings: {blocking_count}",
-      "variables_used": ["blocking_count"]
+      "variables_used": [
+        "blocking_count"
+      ]
     },
     {
       "type": "loop",
-      "when": { "var": "blocking_count", "gt": 0 },
+      "when": {
+        "var": "blocking_count",
+        "gt": 0
+      },
       "over": "findings",
       "as": "p",
       "placement": "block",
       "body": [
         {
           "type": "group",
-          "when": { "var": "p.outcome", "eq": "rejected" },
+          "when": {
+            "var": "p.outcome",
+            "eq": "rejected"
+          },
           "body": [
             {
               "type": "line",
-              "when": { "var": "p.line", "eq": null },
-              "text": "  {p.severity}: {p.document_path|neutralize}: {p.message|neutralize}",
-              "variables_used": ["p.severity", "p.document_path", "p.message"]
+              "when": {
+                "var": "p.severity",
+                "eq": "error"
+              },
+              "text": "  error   {p.rule} {p.type|default(\"finding\")}: {p.document_path|neutralize}",
+              "variables_used": [
+                "p.rule",
+                "p.type",
+                "p.document_path"
+              ]
+            },
+            {
+              "type": "line",
+              "when": {
+                "var": "p.severity",
+                "ne": "error"
+              },
+              "text": "  {p.severity} {p.rule} {p.type|default(\"finding\")}: {p.document_path|neutralize}",
+              "variables_used": [
+                "p.severity",
+                "p.rule",
+                "p.type",
+                "p.document_path"
+              ]
             },
             {
               "type": "group",
-              "when": { "var": "p.line", "ne": null },
+              "when": {
+                "var": "p.line",
+                "ne": null
+              },
               "body": [
                 {
                   "type": "line",
-                  "when": { "var": "p.column", "eq": null },
-                  "text": "  {p.severity}: {p.document_path|neutralize}:{p.line}: {p.message|neutralize}",
-                  "variables_used": ["p.severity", "p.document_path", "p.line", "p.message"]
+                  "append": true,
+                  "text": ", line {p.line}",
+                  "variables_used": [
+                    "p.line"
+                  ]
                 },
                 {
                   "type": "line",
-                  "when": { "var": "p.column", "ne": null },
-                  "text": "  {p.severity}: {p.document_path|neutralize}:{p.line}:{p.column}: {p.message|neutralize}",
-                  "variables_used": ["p.severity", "p.document_path", "p.line", "p.column", "p.message"]
+                  "when": {
+                    "var": "p.column",
+                    "ne": null
+                  },
+                  "append": true,
+                  "text": ", col {p.column}",
+                  "variables_used": [
+                    "p.column"
+                  ]
                 }
+              ]
+            },
+            {
+              "type": "line",
+              "when": {
+                "var": "p.value",
+                "ne": null
+              },
+              "append": true,
+              "text": ": {p.value|neutralize}",
+              "variables_used": [
+                "p.value"
+              ]
+            },
+            {
+              "type": "line",
+              "when": {
+                "var": "p.value",
+                "eq": null
+              },
+              "append": true,
+              "text": ": {p.message|neutralize}",
+              "variables_used": [
+                "p.message"
               ]
             }
           ]

@@ -1,0 +1,58 @@
+@startuml scan-selection
+title Invoker include / exclude selection (as built, cli.py / engine.py / discovery.py)
+skinparam shadowing false
+skinparam sequenceMessageAlign left
+
+participant "CLI\ncli.py" as cli
+participant "engine.scan" as engine
+participant "discovery.py\ncheck_invoker_selector_shape,\nnormalize_invoker_selectors,\nselector_root_spellings,\ndiscover_with_stats" as disc
+
+== CLI early validation (_validate_selectors, scan and baseline) ==
+alt neither ~-~-include nor ~-~-exclude given
+  cli -> cli : nothing to validate
+else given
+  cli -> disc : check_invoker_selector_shape(include, exclude)
+  disc --> cli : ok or ConfigError
+  opt target is a directory
+    cli -> disc : selector_root_spellings(target, root as typed)\nnormalize_invoker_selectors(target, ..., root_spellings)
+    disc --> cli : result discarded, nothing logged\n(refused value: ConfigError)
+  end
+end
+cli -> cli : INFO "scan started"
+cli -> engine : scan(root, config=settings,\ninclude=, exclude=) (only when given)
+
+== engine.scan ==
+engine -> disc : check_invoker_selector_shape (every target)
+disc --> engine : ok or ConfigError
+alt single-file target
+  engine --> engine : WARNING "ignored for a single-file scan target"\nselectors ignored, file inventoried as is
+else directory target
+  engine -> disc : normalize_invoker_selectors(canonical root,\ninclude, exclude, root_spellings)
+  disc --> engine : include, exclude, unmatched_exclude\n(refused value: ConfigError)
+  engine -> engine : merge: include replaces, exclude appended\nto configured exclude, de-duplicated
+  loop each unmatched exclude pattern
+    engine --> engine : WARNING "names nothing under the scan root"
+  end
+  engine --> engine : INFO "selection: include N (invoker or configured),\nexclude N (configured, invoker)"
+  engine -> disc : discover_with_stats(root, merged settings)
+  note right of disc
+    A literal exclude prunes the walk (directory never entered).
+    Glob selectors match by name.
+    Returns documents, skipped, include_hits.
+  end note
+  disc --> engine : Discovery
+  opt include came from the invoker
+    loop each include pattern with zero hits
+      engine --> engine : WARNING "matched no document"
+    end
+  end
+  alt invoker gave include or exclude AND inventory is empty
+    engine --> cli : ConfigError (EMPTY_SELECTION_MESSAGE)
+    cli --> cli : "Scan failed:" on stderr, exit 2
+  else inventory empty, selectors only from config
+    engine --> cli : scan continues (rules run on nothing), exit 0
+  else documents found
+    engine --> cli : scan continues
+  end
+end
+@enduml

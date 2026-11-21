@@ -94,6 +94,7 @@ that package, so a re-export would be an import cycle).
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import re
@@ -106,11 +107,14 @@ from types import MappingProxyType
 from typing import Any, Final, Optional, Union
 
 from docsentinel.detectors.path_boundaries import escapes_via_symlink, is_ds116_owned
+from docsentinel.log import safe
 from docsentinel.markdown_blocks import ReferenceStatus, resolve_local_reference
 from docsentinel.telemetry.filters import MAX_MESSAGE as MAX_MESSAGE  # re-exported (M16 bound)
 from docsentinel.telemetry.filters import TemplateError
 from docsentinel.telemetry.filters import neutralize as neutralize_text
 from docsentinel.telemetry.model import CONTEXT_SCHEMA, UNTRUSTED, Variable
+
+logger = logging.getLogger(__name__)
 
 #: The one supported template format version.
 TEMPLATE_VERSION: Final[int] = 1
@@ -344,11 +348,14 @@ class LineNode:
     :ivar text: The parsed line text.
     :ivar variables_used: The declared variable set (equal to ``text.variables``).
     :ivar when: Optional guard condition.
+    :ivar append: When true, the text continues the current output line instead of
+        starting a new one (it starts a line only when none exists yet).
     """
 
     text: Interpolation
     variables_used: frozenset[str]
     when: Optional[Condition] = None
+    append: bool = False
 
 
 @dataclass(frozen=True)
@@ -1479,12 +1486,18 @@ class _Validator:
         node_type = raw.get("type") if isinstance(raw, dict) else None
         if node_type == "line":
             obj = self._object(
-                raw, where, frozenset({"type", "text", "variables_used", "when"}), frozenset({"text", "variables_used"})
+                raw,
+                where,
+                frozenset({"type", "text", "variables_used", "when", "append"}),
+                frozenset({"text", "variables_used"}),
             )
             when = self._when(obj, where, scope, depth)
-            text = self._emitted_text(obj["text"], f"{where}.text", scope, line_prefix="")
+            append = obj.get("append", False)
+            if not isinstance(append, bool):
+                raise self.fail(f"{where}.append", "append must be a boolean")
+            text = self._emitted_text(obj["text"], f"{where}.text", scope, line_prefix="", append=append)
             used = self._variables_used(obj["variables_used"], f"{where}.variables_used", text)
-            return LineNode(text, used, when)
+            return LineNode(text, used, when, append)
         if node_type == "group":
             obj = self._object(raw, where, frozenset({"type", "when", "body"}), frozenset({"when", "body"}))
             when = self._condition(obj["when"], f"{where}.when", scope, depth + 1)
@@ -1763,6 +1776,33 @@ def _finish(text: str, *, origin: str, source: str, expected_name: Optional[str]
     return template
 
 
+def _log_loaded(template: Template, where: str, location: str, size: int):
+    """Log at ``DEBUG`` which template was resolved, from where, and its size.
+
+    :param template: The loaded template.
+    :param where: ``packaged``, ``report_templates_dir``, ``path``, ``configured path`` or ``mapping``.
+    :param location: The configured source label (untrusted; neutralised here).
+    :param size: The template size in bytes (``0`` for a mapping).
+    """
+    logger.debug(
+        "template %s (%s) resolved from %s %s: %d bytes",
+        safe(template.name),
+        template.type,
+        where,
+        safe(location),
+        size,
+    )
+
+
+def _utf8_size(text: str) -> int:
+    """Return the UTF-8 size of ``text`` when ``DEBUG`` is enabled, else ``0``.
+
+    :param text: The decoded template text (at most :data:`MAX_TEMPLATE_BYTES`).
+    :returns: Its encoded length, or ``0`` when the size would not be logged.
+    """
+    return len(text.encode("utf-8")) if logger.isEnabledFor(logging.DEBUG) else 0
+
+
 def _load_by_name(name: str, root: Optional[Path], templates_dir: Optional[str]) -> Template:
     """Resolve a template name: packaged first, then ``report_templates_dir`` (M9, M10).
 
@@ -1779,7 +1819,9 @@ def _load_by_name(name: str, root: Optional[Path], templates_dir: Optional[str])
     except OSError:
         raise TemplateError(f"packaged template {_echo(name)} could not be read") from None
     if info is not None:
-        return _load_packaged_cached(str(packaged), info.st_mtime_ns, info.st_size, name)
+        template = _load_packaged_cached(str(packaged), info.st_mtime_ns, info.st_size, name)
+        _log_loaded(template, "packaged", name, info.st_size)
+        return template
     if not templates_dir:
         raise TemplateError(f"unknown template: {_echo(name)}")
     if not isinstance(templates_dir, str):
@@ -1793,12 +1835,10 @@ def _load_by_name(name: str, root: Optional[Path], templates_dir: Optional[str])
     candidate = canonical / configured
     if not os.path.lexists(candidate):
         raise TemplateError(f"unknown template: {_echo(name)}")
-    return _finish(
-        _read_gated(candidate, _echo(configured), nofollow=True),
-        origin="directory",
-        source=configured,
-        expected_name=name,
-    )
+    text = _read_gated(candidate, _echo(configured), nofollow=True)
+    template = _finish(text, origin="directory", source=configured, expected_name=name)
+    _log_loaded(template, "report_templates_dir", configured, _utf8_size(text))
+    return template
 
 
 def load_template(
@@ -1826,7 +1866,9 @@ def load_template(
     :raises TemplateError: On any resolution, read, parse or validation failure.
     """
     if isinstance(source, Mapping):
-        return validate_template(dict(source))
+        template = validate_template(dict(source))
+        _log_loaded(template, "mapping", template.source, 0)
+        return template
     if isinstance(source, str) and len(source) <= _MAX_NAME and NAME_PATTERN.fullmatch(source):
         return _load_by_name(source, root, templates_dir)
     configured = os.fspath(source)
@@ -1834,16 +1876,18 @@ def load_template(
         raise TemplateError("a template path must be text")
     label = _echo(configured)
     if not from_config:
-        return _finish(
-            _read_gated(Path(configured), label, nofollow=False), origin="path", source=configured, expected_name=None
-        )
+        text = _read_gated(Path(configured), label, nofollow=False)
+        template = _finish(text, origin="path", source=configured, expected_name=None)
+        _log_loaded(template, "path", configured, _utf8_size(text))
+        return template
     if root is None:
         raise TemplateError("a configured template path needs a scan root")
     canonical = Path(root).resolve()
     _check_contained(canonical, configured, "report template")
-    return _finish(
-        _read_gated(canonical / configured, label, nofollow=True), origin="path", source=configured, expected_name=None
-    )
+    text = _read_gated(canonical / configured, label, nofollow=True)
+    template = _finish(text, origin="path", source=configured, expected_name=None)
+    _log_loaded(template, "configured path", configured, _utf8_size(text))
+    return template
 
 
 def _is_template_name(value: object) -> bool:
@@ -1904,6 +1948,7 @@ def available_templates(root: Optional[Path] = None, templates_dir: Optional[str
     """
     packaged = packaged_template_names()
     if not templates_dir:
+        logger.debug("available templates: %d packaged", len(packaged))
         return packaged
     if not isinstance(templates_dir, str):
         raise TemplateError("report_templates_dir must be a string")
@@ -1912,6 +1957,7 @@ def available_templates(root: Optional[Path] = None, templates_dir: Optional[str
     canonical = Path(root).resolve()
     _check_contained(canonical, templates_dir, "report_templates_dir")
     found: set[str] = set()
+    skipped = 0
     try:
         with os.scandir(canonical / templates_dir) as entries:
             for visited, entry in enumerate(entries, start=1):
@@ -1919,10 +1965,18 @@ def available_templates(root: Optional[Path] = None, templates_dir: Optional[str
                     raise TemplateError(f"report_templates_dir holds more than {MAX_DIRECTORY_ENTRIES} entries")
                 stem, suffix = os.path.splitext(entry.name)
                 if suffix != ".json" or not _is_template_name(stem) or not entry.is_file(follow_symlinks=False):
+                    skipped += 1
                     continue
                 found.add(stem)
                 if len(found) > MAX_DIRECTORY_TEMPLATES:
                     raise TemplateError(f"report_templates_dir holds more than {MAX_DIRECTORY_TEMPLATES} templates")
     except OSError:
         raise TemplateError(f"report_templates_dir could not be listed: {_echo(templates_dir)}") from None
+    logger.debug(
+        "available templates: %d packaged, %d in report_templates_dir %s (%d other entries skipped)",
+        len(packaged),
+        len(found),
+        safe(templates_dir),
+        skipped,
+    )
     return tuple(sorted(found.union(packaged)))

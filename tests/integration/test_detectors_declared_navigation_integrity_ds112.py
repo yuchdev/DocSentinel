@@ -54,6 +54,7 @@ negatives).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import socket
 import subprocess
@@ -78,6 +79,7 @@ from tests.git_marker_helpers import (
     is_git_marker_probe,
     is_project_marker_probe,
 )
+from tests.log_helpers import problem_output
 from tests.mock.test_detectors_navigation_oracle import (
     _install_recorder,
     _is_under,
@@ -178,6 +180,7 @@ FAST_RULE_ORDER: tuple[str, ...] = (
     "DS116",
     "DS117",
     "DS118",
+    "DS124",
 )
 
 #: Legitimate non-DS112 findings a full fast scan adds on the FINDING scenarios, each
@@ -450,7 +453,7 @@ def test_cli_readiness_error_exits_two_without_report_or_absolute_path(
     assert captured.out == ""
     assert "Scan failed" in captured.err
     assert "docs/missing.md" in captured.err
-    assert str(Path(os.path.realpath(case.root))) not in captured.err
+    assert str(Path(os.path.realpath(case.root))) not in problem_output(captured.err)
 
 
 def test_opt_in_gate_off_by_default_is_honest_in_the_notice(asset_case: Callable[[str, str], AssetCase]):
@@ -482,7 +485,7 @@ def test_opt_in_gate_off_by_default_is_honest_in_the_notice(asset_case: Callable
     assert _ds112(off.findings) == ()
     assert off.notice == (
         "12 fast rule(s) evaluated; opt-in rule(s) not enabled: "
-        "DS110 (set require_fence_languages), DS112 (set navigation_indexes), "
+        "DS103 (set reference_scope = \"strict\"), DS110 (set require_fence_languages), DS112 (set navigation_indexes), "
         "DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
     )
 
@@ -497,7 +500,7 @@ def test_opt_in_gate_off_by_default_is_honest_in_the_notice(asset_case: Callable
     assert "DS112" not in on.notice
     assert (
         on.notice
-        == "13 fast rule(s) evaluated; opt-in rule(s) not enabled: DS110 (set require_fence_languages), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
+        == "13 fast rule(s) evaluated; opt-in rule(s) not enabled: DS103 (set reference_scope = \"strict\"), DS110 (set require_fence_languages), DS115 (set deprecated_references_file), DS118 (set documentation_naming)."
     )
     assert _ds112(on.findings) == ()
 
@@ -536,7 +539,7 @@ def test_cli_doctor_counts_ds112_among_the_two_opt_in_rules(capsys: pytest.Captu
         Given the installed rule registry
         When the doctor command reports environment readiness
         Then the fast-rule tally reads exactly
-            "16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)", so DS112 is
+            "18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)", so DS112 is
             inside the registered count and is one of the four opt-in rules alongside DS110, DS115 and DS118.
 
     Boundaries:
@@ -552,7 +555,7 @@ def test_cli_doctor_counts_ds112_among_the_two_opt_in_rules(capsys: pytest.Captu
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "DS112" in {rule.code for rule in rules_for_profile("fast")}
-    assert "fast rules: 16 registered (4 opt-in, off unless configured: DS110, DS112, DS115, DS118)" in captured.out
+    assert "fast rules: 18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)" in captured.out
 
 
 def test_cli_fast_json_scan_reports_ds112_warning_and_exits_zero(
@@ -973,45 +976,50 @@ def test_crlf_line_numbers_point_at_the_navigation_link(tmp_path: Path):
     assert findings[0].message == "navigation target does not exist: docs/gone.md"
 
 
-def test_invalid_utf8_scan_surfaces_rather_than_false_clean(tmp_path: Path):
+def test_invalid_utf8_index_is_skipped_and_fails_closed(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """
-    [Integration] detectors declared navigation integrity ds112: verifies invalid UTF-8 is not a silent clean.
+    [Integration] detectors declared navigation integrity ds112: verifies an invalid-UTF-8 index fails closed.
 
     Scenario:
         Given a configured navigation index holding invalid UTF-8 bytes
         When a fast scan reads it with DS112 selected and the index configured
-        Then the documented readiness ConfigError (R3) is raised instead of a misleading zero-finding result.
+        Then the engine skips the index with a WARNING, so DS112 fails closed with the readiness
+            ConfigError (R3) for an index that is not a scanned document, never a zero-finding result.
 
     Boundaries:
-        - Focus: unreadable input raises rather than masquerading as clean (contract B.4)
-        - Fixtures/params: tmp_path
+        - Focus: an undecodable index still fails closed (contract B.4) after the engine skip
+        - Fixtures/params: tmp_path, caplog
 
     On failure, first check:
-        - The UTF-8 read in navigation._read_index
-        - That the engine does not swallow the decode error into a clean scan
+        - engine._partition_readable and the scanned-document gate in navigation._require_readable_index
     """
     (tmp_path / "README.md").write_bytes(b"# Title\n\n- [x](docs/g.md)\n\xff\xfe\n")
 
-    with pytest.raises(ConfigError, match="could not be read"):
-        scan(tmp_path, config=Config(profile="fast", select=("DS112",), navigation_indexes=("README.md",)))
+    with caplog.at_level(logging.WARNING, logger="docsentinel"):
+        with pytest.raises(ConfigError, match="^configured navigation index is not a scanned document: README.md$"):
+            scan(tmp_path, config=Config(profile="fast", select=("DS112",), navigation_indexes=("README.md",)))
+
+    assert [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING] == [
+        "skipped README.md: not valid UTF-8"
+    ]
 
 
-def test_unreadable_index_surfaces_rather_than_false_clean(tmp_path: Path):
+def test_unreadable_index_is_skipped_and_fails_closed(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     """
-    [Integration] detectors declared navigation integrity ds112: verifies an unreadable index is not a silent clean.
+    [Integration] detectors declared navigation integrity ds112: verifies an unreadable index fails closed.
 
     Scenario:
         Given a configured navigation index whose read permission is removed
         When a fast scan tries to read it with DS112 selected and the index configured
-        Then the documented readiness ConfigError (R3) is raised instead of a misleading zero-finding result,
-            so a readiness problem fails closed rather than scanning clean.
+        Then the engine skips the index with a WARNING and DS112 raises the readiness ConfigError (R3)
+            for an index that is not a scanned document, so it fails closed rather than scanning clean.
 
     Boundaries:
         - Focus: a filesystem read error surfaces instead of masquerading as clean
-        - Fixtures/params: tmp_path (skipped when running as root, which bypasses the mode)
+        - Fixtures/params: tmp_path, caplog (skipped when running as root, which bypasses the mode)
 
     On failure, first check:
-        - Whether navigation._read_index swallowed the read error into a clean scan
+        - engine._partition_readable and the scanned-document gate in navigation._require_readable_index
         - Whether the test runs as root, where chmod 000 does not block reads
     """
     if hasattr(os, "geteuid") and os.geteuid() == 0:
@@ -1020,8 +1028,12 @@ def test_unreadable_index_surfaces_rather_than_false_clean(tmp_path: Path):
     target.write_text("# Title\n\n- [x](docs/g.md)\n", encoding="utf-8")
     target.chmod(0o000)
     try:
-        with pytest.raises(ConfigError, match="could not be read"):
-            scan(tmp_path, config=Config(profile="fast", select=("DS112",), navigation_indexes=("README.md",)))
+        with caplog.at_level(logging.WARNING, logger="docsentinel"):
+            with pytest.raises(ConfigError, match="^configured navigation index is not a scanned document: README.md$"):
+                scan(tmp_path, config=Config(profile="fast", select=("DS112",), navigation_indexes=("README.md",)))
+        assert [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING] == [
+            "skipped README.md: cannot read it (Permission denied)"
+        ]
     finally:
         target.chmod(0o644)
 
@@ -1118,7 +1130,11 @@ def test_reports_are_stable_across_formats(asset_case: Callable[[str, str], Asse
 
     text = render(result, "text")
     assert render(result, "text") == text
-    assert "warning: README.md:5: navigation target does not exist: docs/missing.md" in text
+    assert "\nREADME.md (" in text
+    assert (
+        "  warning DS112 declared documentation navigation integrity, line 5: "
+        "navigation target does not exist: docs/missing.md"
+    ) in text
 
     payload = json.loads(render(result, "json-v1"))
     assert payload["schema_version"] == 1

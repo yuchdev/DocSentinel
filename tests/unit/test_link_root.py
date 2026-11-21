@@ -10,8 +10,10 @@ inline; no assets are loaded.
 
 from __future__ import annotations
 
+import io
 import os
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -21,6 +23,7 @@ from docsentinel.config import validate_link_root
 from docsentinel.detectors import links, path_boundaries
 from docsentinel.link_root import link_root_for, resolve_invoker_link_root, resolve_link_root
 from docsentinel.markdown_blocks import ReferenceStatus, ResolvedReference, resolve_local_reference
+from docsentinel.models import Document
 
 
 def _skip_if_git_above(path: Path):
@@ -816,3 +819,116 @@ def test_linked_anchor_read_is_bounded_and_skips_undecodable_files(tmp_path: Pat
     assert links._linked_anchors(small) == {"title"}
     assert links._linked_anchors(big) is None
     assert links._linked_anchors(binary) is None
+
+
+def test_repeated_slash_links_to_oversized_ancestor_warn_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    """
+    [Unit] links: repeated anchors in an oversized ancestor document are skipped once (regression).
+
+    Scenario:
+        Given a subdirectory source with repeated site-root-absolute links to a large ancestor file
+        When DS101 checks it with the repository link root
+        Then it logs one warning and emits no missing-anchor finding.
+
+    Boundaries:
+        - Focus: caching None from the bounded anchor read
+        - Fixtures/params: tmp_path, monkeypatch, caplog
+        - Scope: one document check
+
+    On failure, first check:
+        - anchor_cache in detectors/links.py
+    """
+    repo, docs = _repo(tmp_path)
+    (repo / "README.md").write_text("# Title\n" + "x" * 100, encoding="utf-8")
+    text = "# Guide\n\n[a](/README.md#one)\n[b](/README.md#two)\n[c](/README.md#one)\n"
+    (docs / "guide.md").write_text(text, encoding="utf-8")
+    monkeypatch.setattr(links, "_MAX_ANCHOR_SOURCE_CHARS", 50)
+
+    findings = links.check_document(docs, Document("guide.md", len(text)), link_root=repo)
+
+    assert findings == ()
+    warnings = [record.getMessage() for record in caplog.records if record.name == links.__name__]
+    assert warnings == [
+        f"DS101 skipped the anchor check for linked file {repo / 'README.md'}: larger than 50 characters"
+    ]
+
+
+@pytest.mark.parametrize("location", ["in_root", "own", "ancestor"])
+@pytest.mark.parametrize(
+    "error",
+    [
+        PermissionError(13, "Permission denied"),
+        UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+    ],
+    ids=["unreadable", "non_utf8"],
+)
+def test_repeated_anchor_read_errors_are_cached(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, location: str, error: Exception
+):
+    """
+    [Unit] links: read errors skip repeated anchor checks without losing findings.
+
+    Scenario:
+        Given two links whose anchor reads fail after the source lines were read
+        When DS101 checks the source
+        Then it reads anchors once, logs once, and keeps the unrelated dangling link.
+
+    Boundaries:
+        - Focus: bounded and uncapped reads catch I/O and decode errors and cache None
+        - Fixtures/params: tmp_path, caplog, location, error
+        - Scope: one document check with mocked file reads
+
+    On failure, first check:
+        - anchor caching in detectors/links.py
+    """
+    repo, docs = _repo(tmp_path)
+    target = {"own": "#one", "in_root": "target.md#one", "ancestor": "/target.md#one"}[location]
+    text = f"[a]({target})\n[b]({target})\n[missing](missing.md)\n"
+    (docs / "source.md").write_text(text, encoding="utf-8")
+    (docs / "target.md").write_text("# Target\n", encoding="utf-8")
+    (repo / "target.md").write_text("# Target\n", encoding="utf-8")
+    with mock.patch.object(Path, "open", side_effect=[io.StringIO(text), error, error]) as read:
+        findings = links.check_document(docs, Document("source.md", len(text)), link_root=repo)
+
+    assert read.call_count == 2
+    assert [(finding.type, finding.value) for finding in findings] == [("dangling link", "missing.md")]
+    warnings = [record.getMessage() for record in caplog.records if record.name == links.__name__]
+    assert len(warnings) == 1
+    assert "DS101 skipped the anchor check" in warnings[0]
+
+
+@pytest.mark.parametrize("content", ["# Title\n" + "x" * 100, ""], ids=["uncapped", "empty"])
+@pytest.mark.parametrize("own", [False, True], ids=["in_root", "own"])
+def test_successful_anchor_sets_are_cached_without_capping_in_root_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, content: str, own: bool
+):
+    """
+    [Unit] links: successful anchor sets are cached, including empty sets (normal and edge cases).
+
+    Scenario:
+        Given repeated own or in-root links and a file above the linked-file cap or without anchors
+        When DS101 checks the source
+        Then it reads anchors once and only an empty set produces missing-anchor findings.
+
+    Boundaries:
+        - Focus: preserving unbounded reads and distinguishing an empty set from None
+        - Fixtures/params: tmp_path, monkeypatch, content, own
+        - Scope: one document check
+
+    On failure, first check:
+        - _linked_anchors and anchor_cache in detectors/links.py
+    """
+    target = "#title" if own else "target.md#title"
+    text = f"[a]({target})\n[b]({target})\n" + (content if own else "")
+    (tmp_path / "source.md").write_text(text, encoding="utf-8")
+    (tmp_path / "target.md").write_text(content, encoding="utf-8")
+    monkeypatch.setattr(links, "_MAX_ANCHOR_SOURCE_CHARS", 50)
+    with mock.patch.object(links, "_linked_anchors", wraps=links._linked_anchors) as read:
+        findings = links.check_document(tmp_path, Document("source.md", len(text)))
+
+    assert read.call_count == 1
+    assert [(finding.type, finding.value) for finding in findings] == (
+        [] if content else [("dangling anchor", target), ("dangling anchor", target)]
+    )

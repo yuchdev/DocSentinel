@@ -63,10 +63,15 @@ def test_text_sink_neutralises_escape_cr_lf_in_path_and_message():
     rendered = render(_result((Finding(rule="DS101", path=_HOSTILE_PATH, message=message, severity="error", line=1),)))
     assert "\x1b" not in rendered
     # The only CR/LF in the output are the renderer's own line separators, never from content.
-    content_line = next(line for line in rendered.splitlines() if line.startswith("  error:"))
-    assert "\x1b" not in content_line and "\r" not in content_line
-    assert "\\x1b" in content_line and "\\x0d" in content_line and "\\x0a" in content_line
+    # The finding line under the document carries the message; the recap line carries path and message.
+    lines = rendered.splitlines()
+    finding_line = next(line for line in lines if line.startswith("  error   DS101 dangling link or anchor, line 1: "))
+    content_line = next(line for line in lines if line.startswith("  error   DS101 dangling link or anchor: "))
+    for line in (finding_line, content_line):
+        assert "\x1b" not in line and "\r" not in line
+        assert "\\x1b" in line and "\\x0d" in line and "\\x0a" in line
     assert "docs/evil\\x1b[31m\\x0d\\x0a::error::spoofed.md" in content_line
+    assert "docs/evil\\x1b[31m\\x0d\\x0a::error::spoofed.md" in lines
 
 
 def test_text_sink_neutralises_document_path():
@@ -200,7 +205,9 @@ def test_ordinary_unicode_and_ascii_render_byte_identically():
     assert _neutralize_controls("Broken anchor -> #section", keep_crlf=True) == "Broken anchor -> #section"
     result = _result((Finding(rule="DS101", path="docs/intro.md", message="Dangling link", severity="error", line=7),))
     assert render(result, "github") == "::error file=docs/intro.md,line=7,title=DS101::Dangling link"
-    assert "error: docs/intro.md:7: Dangling link" in render(result, "text")
+    text = render(result, "text")
+    assert "  error   DS101 dangling link or anchor, line 7: Dangling link" in text
+    assert "  error   DS101 dangling link or anchor: docs/intro.md, line 7: Dangling link" in text
 
 
 def test_escape_helpers_preserve_percent_cr_lf_colon_comma():
@@ -255,6 +262,44 @@ def test_fingerprint_is_independent_of_rendered_neutralisation():
     assert "\\x1b" in rendered  # rendering escaped it, fingerprint did not
 
 
+def test_legacy_workflow_command_marker_never_reaches_text_or_github_sinks():
+    """
+    [Unit] reporting control characters: verifies ``##[`` never reaches a neutralising sink verbatim.
+
+    Scenario:
+        Given a finding whose path, message and value hold the GitHub legacy command marker ``##[``
+        When the result is rendered as text and as github annotations, and passed to ``neutralize_text``
+        Then no output contains ``##[``; each shows ``##\\[``, and the JSON sink keeps the raw value.
+
+    Boundaries:
+        - Focus: security review M2 (the runner honours ``##[`` anywhere in a line)
+        - Fixtures/params: none
+        - Scope: text, github and json rendering of one finding
+
+    On failure, first check:
+        - the ``LEGACY_COMMAND_MARKER`` rewrite in ``telemetry.filters._neutralize_controls``
+    """
+    path = "docs/##[set-output name=x]pwn.md"
+    finding = Finding(
+        rule="DS101",
+        path=path,
+        message="dangling link -> ##[add-mask]tok",
+        severity="error",
+        line=2,
+        value="##[add-mask]tok",
+    )
+    result = _result((finding,), (Document(path, 1),))
+
+    for report_format in ("text", "github"):
+        rendered = render(result, report_format)
+        assert "##[" not in rendered
+        assert "##\\[set-output name=x]pwn.md" in rendered
+        assert "##\\[add-mask]tok" in rendered
+    assert neutralize_text("a ##[b ###[c") == "a ##\\[b ###\\[c"
+    assert _escape_data("##[x]") == "##\\[x]" and _escape_property("##[x]") == "##\\[x]"
+    assert json.loads(render(result, "json"))["documents"][0]["path"] == path
+
+
 def test_line_paragraph_separators_and_lone_surrogates_are_neutralised():
     """
     [Unit] reporting control characters: verifies U+2028/U+2029 and lone surrogates are escaped.
@@ -274,7 +319,11 @@ def test_line_paragraph_separators_and_lone_surrogates_are_neutralised():
         - Whether _build_control_table still includes 0x2028, 0x2029 and the 0xD800-0xDFFF range
     """
     hostile = "a b c" + chr(0xDC80) + "d"
-    for text in (_neutralize_controls(hostile), _neutralize_controls(hostile, keep_crlf=True), neutralize_text(hostile)):
+    for text in (
+        _neutralize_controls(hostile),
+        _neutralize_controls(hostile, keep_crlf=True),
+        neutralize_text(hostile),
+    ):
         assert " " not in text and " " not in text and chr(0xDC80) not in text
         text.encode("utf-8")
         assert text.startswith("a") and text.endswith("d")

@@ -67,6 +67,14 @@ The ownership split differs by reference kind (Story 11.0 code-span ruling):
   or escape spans such as ``\\n`` or ``DS\\d{3}``) are **not** DS116 findings; DS103
   resumes its exact pre-Story-11 behaviour for them and only skips the root-escape
   and symlink-out code spans that DS116 owns.
+* **``@``-document mentions** (Milestone 0009 Story 01.0) are checked like a
+  relative Markdown link: every ``relative`` mention the shared scanner records,
+  whatever its extension, is resolved relative to its document at full strictness
+  through :func:`mention_ds116_reason`, the one ownership predicate ``DS124`` also
+  calls before its own existence check. A code span the scanner recorded as a
+  code-span mention is dropped from the code-span candidates by span identity, never
+  by an ``@`` prefix, so an ``@`` code span that is no mention keeps its traversal
+  check. ``home`` and ``absolute`` mentions are never classified.
 
 The shared scanner feeds DS116 the reference forms a CommonMark renderer makes
 live, so the Story 11.0 close-gate sweep closed several evasions: HTML ``<a href>``
@@ -96,6 +104,7 @@ documented in ``docs/dev/markdown_dialect.md``:
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import stat
@@ -108,7 +117,10 @@ from urllib.parse import unquote
 from docsentinel import models, rules
 from docsentinel.config import Config
 from docsentinel.link_root import link_root_for
+from docsentinel.log import safe
 from docsentinel.markdown_blocks import ReferenceStatus, resolve_local_reference, scan_markdown
+
+logger = logging.getLogger(__name__)
 
 #: Stable metadata for ``DS116``, registered as an always-active ``fast``-profile
 #: rule (no ``opt_in_option`` -- on by default at ``error`` severity) alongside its
@@ -215,37 +227,76 @@ def _within(candidate: str, root: str) -> bool:
     return candidate.startswith(prefix)
 
 
-def contained_path(root: Path, candidate: Path, *, max_hops: int = _MAX_SYMLINK_HOPS) -> Optional[Path]:
-    """Return the validated in-root path, resolving symlinks before ``..`` components.
+#: Why :func:`_walk` refused a candidate: it leaves the boundary (lexically, through a
+#: ``..`` popping above it, or through a symlink target outside it), or the walk followed
+#: more than ``max_hops`` symlinks (a cycle or an over-long chain, which stays inside).
+_REFUSED_ESCAPE = "escape"
+_REFUSED_HOPS = "hops"
 
-    Unlike normalising the candidate first, this walks the original component order.
-    Symlink targets are expanded lexically and each resulting component is checked
-    without following it, so a ``link/..`` sequence cannot hide an outside traversal.
-    Missing components are preserved as lexical path components; callers may safely
-    perform their existence check on the returned path.
 
-    :param root: The trusted (already canonicalised) scan-root directory.
-    :param candidate: An absolute candidate path, possibly containing ``..``.
-    :param max_hops: Maximum symlink hops before failing closed.
-    :returns: A normalized path inside root, or ``None`` if containment is unproven.
+def _relative_components(root_str: str, path: str) -> Optional[list[str]]:
+    """Return the unnormalised components of ``path`` below ``root_str``, or ``None``.
+
+    :param root_str: The normalised boundary directory.
+    :param path: An absolute path string, possibly holding ``.`` or ``..``.
+    :returns: The components after the boundary prefix (``[]`` for the boundary
+        itself), or ``None`` when ``path`` does not start with the boundary.
+    """
+    if path == root_str:
+        return []
+    prefix = root_str if root_str.endswith(os.sep) else root_str + os.sep
+    if not path.startswith(prefix):
+        return None
+    return path[len(prefix) :].split(os.sep)
+
+
+def canonical_root(root: Path) -> Path:
+    """Return the canonical scan root, the one permitted ``realpath`` of the trusted root.
+
+    ``DS116`` and ``DS124`` both call this, so the shared ownership predicate
+    (:func:`mention_ds116_reason`) sees the same root in both rules and a mention
+    never falls between them because one rule spelt the root through a symlink
+    (security review 2026-11-16, L1). The engine already passes a resolved root;
+    this matters for direct :func:`detect` calls. Only the trusted root and its
+    ancestors are touched, never a document target.
+
+    :param root: The scan root as the caller passed it.
+    :returns: The root with every symlink resolved.
+    """
+    return Path(os.path.realpath(root))
+
+
+def _walk(root: Path, candidate: str, *, max_hops: int, tolerate_errors: bool) -> tuple[Optional[Path], str]:
+    """Walk ``candidate`` one component at a time below ``root``, expanding symlinks safely.
+
+    This is the single containment walker behind :func:`contained_path` and
+    :func:`escapes_via_symlink` (ruling G4). The walk keeps a verified prefix of
+    plain, non-symlink components and a deque of pending components. Each step
+    ``os.lstat``-s exactly one new component appended to the verified prefix, so the
+    kernel never resolves a symlink the walk has not inspected. A symlink's target
+    is read with ``os.readlink``, split into components and pushed back onto the
+    deque (an absolute target restarts from the boundary when it lies inside it),
+    so every component of the target is walked the same way; a joined
+    multi-component target is never ``lstat``-ed or ``readlink``-ed as a whole
+    (security review 2026-11-16, H1). A ``..`` pops the verified prefix and refuses
+    the candidate when it would climb above ``root``. Only symlinks actually
+    followed count toward ``max_hops`` (review M-A); plain components are bounded by
+    the candidate and target lengths, which are finite.
+
+    :param root: The trusted (already canonicalised) boundary directory.
+    :param candidate: An absolute candidate path string, possibly holding ``..``.
+    :param max_hops: Maximum symlinks followed before refusing with ``"hops"``.
+    :param tolerate_errors: When true, an ``os.lstat`` failure other than a missing
+        component (``EACCES``, ``ENAMETOOLONG``, ...) treats the component as a
+        plain one; when false it propagates.
+    :returns: ``(path, "")`` with the expanded in-boundary path, or ``(None, reason)``
+        with :data:`_REFUSED_ESCAPE` or :data:`_REFUSED_HOPS`.
     """
     root_str = os.path.normpath(str(root))
-    candidate_str = os.fspath(candidate)
-
-    def relative_parts(path: str) -> Optional[list[str]]:
-        """Return unnormalized path components relative to root when contained."""
-        if path == root_str:
-            return []
-        prefix = root_str if root_str.endswith(os.sep) else root_str + os.sep
-        if not path.startswith(prefix):
-            return None
-        return path[len(prefix) :].split(os.sep)
-
-    components = relative_parts(candidate_str)
+    components = _relative_components(root_str, candidate)
     if components is None:
-        return None
+        return None, _REFUSED_ESCAPE
     pending = deque(components)
-
     parts: list[str] = []
     hops = 0
     while pending:
@@ -254,36 +305,59 @@ def contained_path(root: Path, candidate: Path, *, max_hops: int = _MAX_SYMLINK_
             continue
         if part == os.pardir:
             if not parts:
-                return None
+                return None, _REFUSED_ESCAPE
             parts.pop()
             continue
 
         current = Path(root_str).joinpath(*parts, part)
         try:
-            info = os.lstat(current)
+            info: Optional[os.stat_result] = os.lstat(current)
         except (FileNotFoundError, NotADirectoryError):
-            parts.append(part)
-            continue
-
-        if not stat.S_ISLNK(info.st_mode):
+            info = None
+        except OSError:
+            if not tolerate_errors:
+                raise
+            info = None
+        if info is None or not stat.S_ISLNK(info.st_mode):
+            # Missing, inaccessible or a plain object: it joins the verified prefix.
             parts.append(part)
             continue
 
         hops += 1
         if hops > max_hops:
-            return None
+            return None, _REFUSED_HOPS
         target = os.readlink(current)
-
         if os.path.isabs(target):
-            target_parts = relative_parts(target)
+            target_parts = _relative_components(root_str, target)
             if target_parts is None:
-                return None
+                return None, _REFUSED_ESCAPE
             parts.clear()
         else:
             target_parts = target.split(os.sep)
         pending.extendleft(reversed(target_parts))
 
-    return Path(root_str).joinpath(*parts)
+    return Path(root_str).joinpath(*parts), ""
+
+
+def contained_path(root: Path, candidate: Path, *, max_hops: int = _MAX_SYMLINK_HOPS) -> Optional[Path]:
+    """Return the validated in-root path, resolving symlinks before ``..`` components.
+
+    Unlike normalising the candidate first, this walks the original component order.
+    Symlink targets are split into components and each one is checked without
+    following it (:func:`_walk`), so a ``link/..`` sequence cannot hide an outside
+    traversal and a symlink inside a symlink target is never followed by the kernel.
+    Missing components are preserved as lexical path components; callers may safely
+    perform their existence check on the returned path.
+
+    :param root: The trusted (already canonicalised) scan-root directory.
+    :param candidate: An absolute candidate path, possibly containing ``..``.
+    :param max_hops: Maximum symlink hops before failing closed.
+    :returns: A normalized path inside root, or ``None`` if containment is unproven.
+    :raises OSError: When ``os.lstat`` fails for a reason other than a missing
+        component, or ``os.readlink`` fails (callers decide; DS124 swallows it).
+    """
+    path, _ = _walk(root, os.fspath(candidate), max_hops=max_hops, tolerate_errors=False)
+    return path
 
 
 def escapes_via_symlink(root: Path, candidate: Path, *, max_hops: int = _MAX_SYMLINK_HOPS) -> bool:
@@ -292,18 +366,20 @@ def escapes_via_symlink(root: Path, candidate: Path, *, max_hops: int = _MAX_SYM
     This is the safe, non-following containment check (ruling G4). The candidate is
     first normalised lexically; if that normal form is not inside the root the path
     is an escape and the function returns at once with no filesystem access. Only
-    for a lexically in-root candidate does the walk visit each component with
-    :func:`os.lstat`; when a component is a symlink its target is read with
-    :func:`os.readlink` and resolved **lexically** (never with ``realpath`` or
-    ``resolve``). If that lexical target leaves the root the walk reports an escape
-    without ever ``stat``-ing the outside object. All :func:`os.lstat` and
-    :func:`os.readlink` calls touch only in-root objects, so no path outside the
-    root is ever accessed. The walk is bounded by ``max_hops`` and by per-component
-    loop detection, so it is linear in the in-root component count.
+    for a lexically in-root candidate does the shared walker (:func:`_walk`) visit
+    each component with :func:`os.lstat`, reading a symlink's target with
+    :func:`os.readlink` and walking **its components one at a time** (never
+    ``realpath``, ``resolve`` or an ``lstat`` of the joined target, security review
+    2026-11-16 H1). An absolute target outside the root, or a ``..`` that climbs above
+    it, is an escape reported without ever touching the outside object. Every
+    :func:`os.lstat` and :func:`os.readlink` call is on the root plus walked,
+    non-symlink components plus one new component, so the kernel never resolves a
+    path outside the root. A symlink cycle or more than ``max_hops`` followed symlinks
+    is **not** an escape (``False``); plain components never count as hops (review M-A).
 
     :param root: The trusted (already canonicalised) scan-root directory.
     :param candidate: A candidate path to test for containment.
-    :param max_hops: Maximum total symlink hops before the walk stops.
+    :param max_hops: Maximum symlinks followed before the walk stops.
     :returns: ``True`` when the candidate escapes the root lexically or via a symlink.
     """
     root_str = os.path.normpath(str(root))
@@ -312,41 +388,8 @@ def escapes_via_symlink(root: Path, candidate: Path, *, max_hops: int = _MAX_SYM
         # Lexical escape (e.g. an unnormalised ``..`` chain that leaves the root);
         # DS116 owns it and no filesystem access is performed.
         return True
-    relative = os.path.relpath(candidate_str, root_str)
-    relative_parts: tuple[str, ...] = () if relative == os.curdir else Path(relative).parts
-
-    current = Path(root_str)
-    hops = 0
-    for part in relative_parts:
-        current = current / part
-        seen: set[str] = set()
-        while True:
-            hops += 1
-            if hops > max_hops:
-                # Bounded: every object walked so far stayed in-root, so a hop
-                # overflow (a long in-root chain or cycle) is not an escape.
-                return False
-            try:
-                info = os.lstat(current)
-            except OSError:
-                # Missing or inaccessible in-root object: record with a sentinel
-                # and stop following this component (nothing to resolve).
-                info = None
-            if info is None or not stat.S_ISLNK(info.st_mode):
-                break
-            key = os.fspath(current)
-            if key in seen:
-                return False
-            seen.add(key)
-            link_target = os.readlink(current)
-            if os.path.isabs(link_target):
-                resolved = os.path.normpath(link_target)
-            else:
-                resolved = os.path.normpath(os.path.join(os.path.dirname(key), link_target))
-            if not _within(resolved, root_str):
-                return True
-            current = Path(resolved)
-    return False
+    _, reason = _walk(Path(root_str), candidate_str, max_hops=max_hops, tolerate_errors=True)
+    return reason == _REFUSED_ESCAPE
 
 
 def is_ds116_owned(root: Path, document_path: str, raw_target: str, *, link_root: Optional[Path] = None) -> bool:
@@ -427,6 +470,39 @@ def _classify(
     return None
 
 
+#: Fixed settings for classifying an ``@``-mention: full-reference strictness with
+#: the defaults, independent of the scan's ``root_escape_policy``,
+#: ``decode_percent_paths`` and ``windows_path_policy``. A mention target holds only
+#: ASCII letters, digits, ``._~+-/`` and spaces (no ``%``, backslash, ``:`` or control
+#: character), so the only categories it can reach are ``escape`` and ``symlink``.
+_MENTION_SETTINGS = Config()
+
+
+def mention_ds116_reason(root: Path, document_path: str, target: str) -> Optional[str]:
+    """Return the ``DS116`` category of a ``relative`` ``@``-mention, or ``None``.
+
+    This is the single shared ownership predicate of Milestone 0009 Story 01.0
+    (threat model M5, amendment A4): ``DS116`` classifies every ``relative`` mention
+    with it, and ``DS124`` defers a mention to ``DS116`` (and skips its link-root
+    fallback) exactly when it returns a category. It resolves ``target`` relative to
+    the referring document, like a relative Markdown link, at full-reference
+    strictness: a lexical root escape is ``"escape"`` with zero filesystem calls, and
+    for an in-root target :func:`escapes_via_symlink` walks the in-root components
+    with :func:`os.lstat`/:func:`os.readlink` only, giving ``"symlink"`` when one
+    points outside the root. A symlink cycle or a hop overflow is **not** an escape
+    (``None``), so ``DS124`` reports such a mention instead. The result never depends
+    on the scan's DS116 options, so ``DS124`` defers the same way when ``DS116`` is
+    ignored or ``root_escape_policy = "off"``.
+
+    :param root: The scan root used for containment.
+    :param document_path: POSIX-style relative path of the referring document.
+    :param target: :attr:`~docsentinel.markdown_blocks.AtReference.target` of a
+        ``relative`` mention (escaped spaces already decoded).
+    :returns: ``"escape"`` or ``"symlink"`` when DS116 owns the mention, else ``None``.
+    """
+    return _classify(root, document_path, target, _MENTION_SETTINGS)
+
+
 def _echo(raw_target: str) -> str:
     """Return a bounded, repr-escaped echo of the author's raw target.
 
@@ -472,6 +548,7 @@ def check_text(
     config: Optional[Config] = None,
     *,
     link_root: Optional[Path] = None,
+    mention_cache: Optional[dict[tuple[str, str], Optional[str]]] = None,
 ) -> tuple[models.Finding, ...]:
     """Return ``DS116`` findings for one document's Markdown ``text``.
 
@@ -494,12 +571,20 @@ def check_text(
     :param config: Effective settings, or ``None`` for defaults.
     :param link_root: Precomputed base for ``/`` targets; ``None`` resolves it from
         ``config`` via :func:`~docsentinel.link_root.link_root_for`.
+    :param mention_cache: Memo of :func:`mention_ds116_reason` results keyed by
+        ``(document directory, target)``, shared across the documents of
+        one :func:`detect` run so a repeated mention is classified once (security review
+        2026-11-16, L2); ``None`` uses a cache local to this document. The key holds
+        no root, so the cache must be one per scan root: never share one across
+        different roots, or a result computed under one root answers for another.
     :returns: Findings in source order, one per offending reference.
     :raises ConfigError: When ``link_root`` must be resolved here and is invalid.
     """
     settings = config if config is not None else Config()
     if settings.root_escape_policy == "off":
         return ()
+    mentions_seen = mention_cache if mention_cache is not None else {}
+    directory = document_path.rpartition("/")[0]
     severity = "warning" if settings.root_escape_policy == "warn" else DS116.severity
     base = link_root if link_root is not None else link_root_for(root, settings)
 
@@ -514,34 +599,60 @@ def check_text(
     # scope (Story 11.0 ruling) is narrower than the full-reference scope: a code span
     # reports only real traversal (root escape, residual encoding, in-root symlink-out),
     # never the drive/UNC/backslash/control categories that are documentation there.
-    candidates: list[tuple[int, int, str, bool]] = []
+    # The last field is the decoded target of an ``@``-mention ("" for every other
+    # candidate), so existing candidates keep their exact sort order.
+    candidates: list[tuple[int, int, str, bool, str]] = []
     for reference in index.local_references:
         candidates.append(
-            (reference.span.start_offset, reference.span.start_line, _first_token(reference.raw_target), False)
+            (reference.span.start_offset, reference.span.start_line, _first_token(reference.raw_target), False, "")
         )
     for image in index.images:
         if image.html:
-            candidates.append((image.span.start_offset, image.span.start_line, _first_token(image.raw_target), False))
+            candidates.append(
+                (image.span.start_offset, image.span.start_line, _first_token(image.raw_target), False, "")
+            )
     for definition in index.reference_definitions:
         candidates.append(
-            (definition.span.start_offset, definition.span.start_line, _first_token(definition.target), False)
+            (definition.span.start_offset, definition.span.start_line, _first_token(definition.target), False, "")
         )
+    # Every ``relative`` mention, whatever its extension, is a full-reference candidate
+    # classified relative to its document (Milestone 0009 Story 01.0). The code span of
+    # a recorded code-span mention is dropped from the code-span candidates by span
+    # identity, never by an ``@`` prefix (threat model A1, M11), so an ``@`` span that
+    # is no mention keeps its traversal check and each mention is classified once.
+    mention_spans: set[int] = set()
+    for mention in index.at_references:
+        if mention.kind != "relative":
+            continue
+        candidates.append((mention.span.start_offset, mention.span.start_line, mention.raw, False, mention.target))
+        if mention.in_code_span:
+            mention_spans.add(id(mention.span))
     for code in index.inline_code:
+        if id(code.span) in mention_spans:
+            continue
         candidate = code.text.strip()
         if _looks_path_like(candidate):
-            candidates.append((code.span.start_offset, code.span.start_line, candidate, True))
+            candidates.append((code.span.start_offset, code.span.start_line, candidate, True, ""))
 
     findings: list[models.Finding] = []
     seen: set[tuple[int, str]] = set()
-    for offset, line, raw_target, is_code_span in sorted(candidates):
+    code_spans_left = 0
+    for offset, line, raw_target, is_code_span, mention_target in sorted(candidates):
         if not raw_target or _comment_filter(comment_starts, comment_ends, offset):
             continue
-        reason = _classify(root, document_path, raw_target, settings, base)
+        if mention_target:
+            key = (directory, mention_target)
+            if key not in mentions_seen:
+                mentions_seen[key] = mention_ds116_reason(root, document_path, mention_target)
+            reason = mentions_seen[key]
+        else:
+            reason = _classify(root, document_path, raw_target, settings, base)
         if reason is None:
             continue
         if is_code_span and reason in _CODE_SPAN_EXEMPT_REASONS:
             # Drive/UNC/backslash/control inside a code span is a documented literal
             # example, not a reference; DS103 reports those with its legacy behaviour.
+            code_spans_left += 1
             continue
         message = _build_message(reason, raw_target)
         key = (line, message)
@@ -551,6 +662,12 @@ def check_text(
         findings.append(
             models.Finding(rule=DS116.code, path=document_path, message=message, severity=severity, line=line)
         )
+    logger.debug(
+        "DS116 checked %s: %d findings, %d code span(s) left to DS103",
+        safe(document_path),
+        len(findings),
+        code_spans_left,
+    )
     return tuple(findings)
 
 
@@ -574,7 +691,8 @@ def detect(
     """Return ``DS116`` findings for Markdown documents in their supplied order.
 
     The trusted scan root is canonicalised exactly once here with the single
-    permitted :func:`os.path.realpath`; every containment comparison uses that
+    permitted :func:`os.path.realpath` (:func:`canonical_root`, shared with
+    ``DS124``); every containment comparison uses that
     canonical root, and the current working directory never enters resolution.
 
     :param root: The scan root directory (trusted).
@@ -589,15 +707,26 @@ def detect(
     """
     settings = config if config is not None else Config()
     if settings.root_escape_policy == "off":
+        logger.debug("DS116 inactive: root_escape_policy is off")
         return ()
-    canonical = Path(os.path.realpath(root))
+    logger.debug(
+        "DS116 detect: %d documents, root_escape_policy=%s, decode_percent_paths=%s, windows_path_policy=%s",
+        len(documents),
+        safe(settings.root_escape_policy),
+        settings.decode_percent_paths,
+        safe(settings.windows_path_policy),
+    )
+    canonical = canonical_root(root)
     base = link_root if link_root is not None else link_root_for(canonical, settings)
+    mention_cache: dict[tuple[str, str], Optional[str]] = {}
     findings: list[models.Finding] = []
     for document in documents:
         if not document.path.endswith(".md"):
             continue
         text = _read_text(canonical / document.path)
-        findings.extend(check_text(text, document.path, canonical, settings, link_root=base))
+        findings.extend(
+            check_text(text, document.path, canonical, settings, link_root=base, mention_cache=mention_cache)
+        )
     return tuple(findings)
 
 

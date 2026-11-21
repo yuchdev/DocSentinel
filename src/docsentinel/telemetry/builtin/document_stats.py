@@ -20,10 +20,13 @@ Threat model 0007-extensions mitigations implemented here:
 """
 
 import heapq
+import logging
 from collections.abc import Iterator, Mapping
 from typing import Final, Optional
 
 from docsentinel.config import Config
+
+logger = logging.getLogger(__name__)
 
 #: The extension name.
 EXTENSION_NAME: Final[str] = "document_stats"
@@ -90,6 +93,7 @@ class DocumentStatsExtension:
             ``(-problem_count_per_kb, path)``.
         """
         worst = heapq.nsmallest(WORST_DOCUMENTS, _ranked(model["documents"]), key=lambda item: (item[0], item[1]))
+        logger.debug("document_stats: %d worst document(s) selected", len(worst))
         return {"worst_documents": [entry for _, _, entry in worst]}
 
     def provide_document(self, doc: Mapping, model: Mapping) -> dict:

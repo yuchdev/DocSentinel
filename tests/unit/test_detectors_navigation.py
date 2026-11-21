@@ -27,6 +27,7 @@ from docsentinel import cli, models, rules
 from docsentinel.config import Config, ConfigError
 from docsentinel.detectors import navigation as nav
 from docsentinel.engine import scan
+from tests.log_helpers import problem_output
 from tests.timing_helpers import assert_scales_linearly
 
 _ROOT = Path(os.sep) / "scanroot"
@@ -663,7 +664,7 @@ def test_cli_scan_maps_readiness_error_to_exit_two(tmp_path: Path, monkeypatch: 
     captured = capsys.readouterr()
     assert code == 2
     assert "Scan failed" in captured.err
-    assert str(Path(os.path.realpath(tmp_path))) not in captured.err
+    assert str(Path(os.path.realpath(tmp_path))) not in problem_output(captured.err)
 
 
 # --- Linear-scaling floods (threat-model requirement 6) ---------------------------
