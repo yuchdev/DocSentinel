@@ -81,6 +81,13 @@ Security contract (``docs/security/threat-model-0007-template-engine-2026-10-31.
   context is cut to the template's ``requires_extensions`` (and dropped when it
   lists none) by :func:`~docsentinel.telemetry.extensions.scope_extension_data`, so
   a whole-object sink such as ``{doc|json}`` never emits another extension's data.
+* **Context kind** (threat model 0010-extract-facts E3, E4) -- :func:`render_template`
+  takes the kind of the model it is given (``model_kind``, default ``report``) and
+  refuses a template whose ``context`` differs, so a library caller cannot bypass the
+  ``reporting`` shims. For a ``facts`` template the json serializer writes the ``[`` of
+  every ``##[`` (the GitHub legacy command marker) as its ``\\u005b`` escape, after the
+  ``ensure_ascii`` encoding: ``json.loads`` gives back the same string, so the fact
+  text stays value-equal, but no ``##[`` reaches a CI log. ``report`` json is unchanged.
 """
 
 from __future__ import annotations
@@ -102,8 +109,17 @@ from docsentinel.telemetry.extensions import (
     missing_extensions_message,
     scope_extension_data,
 )
-from docsentinel.telemetry.filters import JSON_FILTER, TemplateError, apply_filter, neutralize, to_text
+from docsentinel.telemetry.filters import (
+    JSON_FILTER,
+    LEGACY_COMMAND_MARKER,
+    TemplateError,
+    apply_filter,
+    neutralize,
+    to_text,
+)
 from docsentinel.telemetry.loader import (
+    CONTEXT_FACTS,
+    CONTEXT_REPORT,
     PLACEMENT_APPEND,
     PLACEMENT_BLOCK,
     PLACEMENT_ONE_LINE,
@@ -131,6 +147,7 @@ from docsentinel.telemetry.loader import (
     TextNode,
     TextOutput,
     VarRef,
+    require_context,
 )
 
 logger = logging.getLogger(__name__)
@@ -165,6 +182,10 @@ _WORST_EXPANSION: Final[int] = 24
 
 #: Serialized pieces collected before they are joined into one batch (R7).
 _FLUSH_PIECES: Final[int] = 1024
+
+#: What a ``facts`` json render writes for :data:`LEGACY_COMMAND_MARKER` (E3): the
+#: bracket as its json escape, so the parsed string is unchanged.
+_JSON_MARKER_ESCAPE: Final[str] = LEGACY_COMMAND_MARKER[:-1] + "\\u005b"
 
 #: Exact member types :func:`_check_context` accepts without a further check.
 _PLAIN_TYPES: Final[frozenset[type]] = frozenset({str, int, bool, type(None)})
@@ -505,7 +526,18 @@ class _JsonStream:
     ``indent`` (its separator then carries the line break and padding).
     """
 
-    __slots__ = ("_batches", "_indent", "_item_sep", "_limit", "_memo", "_pads", "_pieces", "_sort_keys", "_total")
+    __slots__ = (
+        "_batches",
+        "_escape_marker",
+        "_indent",
+        "_item_sep",
+        "_limit",
+        "_memo",
+        "_pads",
+        "_pieces",
+        "_sort_keys",
+        "_total",
+    )
 
     def __init__(
         self,
@@ -513,6 +545,8 @@ class _JsonStream:
         sort_keys: bool,
         limit: int,
         memo: Optional[dict[int, tuple[JsonValue, int]]] = None,
+        *,
+        escape_marker: bool = False,
     ):
         """Prepare an empty stream.
 
@@ -523,7 +557,11 @@ class _JsonStream:
             that built the value, so embedded sub-trees are not measured twice. Its
             entries are exact lower bounds: a saturated entry only arises in a render
             that has already stopped with a :class:`TemplateError`.
+        :param escape_marker: Write the ``[`` of every ``##[`` as ``\\u005b`` (E3,
+            ``facts`` templates only). Every piece holds whole json strings, and only a
+            string can hold ``#``, so a marker is never split across two pieces.
         """
+        self._escape_marker = escape_marker
         self._indent = indent
         self._sort_keys = sort_keys
         self._limit = limit
@@ -540,6 +578,8 @@ class _JsonStream:
         :param text: The serialized piece.
         :raises TemplateError: When the total passes the cap.
         """
+        if self._escape_marker and LEGACY_COMMAND_MARKER in text:
+            text = text.replace(LEGACY_COMMAND_MARKER, _JSON_MARKER_ESCAPE)
         self._total += len(text)
         if self._total > self._limit:
             raise TemplateError(f"rendering stopped: output larger than {self._limit} characters")
@@ -1039,17 +1079,24 @@ class _Renderer:
         """Render a ``json`` template; ``ensure_ascii`` is forced ``True`` (M8).
 
         :param template: The validated template.
-        :returns: The serialized document.
+        :returns: The serialized document; for a ``facts`` template it holds no ``##[`` (E3).
         """
         output = template.output
         if not isinstance(output, JsonOutput) or template.body is None:
             raise TemplateError("a json template needs a json output and a body")
         body = self._evaluate(template.body)
-        stream = _JsonStream(output.indent, output.sort_keys, MAX_OUTPUT_CHARS, self._sizes)
+        escape_marker = template.context == CONTEXT_FACTS
+        stream = _JsonStream(
+            output.indent, output.sort_keys, MAX_OUTPUT_CHARS, self._sizes, escape_marker=escape_marker
+        )
         try:
-            return stream.serialize(body)
+            document = stream.serialize(body)
         except (TypeError, ValueError, RecursionError):
             raise TemplateError("the rendered json value could not be serialized") from None
+        if escape_marker and LEGACY_COMMAND_MARKER in document:
+            # Defence in depth: unreachable while every piece holds whole strings.
+            raise TemplateError("the rendered json still holds a workflow command marker")
+        return document
 
     def _evaluate(self, node: JsonNode) -> JsonValue:
         """Evaluate one json template node; operators come from template nodes only (M14).
@@ -1199,6 +1246,7 @@ def render_template(
     context: Mapping[str, JsonValue],
     *,
     extensions: Union[LoadedExtensions, Sequence[str]] = (),
+    model_kind: str = CONTEXT_REPORT,
 ) -> str:
     """Render a validated template against a JSON-shaped context (Task 02 contract).
 
@@ -1208,8 +1256,12 @@ def render_template(
     :param extensions: The loaded extension registry from
         ``resolve_extensions`` (names and
         filters of the same registry), or bare names of loaded extensions.
+    :param model_kind: The kind of model ``context`` was built by: ``report``
+        (``ReportModel``, the default) or ``facts`` (``FactsModel``). It must equal
+        ``template.context`` (threat model 0010-extract-facts E4).
     :returns: The rendered report; identical bytes for identical inputs.
-    :raises TemplateError: For a non-template, a missing required extension, a
+    :raises TemplateError: For a non-template, a template of another context than
+        ``model_kind`` (or an unknown ``model_kind``), a missing required extension, a
         context that is not JSON-shaped, an absent variable, a filter given the wrong
         kind of value, a context holding a reference cycle or a value that cannot be
         rendered (such as an int too long to print, R3), or a render past the M13
@@ -1219,6 +1271,7 @@ def render_template(
     """
     if not isinstance(template, Template):
         raise TemplateError("render_template needs a validated Template")
+    require_context(template, model_kind)
     extension_filters = _check_extensions(template, extensions)
     try:
         context = scope_extension_data(context, template.requires_extensions)

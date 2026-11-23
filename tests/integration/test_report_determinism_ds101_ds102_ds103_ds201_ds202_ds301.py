@@ -5,7 +5,7 @@ unit tests rendered one in-memory result twice. Here every packaged template ren
 ``docsentinel scan`` per profile in two separate interpreters that differ in ``PYTHONHASHSEED``
 and in the absolute location of the scan root (two copies of the same tree), so set or dict
 ordering, absolute paths and per-process caches cannot hide behind one warm process. Standard
-skips without its extras and deep skips without the spaCy model (``deep_support.deep_ready``).
+skips without its extras and deep skips without the spaCy model (``nlp.deep_ready``).
 The tree composes ``ds101/dangling_file_link``, ``ds102/stray_comment_file`` and
 ``ds103/unresolvable_path_file`` at the root with ``ds201/dense_document``,
 ``ds202/identical_paragraphs`` and ``ds301/number_contradiction`` in subdirectories.
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from docsentinel import deep_support
+from docsentinel.mining import nlp
 from docsentinel.telemetry.loader import packaged_template_names
 from tests.asset_helpers import load_asset_case
 
@@ -31,6 +31,14 @@ _PROFILE_ARGS: dict[str, tuple[str, ...]] = {
     "standard": ("--profile", "standard"),
     "deep": ("--profile", "deep", "--i-understand-deep-is-heuristic"),
 }
+
+#: The one stderr problem line of a deep scan: ``DS302`` is active but its gate is closed (no
+#: consent, no key), so it is skipped with this fixed WARNING (Milestone 0010 D5).
+_DS302_GATE_WARNING = (
+    "docsentinel: WARNING: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); "
+    "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY\n"
+)
+
 
 #: Renders every named template of one root and profile in this interpreter; prints a JSON map.
 _DRIVER = textwrap.dedent(
@@ -122,7 +130,7 @@ def test_every_packaged_template_is_byte_identical_across_processes_and_roots(pr
     """
     if profile == "standard" and not _standard_installed():
         pytest.skip("standard extras are not installed")
-    if profile == "deep" and not deep_support.deep_ready():
+    if profile == "deep" and not nlp.deep_ready():
         pytest.skip("deep extras or the spaCy model are not installed")
     first_root = _tree(tmp_path / "first" / "repo")
     second_root = _tree(tmp_path / "second-location" / "nested" / "repo")
@@ -133,7 +141,7 @@ def test_every_packaged_template_is_byte_identical_across_processes_and_roots(pr
     assert sorted(first) == sorted(packaged_template_names())
     for name in packaged_template_names():
         assert first[name] == second[name], f"{profile}/{name} differs between runs"
-        assert first[name]["err"] == ""
+        assert first[name]["err"] == (_DS302_GATE_WARNING if profile == "deep" else "")
         report = str(first[name]["out"])
         assert str(tmp_path) not in report and str(first_root) not in report
     rules = json.dumps(json.loads(str(first["json-v1"]["out"]))["findings"])

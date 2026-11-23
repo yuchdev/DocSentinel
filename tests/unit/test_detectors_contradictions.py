@@ -3,8 +3,8 @@
 Detection over documents is covered by ``tests/integration/test_detectors_contradictions_ds301.py``.
 """
 
-from docsentinel.detectors._triples import Claim
 from docsentinel.detectors.contradictions import DS301, _candidate_findings, _disagree
+from docsentinel.mining.claims import Claim
 from docsentinel.rules import RULES
 
 

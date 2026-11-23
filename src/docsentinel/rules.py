@@ -46,6 +46,12 @@ ANALYZERS: dict[str, Any] = {}
 #: profile's analyzer plan, ``enabled_rules`` of a clean scan or the evaluated-rule
 #: count of ``ScanResult.notice``. ``DS100`` reports a document no analyzer could read.
 ENGINE_RULES: Final[frozenset[str]] = frozenset({"DS100"})
+#: Rules that send document-derived text to a third-party service (ADR 0007
+#: Contract 5). They need the invoker consent ``--use-external-api`` (or
+#: ``scan(use_external_api=True)``) and a backend API key, never a configuration
+#: key; ``docsentinel rules`` marks each registered one. ``DS302`` registers in
+#: Milestone 0010 Story 01.0 Task 05.
+EXTERNAL_API_RULES: Final[frozenset[str]] = frozenset({"DS302"})
 #: An enabling value of :attr:`Rule.opt_in_values`. The pattern guarantees the
 #: double-quoted rendering of :func:`opt_in_hint` never needs escaping and never
 #: carries a control or bidi character.

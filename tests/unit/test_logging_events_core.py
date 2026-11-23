@@ -21,12 +21,13 @@ from pathlib import Path
 
 import pytest
 
-from docsentinel import deep_support, engine, scan
+from docsentinel import engine, scan
 from docsentinel.baseline import fingerprint, load_baseline
 from docsentinel.code_discovery import discover_python
 from docsentinel.config import Config, load_config
-from docsentinel.deep_support import load_pipeline
 from docsentinel.link_root import resolve_invoker_link_root, resolve_link_root
+from docsentinel.mining import nlp
+from docsentinel.mining.nlp import load_pipeline
 from docsentinel.models import Document, Finding, ScanResult
 from docsentinel.reporting import render
 
@@ -327,7 +328,7 @@ def test_deep_profile_without_dependencies_logs_warning(tmp_path: Path, caplog: 
 
     scan(tmp_path, config=Config(profile="deep", deep_confirm=True))
 
-    assert _problems(caplog) == [f"deep profile skipped: dependencies unavailable - {deep_support.DEEP_EXTRA_HINT}"]
+    assert _problems(caplog) == [f"deep profile skipped: dependencies unavailable - {nlp.DEEP_EXTRA_HINT}"]
     assert _messages(caplog, logging.WARNING) == _problems(caplog)
 
 
@@ -493,7 +494,7 @@ def test_docsig_symlink_and_non_python_paths_warn_and_missing_path_does_not(
 
 def test_load_pipeline_logs_debug_when_spacy_import_fails(caplog: pytest.LogCaptureFixture, monkeypatch):
     """
-    [Unit] deep_support logging: verifies a failing spaCy import at run time logs DEBUG only (logged once upstream).
+    [Unit] nlp logging: verifies a failing spaCy import at run time logs DEBUG only (logged once upstream).
 
     Scenario:
         Given importlib.import_module raising ImportError for spacy
@@ -501,18 +502,18 @@ def test_load_pipeline_logs_debug_when_spacy_import_fails(caplog: pytest.LogCapt
         Then it still raises RuntimeError, logs one DEBUG naming the module and nothing at WARNING+.
 
     Boundaries:
-        - Focus: the import except branch of deep_support.load_pipeline
+        - Focus: the import except branch of nlp.load_pipeline
         - Fixtures/params: caplog, monkeypatch
         - Scope: one call
 
     On failure, first check:
-        - Whether load_pipeline still imports spacy via deep_support.importlib
+        - Whether load_pipeline still imports spacy via nlp.importlib
     """
     def refuse(name: str):
         """Raise the ImportError a missing spacy install produces."""
         raise ImportError(f"no module named {name}", name=name)
 
-    monkeypatch.setattr(deep_support.importlib, "import_module", refuse)
+    monkeypatch.setattr(nlp.importlib, "import_module", refuse)
     caplog.set_level(logging.DEBUG, logger="docsentinel")
 
     with pytest.raises(RuntimeError):
@@ -524,7 +525,7 @@ def test_load_pipeline_logs_debug_when_spacy_import_fails(caplog: pytest.LogCapt
 
 def test_load_pipeline_logs_debug_when_model_load_fails(caplog: pytest.LogCaptureFixture, monkeypatch):
     """
-    [Unit] deep_support logging: verifies a failing spaCy model load logs DEBUG only (logged once upstream).
+    [Unit] nlp logging: verifies a failing spaCy model load logs DEBUG only (logged once upstream).
 
     Scenario:
         Given a spacy stand-in whose load raises OSError
@@ -532,7 +533,7 @@ def test_load_pipeline_logs_debug_when_model_load_fails(caplog: pytest.LogCaptur
         Then it still raises RuntimeError, logs a DEBUG naming the model and nothing at WARNING+.
 
     Boundaries:
-        - Focus: the model-load except branch of deep_support.load_pipeline
+        - Focus: the model-load except branch of nlp.load_pipeline
         - Fixtures/params: caplog, monkeypatch
         - Scope: one call
 
@@ -544,14 +545,14 @@ def test_load_pipeline_logs_debug_when_model_load_fails(caplog: pytest.LogCaptur
         raise OSError("model data unreadable")
 
     stand_in = types.SimpleNamespace(load=broken_load)
-    monkeypatch.setattr(deep_support.importlib, "import_module", lambda name: stand_in)
+    monkeypatch.setattr(nlp.importlib, "import_module", lambda name: stand_in)
     caplog.set_level(logging.DEBUG, logger="docsentinel")
 
     with pytest.raises(RuntimeError):
         load_pipeline()
 
     assert _problems(caplog) == []
-    assert f"deep profile: spaCy model {deep_support.MODEL_NAME} failed to load: OSError" in _messages(
+    assert f"deep profile: spaCy model {nlp.MODEL_NAME} failed to load: OSError" in _messages(
         caplog, logging.DEBUG
     )
 
@@ -566,14 +567,14 @@ def test_corpus_model_logs_sizes_at_debug(tmp_path: Path, caplog: pytest.LogCapt
         Then DEBUG reports 1 document and 2 paragraphs and no record is INFO or above.
 
     Boundaries:
-        - Focus: detectors.standard.corpus DEBUG lines
+        - Focus: mining.corpus DEBUG lines
         - Fixtures/params: tmp_path, caplog
         - Scope: one uncached call
 
     On failure, first check:
         - Whether the lru_cache returned a cached model (clear_corpus_cache first)
     """
-    corpus = pytest.importorskip("docsentinel.detectors.standard.corpus")
+    corpus = pytest.importorskip("docsentinel.mining.corpus")
     caplog.set_level(logging.DEBUG, logger="docsentinel")
     text = "Alpha beta gamma delta epsilon zeta eta.\n\nTheta iota kappa lambda mu nu xi omicron.\n"
     (tmp_path / "a.md").write_text(text, encoding="utf-8")

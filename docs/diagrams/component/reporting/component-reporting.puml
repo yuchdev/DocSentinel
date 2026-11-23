@@ -5,9 +5,9 @@ skinparam componentStyle rectangle
 skinparam shadowing false
 skinparam packageStyle rectangle
 
-[cli.py\nscan: format, template, extension options] as cli
-[reporting.py\nrender() shim - no format literals] as reporting
-[models.py\nScanResult, Finding] as models
+[cli.py\nscan: format, template, extension options\nextract-facts: format, template] as cli
+[reporting.py\nrender(), render_facts() shims - no format literals] as reporting
+[models.py\nScanResult, Finding,\nFactExtractionResult] as models
 [config.py\nreport_* and telemetry_* options] as config
 [rules.py\nRULES] as rules
 [detectors/path_boundaries.py\ncontainment gate] as gate
@@ -16,6 +16,7 @@ skinparam packageStyle rectangle
 package "telemetry/" {
   [loader.py\nload_template -> immutable Template\n256 KiB cap, strict validation] as loader
   [model.py\nReportModel.build -> JSON-shaped context,\nCONTEXT_SCHEMA] as model
+  [facts_model.py\nFactsModel.build -> facts context\n(disjoint from the report context)] as fmodel
   [classify.py\nclassify -> fault_class, tier,\noutcome, domain] as classify
   [engine.py\nrender_template (logic-less)] as tengine
   [filters.py\nneutralize, gha_*, TemplateError,\napply_filter] as filters
@@ -33,6 +34,8 @@ package "telemetry/" {
     [json.json (schema 2)] as tjson
     [json-v1.json (schema 1)] as tjson1
     [json-documents.json] as tjdocs
+    [facts-text.json\ncontext: facts] as tfacts
+    [facts-json.json\ncontext: facts] as tfjson
   }
 }
 
@@ -71,6 +74,13 @@ loader --> tgh
 loader --> tjson
 loader --> tjson1
 loader --> tjdocs
+loader --> tfacts
+loader --> tfjson
+loader --> fmodel : CONTEXT_FACTS schema;\nloader "context" key (report or facts)
+reporting --> fmodel : FactsModel.build (render_facts)
+fmodel --> models
+fmodel --> filters
+fmodel --> model : Variable, TRUSTED, UNTRUSTED
 loader ..> userdir : read after\ncontainment gate
 loader ..> userfile
 ext ..> pyext : importlib.import_module\n(only dynamic import site)

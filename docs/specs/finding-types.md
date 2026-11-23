@@ -133,6 +133,7 @@ migration can be traced.
 | Rule | Type label | `value` | `detail` | Sev | Was |
 |---|---|---|---|---|---|
 | DS301 | `candidate contradiction` | subject | `'x' in A but 'y' in B; review to confirm` | warning | `candidate contradiction: subject …` |
+| DS302 | `unverified claim` | `<verdict> (confidence <0.00>): ` + the exact candidate text sent (at most 1,000 characters, untrusted) | — | warning | none (new rule; message `external fact-check: '<snippet>' rated <verdict> by <backend> - review to confirm`) |
 
 ## 5. Rules for changing this standard
 
@@ -147,6 +148,9 @@ migration can be traced.
 
 ## 6. Changelog
 
+- 2026-11-23: Added DS302 `unverified claim` (deep, advisory). Its `value` carries the verdict,
+  the confidence and the exact text sent; the `message` carries no confidence, so the
+  fingerprint is run-stable (ADR 0007 Contract 9).
 - 2026-11-14: Added DS100 `unreadable document` (message `unreadable document: <reason>`). The
   engine emits it, in every profile, for a discovered document it cannot read or decode;
   the document stays in the inventory and no other rule checks it.

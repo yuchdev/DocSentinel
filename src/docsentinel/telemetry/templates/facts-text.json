@@ -1,0 +1,124 @@
+{
+  "template_version": 1,
+  "name": "facts-text",
+  "type": "text",
+  "context": "facts",
+  "description": "Human-readable fact extraction output for docsentinel extract-facts: each document path once, its facts beneath as '#<rank> score <s> (numeric <n>, entity <e>, distinct <d>) cluster <id>/<size> paragraph <p>[ <disposition>]: <text>' (a fixed '[hidden characters]' marker before text holding invisible code points, the disposition only when rejected claims are listed), then a summary line, the DS302 match line and the notice.",
+  "requires_extensions": [],
+  "output": {
+    "join": "\n",
+    "trailing_newline": false,
+    "sink": "terminal"
+  },
+  "lines": [
+    {
+      "type": "loop",
+      "over": "documents",
+      "as": "doc",
+      "placement": "block",
+      "body": [
+        {
+          "type": "line",
+          "text": "{doc.path|neutralize}",
+          "variables_used": [
+            "doc.path"
+          ]
+        },
+        {
+          "type": "loop",
+          "over": "doc.facts",
+          "as": "f",
+          "placement": "block",
+          "body": [
+            {
+              "type": "line",
+              "text": "  #{f.rank} score {f.score} (numeric {f.signals.numeric}, entity {f.signals.entity}, distinct {f.signals.distinctiveness}) cluster {f.cluster.id}/{f.cluster.size} paragraph {f.paragraph_index}",
+              "variables_used": [
+                "f.rank",
+                "f.score",
+                "f.signals.numeric",
+                "f.signals.entity",
+                "f.signals.distinctiveness",
+                "f.cluster.id",
+                "f.cluster.size",
+                "f.paragraph_index"
+              ]
+            },
+            {
+              "type": "line",
+              "when": {
+                "var": "run.include_rejected",
+                "truthy": true
+              },
+              "append": true,
+              "text": " {f.disposition}",
+              "variables_used": [
+                "f.disposition"
+              ]
+            },
+            {
+              "type": "line",
+              "when": {
+                "var": "f.hidden_characters",
+                "truthy": true
+              },
+              "append": true,
+              "text": ": [hidden characters] {f.text|neutralize}",
+              "variables_used": [
+                "f.text"
+              ]
+            },
+            {
+              "type": "line",
+              "when": {
+                "var": "f.hidden_characters",
+                "falsy": true
+              },
+              "append": true,
+              "text": ": {f.text|neutralize}",
+              "variables_used": [
+                "f.text"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "line",
+      "text": "Facts: {run.summary.facts_selected} selected, {run.summary.facts_listed} listed, from {run.summary.claims_extracted} claims in {run.summary.documents} document(s) ({run.summary.unreadable} unreadable skipped)",
+      "variables_used": [
+        "run.summary.facts_selected",
+        "run.summary.facts_listed",
+        "run.summary.claims_extracted",
+        "run.summary.documents",
+        "run.summary.unreadable"
+      ]
+    },
+    {
+      "type": "line",
+      "when": {
+        "var": "run.matches_ds302",
+        "truthy": true
+      },
+      "text": "Matches the DS302 selection for this configuration: yes",
+      "variables_used": []
+    },
+    {
+      "type": "line",
+      "when": {
+        "var": "run.matches_ds302",
+        "falsy": true
+      },
+      "text": "Matches the DS302 selection for this configuration: no",
+      "variables_used": []
+    },
+    {
+      "type": "line",
+      "text": "{run.notice}",
+      "variables_used": [
+        "run.notice"
+      ]
+    }
+  ]
+}

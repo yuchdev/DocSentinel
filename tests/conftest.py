@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+import importlib
 import inspect
 import os
 import re
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from types import ModuleType
+from typing import NoReturn
 
+import httpx
 import nltk
 import pytest
 
+import docsentinel.fact_check
 from docsentinel.config import USER_SETTINGS_ENV, USER_SETTINGS_OFF
+from docsentinel.fact_check.protocol import FACT_CHECK_BACKENDS
 from docsentinel.log import LOG_DIR_ENV, LOG_LEVEL_ENV, shutdown_cli_logging
 from tests.asset_helpers import AssetCase, load_asset_case
 
@@ -171,3 +178,97 @@ def _isolated_user_settings(tmp_path_factory: pytest.TempPathFactory) -> Iterato
                 os.environ.pop(name, None)
             else:
                 os.environ[name] = value
+
+
+@pytest.fixture(autouse=True)
+def _isolated_fact_check_env() -> Iterator[None]:
+    """Remove every fact-check consent and API-key variable for every test (threat model 0010 M12).
+
+    ``DOCSENTINEL_USE_EXTERNAL_API``, every ``DOCSENTINEL_FACTCHECK_*`` variable and
+    ``LENZ_API_KEY`` are removed, so a developer's shell can never open the ``DS302`` gate
+    inside the suite. Tests set a fake key through ``monkeypatch`` only. The environment is
+    restored by hand, like the isolation fixtures above.
+    """
+    names = [
+        name
+        for name in os.environ
+        if name in {"DOCSENTINEL_USE_EXTERNAL_API", "LENZ_API_KEY"} or name.startswith("DOCSENTINEL_FACTCHECK_")
+    ]
+    saved = {name: os.environ.pop(name) for name in names}
+    try:
+        yield
+    finally:
+        os.environ.update(saved)
+
+
+#: The message of the session-wide network guard (Story 03.0 Task 04 step 1).
+NETWORK_GUARD_MESSAGE = "real network transport reached"
+
+#: The Lenz client module, imported per test only through :func:`lenz_module`.
+_LENZ_MODULE = "docsentinel.fact_check.lenz"
+
+
+def _refuse_sync_transport(self: httpx.HTTPTransport, request: httpx.Request) -> NoReturn:
+    """Stand in for ``httpx.HTTPTransport.handle_request`` and refuse every real request.
+
+    :param self: The transport.
+    :param request: The request that would have been sent.
+    :raises AssertionError: Always.
+    """
+    raise AssertionError(NETWORK_GUARD_MESSAGE)
+
+
+async def _refuse_async_transport(self: httpx.AsyncHTTPTransport, request: httpx.Request) -> NoReturn:
+    """Stand in for ``httpx.AsyncHTTPTransport.handle_async_request`` and refuse every real request.
+
+    :param self: The transport.
+    :param request: The request that would have been sent.
+    :raises AssertionError: Always.
+    """
+    raise AssertionError(NETWORK_GUARD_MESSAGE)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_real_network_transport() -> Iterator[None]:
+    """Fail any test that reaches a real ``httpx`` transport (Milestone 0010 Story 03.0 Task 04).
+
+    Both real transport entry points raise ``AssertionError("real network transport reached")``
+    for the whole session; ``httpx.MockTransport`` is a different class and is unaffected.
+    Importing ``httpx`` here cannot hide a lazy-import regression: every lazy-import assertion
+    runs in a fresh ``python -I`` subprocess. The originals are restored by hand at session end.
+    """
+    saved_sync = httpx.HTTPTransport.handle_request
+    saved_async = httpx.AsyncHTTPTransport.handle_async_request
+    httpx.HTTPTransport.handle_request = _refuse_sync_transport  # type: ignore[method-assign]
+    httpx.AsyncHTTPTransport.handle_async_request = _refuse_async_transport  # type: ignore[method-assign]
+    try:
+        yield
+    finally:
+        httpx.HTTPTransport.handle_request = saved_sync  # type: ignore[method-assign]
+        httpx.AsyncHTTPTransport.handle_async_request = saved_async  # type: ignore[method-assign]
+
+
+@pytest.fixture
+def lenz_module() -> Iterator[ModuleType]:
+    """Import ``docsentinel.fact_check.lenz`` for one test and undo every trace of it afterwards.
+
+    The module, its attribute on the package and its ``FACT_CHECK_BACKENDS`` entry are removed
+    again when they were absent before the test, so later in-process tests still see a process in
+    which the client was never imported or registered.
+
+    :return: An iterator yielding the imported module.
+    """
+    preloaded = _LENZ_MODULE in sys.modules
+    registered = FACT_CHECK_BACKENDS.get("lenz")
+    module = importlib.import_module(_LENZ_MODULE)
+    try:
+        yield module
+    finally:
+        if not preloaded:
+            sys.modules.pop(_LENZ_MODULE, None)
+            if getattr(docsentinel.fact_check, "lenz", None) is module:
+                delattr(docsentinel.fact_check, "lenz")
+        if registered is None:
+            FACT_CHECK_BACKENDS.pop("lenz", None)
+        else:
+            FACT_CHECK_BACKENDS["lenz"] = registered

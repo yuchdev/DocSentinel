@@ -17,6 +17,13 @@ template that would emit one unfiltered. Baseline fingerprints hash the raw
 Extensions (spec §9) are resolved here only from explicit arguments: ``render``
 never reads the environment, and a ``python:`` spec runs only when the caller passes
 ``allow_python_extensions=True`` (threat model 0007-extensions M2).
+
+:func:`render_facts` (Milestone 0010 Story 05.0 Task 02) is the same thin shim for a
+:class:`~docsentinel.models.FactExtractionResult`: it resolves a ``facts`` template,
+builds the :class:`~docsentinel.telemetry.facts_model.FactsModel` context and renders it.
+A template of the other context is refused by both shims and by the renderer itself.
+Claim text, paths, numbers and entities are untrusted; the facts templates route them
+through the same sink filters. ``render_facts`` takes no extensions.
 """
 
 import logging
@@ -28,7 +35,7 @@ from typing import Optional, Union
 
 from docsentinel.config import Config
 from docsentinel.log import safe
-from docsentinel.models import ScanResult
+from docsentinel.models import FactExtractionResult, ScanResult
 from docsentinel.telemetry.engine import render_template
 from docsentinel.telemetry.extensions import (
     PYTHON_PREFIX,
@@ -37,9 +44,19 @@ from docsentinel.telemetry.extensions import (
     check_template,
     resolve_extensions,
 )
+from docsentinel.telemetry.facts_model import FactsModel
 from docsentinel.telemetry.filters import TemplateError
 from docsentinel.telemetry.filters import neutralize as _neutralize
-from docsentinel.telemetry.loader import DEFAULT_TEMPLATE, Template, load_named_template, load_template
+from docsentinel.telemetry.loader import (
+    CONTEXT_FACTS,
+    CONTEXT_REPORT,
+    DEFAULT_FACTS_TEMPLATE,
+    DEFAULT_TEMPLATE,
+    Template,
+    load_named_template,
+    load_template,
+    require_context,
+)
 from docsentinel.telemetry.model import REPORT_SCHEMA_VERSION, ReportModel
 
 logger = logging.getLogger(__name__)
@@ -74,14 +91,14 @@ def _has_python_spec(extensions: object) -> bool:
 def _resolve(
     format: str,
     template: Union[Template, str, os.PathLike[str], None],
-    config: Config,
+    templates_dir: Optional[str],
     root: Optional[Path],
 ) -> Template:
     """Return the template to render: ``template`` when given, else ``format`` by name.
 
-    :param format: A template name (packaged, then ``config.report_templates_dir``).
+    :param format: A template name (packaged, then ``templates_dir``).
     :param template: A loaded template, or an invoker-supplied template file path.
-    :param config: The effective configuration.
+    :param templates_dir: The configured ``report_templates_dir``, or ``None``.
     :param root: The scan root ``report_templates_dir`` is relative to.
     :returns: The validated template.
     :raises TemplateError: On any resolution, read or validation failure.
@@ -90,7 +107,7 @@ def _resolve(
         return template
     if template is not None:
         return load_template(Path(os.fspath(template)))
-    return load_named_template(format, root=root, templates_dir=config.report_templates_dir)
+    return load_named_template(format, root=root, templates_dir=templates_dir)
 
 
 def render(
@@ -137,9 +154,10 @@ def render(
     :param allow_python_extensions: The explicit trust gate for ``python:`` specs;
         never taken from the environment.
     :returns: The rendered report.
-    :raises ValueError: If the template is unknown, unreadable, invalid, needs an
-        extension that is not loaded, or fails to render; the message is bounded and
-        neutralized, and the ``TemplateError``
+    :raises ValueError: If the template is unknown, unreadable, invalid, a ``facts``
+        template (``template <name> renders fact extraction output; use docsentinel
+        extract-facts``), needs an extension that is not loaded, or fails to render;
+        the message is bounded and neutralized, and the ``TemplateError``
         is chained as the cause.
     :raises docsentinel.telemetry.extensions.ExtensionError: If an extension is
         refused (including a ``python:`` spec without ``root``), cannot be loaded, or
@@ -171,7 +189,8 @@ def render(
         # so domain_for -- hence doc.domain -- sees builtin:domain only when it runs (M24).
         settings = replace(settings, telemetry_extensions=loaded.builtin_specs)
     try:
-        chosen = _resolve(format, template, settings, root)
+        chosen = _resolve(format, template, settings.report_templates_dir, root)
+        require_context(chosen, CONTEXT_REPORT)
         logger.debug(
             "render: template %s (%s, %s), %d findings, strict=%s",
             safe(chosen.name),
@@ -190,9 +209,53 @@ def render(
             report_schema_version=chosen.schema_version or REPORT_SCHEMA_VERSION,
             show_clean_documents=settings.report_show_clean_documents,
         )
-        report = render_template(chosen, context, extensions=loaded)
+        report = render_template(chosen, context, extensions=loaded, model_kind=CONTEXT_REPORT)
     except TemplateError as exc:
         raise ValueError(str(exc)) from exc
     loaded.check_modules()
     logger.debug("render: %d characters", len(report))
     return report
+
+
+def render_facts(
+    result: FactExtractionResult,
+    format: str = DEFAULT_FACTS_TEMPLATE,
+    *,
+    template: Union[Template, str, os.PathLike[str], None] = None,
+    root: Optional[Path] = None,
+    templates_dir: Optional[str] = None,
+) -> str:
+    """Render a fact-extraction result through a ``facts`` template.
+
+    Resolution matches :func:`render`: ``template`` when given (a loaded ``Template``,
+    or a trusted invoker file path through the loader's file gate), otherwise
+    ``format`` as a template *name* -- never a path -- among the packaged templates and
+    then ``templates_dir``. No extension is loaded or accepted.
+
+    :param result: The completed ``extract_facts`` run.
+    :param format: Template name, e.g. a packaged ``facts`` template name.
+    :param template: A template or template file path; wins over ``format``.
+    :param root: The scan root ``templates_dir`` is resolved against.
+    :param templates_dir: The configured ``report_templates_dir``, or ``None``.
+    :returns: The rendered output.
+    :raises ValueError: If the template is unknown, unreadable, invalid, a ``report``
+        template (``template <name> is a report template; use it with docsentinel
+        scan``), or fails to render; or if the result holds a disposition outside the
+        closed set. A ``TemplateError`` is chained as the cause.
+    """
+    try:
+        chosen = _resolve(format, template, templates_dir, root)
+        require_context(chosen, CONTEXT_FACTS)
+        logger.debug(
+            "render facts: template %s (%s, %s), %d facts",
+            safe(chosen.name),
+            chosen.origin,
+            chosen.type,
+            len(result.facts),
+        )
+        context = FactsModel.build(result)
+        output = render_template(chosen, context, model_kind=CONTEXT_FACTS)
+    except TemplateError as exc:
+        raise ValueError(str(exc)) from exc
+    logger.debug("render facts: %d characters", len(output))
+    return output

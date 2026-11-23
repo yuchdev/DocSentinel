@@ -105,10 +105,33 @@ _CONFIG_OPTIONS = {
     # Milestone 0009 Story 01.0 — reference scope (DS103 opt-in) and @-document references (DS124).
     "reference_scope",
     "at_reference_extensions",
+    # Milestone 0010 Story 01.0 — DS302 fact-check tuning (ADR 0007). The invoker-only
+    # consent ``use_external_api`` is deliberately absent (plan contract C5).
+    "fact_check_backend",
+    "fact_check_min_salience",
+    "fact_check_min_confidence",
+    "fact_check_max_claims_per_document",
+    "fact_check_max_claims_total",
+    "fact_check_time_budget_seconds",
 }
 # Standalone config file names accepted at the scan root: the preferred name first, then the alias.
 STANDALONE_CONFIG_NAMES = ("docsentinel.toml", "doc_sentinel.toml")
 _SELECTOR_PATTERN = re.compile(r"DS\d*")
+
+#: Accepted ``fact_check_backend`` names (ADR 0007, Contract 4). A static set, so
+#: ``config.py`` never imports ``docsentinel.detectors``, ``docsentinel.fact_check`` or
+#: ``httpx`` (plan contract C9); a drift test keeps it equal to the backend module map.
+FACT_CHECK_BACKEND_NAMES: Final[frozenset[str]] = frozenset({"lenz"})
+
+#: ``fact_check_*`` integer options with their inclusive ``(minimum, maximum)`` bounds.
+_FACT_CHECK_INT_BOUNDS: Final[dict[str, tuple[int, int]]] = {
+    "fact_check_max_claims_per_document": (1, 50),
+    "fact_check_max_claims_total": (1, 500),
+    "fact_check_time_budget_seconds": (1, 3600),
+}
+
+#: ``fact_check_*`` options holding a finite number in the closed range ``[0, 1]``.
+_FACT_CHECK_UNIT_OPTIONS: Final = ("fact_check_min_salience", "fact_check_min_confidence")
 
 #: Largest JSON configuration file read, in bytes (plan C7; threat model 0009-user-settings
 #: M11). One byte more is read so an over-long file is detected without reading it all.
@@ -234,6 +257,7 @@ _ENUM_OPTIONS: dict[str, frozenset[str]] = {
     "document_id_scope": frozenset({"corpus", "directory"}),
     "documentation_naming": frozenset({"off", "kebab", "snake"}),
     "reference_scope": frozenset({"links", "strict"}),
+    "fact_check_backend": FACT_CHECK_BACKEND_NAMES,
 }
 
 # Boolean-valued options, paired with the ``Config`` attribute defaults.
@@ -413,6 +437,24 @@ class Config:
         entries of 1 to 16 ASCII letters or digits, compared case-insensitively;
         validated by :func:`validate_at_reference_extensions`, which stores them
         lowercased. An empty list is refused: use ``ignore = ["DS124"]`` instead.
+    :ivar fact_check_backend: Registered fact-check backend ``DS302`` sends claims
+        to (Milestone 0010, ADR 0007). Default ``"lenz"``; one of
+        :data:`FACT_CHECK_BACKEND_NAMES`. Choosing a backend never grants network
+        consent: that needs ``--use-external-api`` (or ``scan(use_external_api=True)``)
+        and the backend's API-key environment variable, neither of which is a
+        configuration key.
+    :ivar fact_check_min_salience: Smallest salience score, ``0.0`` to ``1.0``
+        inclusive (default ``0.5``), a candidate claim needs before ``DS302`` may send
+        it.
+    :ivar fact_check_min_confidence: Smallest backend confidence, ``0.0`` to ``1.0``
+        inclusive (default ``0.6``), for a ``DS302`` verdict to become a finding.
+    :ivar fact_check_max_claims_per_document: Most claims ``DS302`` sends per
+        document; an integer from 1 to 50 (default ``3``).
+    :ivar fact_check_max_claims_total: Most claims ``DS302`` sends per scan; an
+        integer from 1 to 500 (default ``25``).
+    :ivar fact_check_time_budget_seconds: Wall-clock budget, in whole seconds, of
+        the ``DS302`` network stage of one scan; an integer from 1 to 3600 (default
+        ``300``; ADR 0007 Contract 7).
     """
 
     include: tuple[str, ...] = ("*.md", "**/*.md")
@@ -493,6 +535,12 @@ class Config:
         "yml",
         "py",
     )
+    fact_check_backend: str = "lenz"
+    fact_check_min_salience: float = 0.5
+    fact_check_min_confidence: float = 0.6
+    fact_check_max_claims_per_document: int = 3
+    fact_check_max_claims_total: int = 25
+    fact_check_time_budget_seconds: int = 300
 
 
 def domain_glob_segments(glob: object, where: str) -> tuple[str, ...]:
@@ -684,6 +732,29 @@ def validate_link_root(value: object) -> str:
     return value
 
 
+def validate_fact_check_option(name: str, value: object) -> float:
+    """Validate one numeric ``fact_check_*`` option and return its value (ADR 0007).
+
+    The loader uses it for every configuration layer, and ``DS302`` uses it again for an
+    injected ``Config`` (fail closed), so both give the same messages.
+
+    :param name: A key of the integer bounds or one of the ``[0, 1]`` number options.
+    :param value: The candidate value.
+    :returns: The validated integer, or the number as a finite ``float``.
+    :raises ConfigError: When the value is out of bounds or of the wrong type.
+    :raises KeyError: When ``name`` is not a numeric ``fact_check_*`` option.
+    """
+    bounds = _FACT_CHECK_INT_BOUNDS.get(name)
+    if bounds is not None:
+        return _require_bounded_int(name, value, bounds[0], maximum=bounds[1])
+    if name not in _FACT_CHECK_UNIT_OPTIONS:
+        raise KeyError(name)
+    number = _finite_number(value)
+    if number is None or not (0.0 <= number <= 1.0):
+        raise ConfigError(f"{name} must be a number between 0 and 1")
+    return number
+
+
 def _require_bool(name: str, value: object) -> bool:
     """Return ``value`` when it is a real boolean, else raise ``ConfigError``.
 
@@ -696,19 +767,31 @@ def _require_bool(name: str, value: object) -> bool:
     return value
 
 
-def _require_bounded_int(name: str, value: object, minimum: int) -> int:
-    """Return ``value`` when it is an ``int`` at or above ``minimum``, else raise ``ConfigError``.
+def _require_bounded_int(name: str, value: object, minimum: int, *, maximum: Optional[int] = None) -> int:
+    """Return ``value`` when it is an ``int`` within the bounds, else raise ``ConfigError``.
 
     Real booleans and floats (even integral ones such as ``5.0``) are rejected,
-    matching the strictness of the other numeric options.
+    matching the strictness of the other numeric options. With ``maximum`` the
+    message names both bounds (``<name> must be an integer from 1 to 50``).
 
     :param name: Option name used in the error message.
     :param value: Candidate value from the TOML table.
     :param minimum: The smallest accepted integer value.
+    :param maximum: The largest accepted integer value, or ``None`` for no upper bound.
     :returns: The validated integer.
     """
-    if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
-        requirement = "a non-negative integer" if minimum == 0 else f"an integer >= {minimum}"
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value < minimum
+        or (maximum is not None and value > maximum)
+    ):
+        if maximum is not None:
+            requirement = f"an integer from {minimum} to {maximum}"
+        elif minimum == 0:
+            requirement = "a non-negative integer"
+        else:
+            requirement = f"an integer >= {minimum}"
         raise ConfigError(f"{name} must be {requirement}")
     return value
 
@@ -1599,6 +1682,9 @@ def _load_extra_options(options: dict[str, object], defaults: Config) -> dict[st
 
     for name, minimum in (("min_document_words", 1), ("min_paragraph_words", 1), ("min_paragraph_chars", 0)):
         extra[name] = _require_bounded_int(name, options.get(name, getattr(defaults, name)), minimum)
+
+    for name in (*_FACT_CHECK_INT_BOUNDS, *_FACT_CHECK_UNIT_OPTIONS):
+        extra[name] = validate_fact_check_option(name, options.get(name, getattr(defaults, name)))
 
     document_id_field = options.get("document_id_field", defaults.document_id_field)
     if not isinstance(document_id_field, str) or not document_id_field:

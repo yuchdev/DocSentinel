@@ -5,8 +5,12 @@ already-parsed mapping -- into an immutable, fully validated :class:`Template`.
 Every failure raises :class:`TemplateError` with a bounded, neutralized message
 naming the JSON path of the offending node (for example ``lines[7].over``). The
 contract is ``docs/specs/report-template-format.md``; the context schema every
-variable is checked against is :data:`docsentinel.telemetry.model.CONTEXT_SCHEMA`.
-Rendering is Task 02 and lives elsewhere; this module never renders.
+variable is checked against is :data:`docsentinel.telemetry.model.CONTEXT_SCHEMA`
+for a ``report`` template and
+:data:`docsentinel.telemetry.facts_model.FACTS_CONTEXT_SCHEMA` for a ``facts`` one
+(the optional top-level ``context`` key, Milestone 0010 Story 05.0 Task 02); the one
+function choosing between them is :func:`schema_for`. Rendering is Task 02 and lives
+elsewhere; this module never renders.
 
 Security contract (``docs/security/threat-model-0007-template-engine-2026-10-31.md``).
 A config-named template is authored by whoever controls the scanned checkout, so
@@ -63,6 +67,15 @@ its every byte is hostile input. Mitigations implemented here:
   characters, the whole message is neutralized and bounded again in
   :class:`TemplateError`, only configured values (never a resolved absolute path)
   are echoed, and no exception ``repr`` is ever included.
+* **Context kind (threat model 0010-extract-facts E2, E4).** ``context`` is closed
+  (``report``, the default, or ``facts``). Both root scopes, the alias check and the
+  ``ext`` resolution take their schema from :func:`schema_for`, so a variable of the
+  other context is an unknown variable at every entry point. The facts schema has no
+  ``ext`` entry: a ``facts`` template with ``requires_extensions`` or any ``ext.*``
+  variable or filter is refused. Every other rule (M1-M17, the sinks, T2-R1) applies
+  to both contexts unchanged. The packaged name-to-context partition is the static
+  :data:`PACKAGED_TEMPLATE_CONTEXTS` (pinned by a test against the loaded packaged
+  templates); :func:`available_templates` stays name-only and opens no file.
 * **M17 -- immutability.** The parsed form holds only frozen dataclasses, tuples,
   ``frozenset`` and ``MappingProxyType``; only packaged templates are cached, keyed
   by resolved resource path, ``mtime_ns`` and size.
@@ -109,6 +122,7 @@ from typing import Any, Final, Optional, Union
 from docsentinel.detectors.path_boundaries import escapes_via_symlink, is_ds116_owned
 from docsentinel.log import safe
 from docsentinel.markdown_blocks import ReferenceStatus, resolve_local_reference
+from docsentinel.telemetry.facts_model import FACTS_CONTEXT_SCHEMA
 from docsentinel.telemetry.filters import MAX_MESSAGE as MAX_MESSAGE  # re-exported (M16 bound)
 from docsentinel.telemetry.filters import TemplateError
 from docsentinel.telemetry.filters import neutralize as neutralize_text
@@ -149,6 +163,30 @@ TYPE_JSON: Final[str] = "json"
 
 #: Template used when no format is named (``render()`` and ``docsentinel scan``).
 DEFAULT_TEMPLATE: Final[str] = "text"
+
+#: The two template ``context`` kinds (Milestone 0010 Story 05.0, decision X9): which
+#: context schema a template is validated against and which model it renders.
+CONTEXT_REPORT: Final[str] = "report"
+CONTEXT_FACTS: Final[str] = "facts"
+CONTEXTS: Final[frozenset[str]] = frozenset({CONTEXT_REPORT, CONTEXT_FACTS})
+
+#: Template used when ``render_facts()`` (``docsentinel extract-facts``) names no format.
+DEFAULT_FACTS_TEMPLATE: Final[str] = "facts-text"
+
+#: Static name -> ``context`` table of the packaged templates (threat model
+#: 0010-extract-facts E2): the trusted partition behind :func:`packaged_template_names`,
+#: so listing by context never opens a file. A unit test pins it to the loaded templates.
+PACKAGED_TEMPLATE_CONTEXTS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "facts-json": CONTEXT_FACTS,
+        "facts-text": CONTEXT_FACTS,
+        "github": CONTEXT_REPORT,
+        "json": CONTEXT_REPORT,
+        "json-documents": CONTEXT_REPORT,
+        "json-v1": CONTEXT_REPORT,
+        "text": CONTEXT_REPORT,
+    }
+)
 
 #: Most templates :func:`available_templates` accepts from ``report_templates_dir``;
 #: a directory holding more fails closed instead of being listed partially.
@@ -547,6 +585,9 @@ class Template:
     :ivar extension_filters: Every distinct extension filter use as
         ``(name, argument count, input kind)``, in first-use order; bound to the
         loaded registry before the scan (M9, M30).
+    :ivar context: :data:`CONTEXT_REPORT` (default) or :data:`CONTEXT_FACTS`: the
+        context schema the template was validated against and the only model kind
+        it may render.
     """
 
     template_version: int
@@ -561,6 +602,47 @@ class Template:
     origin: str = "mapping"
     source: str = "<mapping>"
     extension_filters: tuple[tuple[str, int, str], ...] = ()
+    context: str = CONTEXT_REPORT
+
+
+def schema_for(context: str) -> Mapping[str, Variable]:
+    """Return the context schema a template of ``context`` is validated against (E4).
+
+    The single source of the schema choice: both root scopes, the alias check and the
+    ``ext`` resolution call it, so no entry point can pair a template with the other
+    context's variables.
+
+    :param context: :data:`CONTEXT_REPORT` or :data:`CONTEXT_FACTS`.
+    :returns: :data:`~docsentinel.telemetry.model.CONTEXT_SCHEMA` or
+        :data:`~docsentinel.telemetry.facts_model.FACTS_CONTEXT_SCHEMA`.
+    :raises TemplateError: For any other value.
+    """
+    if context == CONTEXT_REPORT:
+        return CONTEXT_SCHEMA
+    if context == CONTEXT_FACTS:
+        return FACTS_CONTEXT_SCHEMA
+    raise TemplateError('context must be "report" or "facts"')
+
+
+def require_context(template: Template, context: str) -> "None":
+    """Refuse a template whose ``context`` differs from the model kind being rendered.
+
+    Used by both ``reporting`` shims and by the renderer itself (defence in depth, E4),
+    so a library caller cannot render a template against the other context's model.
+
+    :param template: The validated template.
+    :param context: The model kind about to be rendered (:data:`CONTEXTS`).
+    :raises TemplateError: When ``context`` is unknown, or the template belongs to the
+        other context; the message names the command that renders it.
+    """
+    if context not in CONTEXTS:
+        raise TemplateError('context must be "report" or "facts"')
+    if template.context == context:
+        return
+    name = _echo(str(template.name))
+    if template.context == CONTEXT_FACTS:
+        raise TemplateError(f"template {name} renders fact extraction output; use docsentinel extract-facts")
+    raise TemplateError(f"template {name} is a report template; use it with docsentinel scan")
 
 
 # --------------------------------------------------------------------------- filter table
@@ -798,6 +880,7 @@ class _Validator:
         self._nodes = 0
         self._type = ""
         self._sink = SINK_TERMINAL
+        self._context = CONTEXT_REPORT
         self._requires: frozenset[str] = frozenset()
         self._extension_filters: dict[tuple[str, int, str], None] = {}
 
@@ -884,7 +967,7 @@ class _Validator:
         if kind not in ("text", "json"):
             raise self.fail("type", 'type must be "text" or "json"')
         self._type = kind
-        common = frozenset({"template_version", "name", "type", "description", "requires_extensions"})
+        common = frozenset({"template_version", "name", "type", "description", "requires_extensions", "context"})
         if kind == "text":
             obj = self._object(raw, "", common | {"output", "lines"}, frozenset({"name", "lines"}))
         else:
@@ -893,12 +976,18 @@ class _Validator:
         if len(name) > _MAX_NAME or NAME_PATTERN.fullmatch(name) is None:
             raise self.fail("name", "name must be kebab-case ([a-z0-9] runs joined by '-')")
         description = self._string(obj.get("description", ""), "description")
+        context = obj.get("context", CONTEXT_REPORT)
+        if not isinstance(context, str) or context not in CONTEXTS:
+            raise self.fail("context", 'context must be "report" or "facts"')
+        self._context = context
         requires = self._extensions(obj.get("requires_extensions", []))
+        if requires and "ext" not in schema_for(context):
+            raise self.fail("requires_extensions", f"a {context} template cannot require extensions")
         self._requires = frozenset(requires)
         if kind == "text":
             output = self._text_output(obj.get("output", {}))
             self._sink = output.sink
-            lines = self._text_nodes(obj["lines"], "lines", CONTEXT_SCHEMA, 1, 0)
+            lines = self._text_nodes(obj["lines"], "lines", schema_for(context), 1, 0)
             return Template(
                 TEMPLATE_VERSION,
                 name,
@@ -910,12 +999,13 @@ class _Validator:
                 origin=origin,
                 source=source,
                 extension_filters=tuple(self._extension_filters),
+                context=context,
             )
         schema_version = obj.get("schema_version", 1)
         if type(schema_version) is not int or not 1 <= schema_version <= _MAX_SCHEMA_VERSION:
             raise self.fail("schema_version", f"schema_version must be an integer in 1..{_MAX_SCHEMA_VERSION}")
         json_output = self._json_output(obj.get("output", {}))
-        body = self._json_value(obj["body"], "body", CONTEXT_SCHEMA, 1, 0)
+        body = self._json_value(obj["body"], "body", schema_for(context), 1, 0)
         return Template(
             TEMPLATE_VERSION,
             name,
@@ -928,6 +1018,7 @@ class _Validator:
             origin=origin,
             source=source,
             extension_filters=tuple(self._extension_filters),
+            context=context,
         )
 
     def _extensions(self, raw: Any) -> tuple[str, ...]:
@@ -1006,7 +1097,7 @@ class _Validator:
         """Resolve a reference against the schema and loop scope (Task 01 rule 3).
 
         :param ref: The reference.
-        :param scope: Visible names: :data:`CONTEXT_SCHEMA` plus enclosing aliases.
+        :param scope: Visible names: the :func:`schema_for` root plus enclosing aliases.
         :param where: The JSON path for errors.
         :returns: The schema entry of the referenced value.
         """
@@ -1042,6 +1133,8 @@ class _Validator:
         :param where: The JSON path for errors.
         :returns: The untrusted schema entry of that extension's subtree.
         """
+        if "ext" not in schema_for(self._context):
+            raise self.fail(where, f"a {self._context} template cannot use extension data: {_echo(ref.name)}")
         if not isinstance(step, str) or _EXTENSION_PATTERN.fullmatch(step) is None:
             raise self.fail(where, f"unknown variable: {_echo(ref.name)}")
         if step not in self._requires:
@@ -1055,6 +1148,8 @@ class _Validator:
         :param kind: The value kind it receives.
         :param where: The JSON path for errors.
         """
+        if "ext" not in schema_for(self._context):
+            raise self.fail(where, f"a {self._context} template cannot use extension filters: {_echo(call.name)}")
         segments = call.name.split(".")
         if (
             len(segments) != 3
@@ -1091,7 +1186,7 @@ class _Validator:
         alias = self._string(raw, where)
         if _ALIAS_PATTERN.fullmatch(alias) is None:
             raise self.fail(where, f"invalid loop alias: {_echo(alias)}")
-        if alias in scope or alias == "ext":
+        if alias in scope or alias in schema_for(self._context) or alias == "ext":
             raise self.fail(where, f"loop alias shadows an existing name: {_echo(alias)}")
         return alias
 
@@ -1918,19 +2013,33 @@ def load_named_template(name: str, *, root: Optional[Path] = None, templates_dir
     return _load_by_name(name, root, templates_dir)
 
 
-def packaged_template_names() -> tuple[str, ...]:
-    """Return the names of the packaged templates, sorted.
+def packaged_template_names(context: str = CONTEXT_REPORT) -> tuple[str, ...]:
+    """Return the names of the packaged templates of one context, sorted.
 
-    :returns: Every ``templates/<name>.json`` stem that is a valid template name.
+    The partition comes from the static :data:`PACKAGED_TEMPLATE_CONTEXTS` table, never
+    from opening a file (threat model 0010-extract-facts E2). A packaged file missing
+    from the table is not listed, so a template added without a table entry cannot be
+    selected by listing until the table (and its pinning test) is updated.
+
+    :param context: :data:`CONTEXT_REPORT` (default: the names ``scan --format``
+        accepts, unchanged for existing callers) or :data:`CONTEXT_FACTS`.
+    :returns: Every ``templates/<name>.json`` stem of that context that is a valid name.
+    :raises ValueError: For a context outside :data:`CONTEXTS`.
     """
+    if context not in CONTEXTS:
+        raise ValueError('context must be "report" or "facts"')
     names = (entry.stem for entry in PACKAGED_TEMPLATES_DIR.glob("*.json") if entry.is_file())
-    return tuple(sorted(name for name in names if _is_template_name(name)))
+    return tuple(
+        sorted(name for name in names if _is_template_name(name) and PACKAGED_TEMPLATE_CONTEXTS.get(name) == context)
+    )
 
 
-def available_templates(root: Optional[Path] = None, templates_dir: Optional[str] = None) -> tuple[str, ...]:
+def available_templates(
+    root: Optional[Path] = None, templates_dir: Optional[str] = None, *, context: str = CONTEXT_REPORT
+) -> tuple[str, ...]:
     """Return every template name a scan can select with ``--format``, sorted.
 
-    The packaged names are always listed. With ``templates_dir`` the directory passes
+    The packaged names of ``context`` are always listed. With ``templates_dir`` the directory passes
     the same containment gate as a template load (M10) and is listed without
     following symlinks; only regular ``<name>.json`` files with a valid name count,
     and a name already packaged is not repeated (packaged names cannot be shadowed).
@@ -1939,14 +2048,19 @@ def available_templates(root: Optional[Path] = None, templates_dir: Optional[str
     so a directory crowded with non-template files cannot make every scan walk it
     in full.
 
+    The ``report_templates_dir`` part is **not** split by context (threat model
+    0010-extract-facts E2): it stays name-only, and a directory template of the other
+    context fails only when it is selected and loaded (:func:`require_context`).
+
     :param root: The scan root, required for ``templates_dir``.
     :param templates_dir: The configured ``report_templates_dir``, or ``None``.
+    :param context: Which packaged partition to list (:func:`packaged_template_names`).
     :returns: The sorted, de-duplicated template names.
     :raises TemplateError: When ``templates_dir`` is not a string, escapes the root,
         cannot be listed, holds more than :data:`MAX_DIRECTORY_TEMPLATES` templates,
         or holds more than :data:`MAX_DIRECTORY_ENTRIES` entries.
     """
-    packaged = packaged_template_names()
+    packaged = packaged_template_names(context)
     if not templates_dir:
         logger.debug("available templates: %d packaged", len(packaged))
         return packaged
@@ -1979,4 +2093,6 @@ def available_templates(root: Optional[Path] = None, templates_dir: Optional[str
         safe(templates_dir),
         skipped,
     )
-    return tuple(sorted(found.union(packaged)))
+    # A packaged name of either context is never a directory template (M9: packaged
+    # names resolve first and cannot be shadowed).
+    return tuple(sorted(found.difference(PACKAGED_TEMPLATE_CONTEXTS).union(packaged)))

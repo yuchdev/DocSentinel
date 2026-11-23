@@ -4,7 +4,7 @@ A subprocess must import ``docsentinel`` and the shared scanner, and run a
 fast-profile scan, without eagerly pulling in any lazily-loaded optional
 dependency (the ``standard`` extras ``sklearn``/``textstat``/``docsig`` and
 ``textacy``). ``spacy`` is intentionally excluded from these assertions: the
-pre-existing deep detector (``docsentinel.detectors._triples``) imports it at
+pre-existing deep detector (``docsentinel.mining.claims``) imports it at
 module load time, which is outside the scope of this shared scanner and is
 unchanged by it.
 """

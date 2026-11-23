@@ -7,6 +7,7 @@ moved copies byte-identical to it over the full code-point range. Non-printable 
 points are spelled with ``chr()``.
 """
 
+import json
 from typing import Any
 
 import pytest
@@ -502,3 +503,29 @@ def test_to_text_refuses_an_int_past_the_digit_limit():
     with pytest.raises(TemplateError, match="too long"):
         apply_filter("neutralize", huge)
     assert to_text(-12) == "-12" and to_text(0) == "0"
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["##[error]x", {"numbers": ["##[1"]}, ["a", "b ##[warning] c"]],
+)
+def test_json_filter_escapes_legacy_marker_losslessly(value):
+    """
+    [Unit] json filter: verifies ##[ never leaves the filter and the escape decodes losslessly.
+
+    Scenario:
+        Given a JSON value whose strings contain the GitHub legacy command marker ##[
+        When the json template filter renders it
+        Then the output holds no ##[ and json.loads returns the original value.
+
+    Boundaries:
+        - Focus: Story 05.0 threat model E4 / security review MEDIUM (CWE-116), both contexts
+        - Scope: telemetry.filters.apply_filter("json", ...)
+
+    On failure, first check:
+        - _filter_json in src/docsentinel/telemetry/filters.py
+    """
+    rendered = apply_filter("json", value)
+
+    assert "##[" not in rendered
+    assert json.loads(rendered) == value

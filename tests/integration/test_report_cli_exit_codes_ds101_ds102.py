@@ -280,7 +280,8 @@ def test_doctor_reports_an_escaping_template_dir_without_touching_it(
     lines = out.split("\n")
     assert code == 0
     assert "report templates (packaged): github, json, json-documents, json-v1, text" in lines
-    unavailable = [line for line in lines if line.startswith("report templates (report_templates_dir): ")]
+    assert "fact templates (packaged): facts-json, facts-text" in lines
+    unavailable = [line for line in lines if line.startswith("templates (report_templates_dir): ")]
     assert len(unavailable) == 1 and "unavailable: " in unavailable[0]
     assert "mini" not in out and "dup-key" not in out
     assert ESC not in out and "\nforged" not in out

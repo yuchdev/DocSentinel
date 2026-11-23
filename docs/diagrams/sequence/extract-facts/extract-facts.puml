@@ -1,0 +1,32 @@
+@startuml extract-facts
+title extract-facts: offline fact preview (as built, cli.py / engine.py / detectors/fact_check.py)
+skinparam shadowing false
+skinparam sequenceMessageAlign left
+
+participant "CLI\ncli.py" as cli
+participant "engine.extract_facts" as engine
+participant "engine._inventory\n(shared with scan)" as inv
+participant "detectors/fact_check.py\ntrace_candidates" as ds302
+participant "mining/\nclaims, salience,\nclustering" as mining
+participant "reporting.render_facts" as rep
+participant "telemetry/\nFactsModel, template engine" as tel
+
+cli -> cli : resolve facts template first\n(error -> "Scan failed:", exit 2)
+cli -> engine : extract_facts(root, config, include, exclude,\noverrides, include_rejected)
+engine -> inv : discovery, selection, unreadable-document skips
+inv --> engine : readable documents (empty invoker selection: ConfigError)
+engine -> engine : validate overrides;\ndeep_ready() else RuntimeError
+engine -> ds302 : trace_candidates(directory, readable,\nsettings, policy)
+ds302 -> mining : extract_claims, trace_salience\n(clustering via salience)
+mining --> ds302 : scored claims
+ds302 --> engine : CandidateTrace (same selection DS302 uses)
+engine --> cli : FactExtractionResult\n(matches_ds302, notice)
+cli -> rep : render_facts(result, format or template)
+rep -> tel : FactsModel.build, render_template
+tel --> rep : text
+rep --> cli : report
+note over engine, ds302
+  No deep_confirm, no API key, no environment gate,
+  no fact_check/ backend import, no socket.
+end note
+@enduml

@@ -19,10 +19,11 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from docsentinel import deep_support, models, rules
+from docsentinel import models, rules
+from docsentinel.mining import nlp
 
 if TYPE_CHECKING:
-    from docsentinel.detectors._triples import Claim
+    from docsentinel.mining.claims import Claim
 
 DS301 = rules.register_rule(
     rules.Rule(
@@ -118,8 +119,8 @@ def detect(
     this analyzer are still registered eagerly at import time, so ``docsentinel rules``,
     ``doctor``, ``enabled_rules`` and rule selection are unchanged.
     """
-    extract_claims = importlib.import_module("docsentinel.detectors._triples").extract_claims
-    pipeline = deep_support.load_pipeline()
+    extract_claims = importlib.import_module("docsentinel.mining.claims").extract_claims
+    pipeline = nlp.load_pipeline()
     all_claims: list[Claim] = []
 
     for doc in documents:

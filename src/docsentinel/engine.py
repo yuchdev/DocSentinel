@@ -7,14 +7,25 @@ import os
 import stat
 import time
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Final, Optional, Union
 
 from docsentinel.baseline import filter_baselined, load_baseline
-from docsentinel.config import Config, ConfigError, load_config
-from docsentinel.deep_support import DEEP_EXTRA_HINT, deep_ready
+from docsentinel.config import Config, ConfigError, load_config, validate_fact_check_option
+from docsentinel.detectors.fact_check import (
+    DS302_POLICY,
+    USE_EXTERNAL_API_TYPE_MESSAGE,
+    CandidateClaim,
+    CandidateTrace,
+    ExternalApiGate,
+    SelectionPolicy,
+    external_api_requested,
+    resolve_external_api_gate,
+    trace_candidates,
+    validate_selection_policy,
+)
 from docsentinel.detectors.loader import clear_standard_caches, ensure_standard_loaded
 from docsentinel.detectors.unreadable import DS100, NOT_REGULAR, NOT_UTF8, cannot_read, unreadable_finding
 from docsentinel.discovery import (
@@ -25,8 +36,17 @@ from docsentinel.discovery import (
 )
 from docsentinel.link_root import LINK_ROOT_RULES, resolve_invoker_link_root, resolve_link_root
 from docsentinel.log import FILE_ONLY, safe
-from docsentinel.models import Document, Finding, ScanResult
-from docsentinel.rules import ANALYZERS, ENGINE_RULES, RULES, effective_rules, opt_in_hint, opt_in_satisfied
+from docsentinel.mining.nlp import DEEP_EXTRA_HINT, deep_ready
+from docsentinel.models import Document, ExtractedFact, FactExtractionResult, FactSettings, Finding, ScanResult
+from docsentinel.rules import (
+    ANALYZERS,
+    ENGINE_RULES,
+    EXTERNAL_API_RULES,
+    RULES,
+    effective_rules,
+    opt_in_hint,
+    opt_in_satisfied,
+)
 
 Analyzer = Callable[..., tuple[Finding, ...]]
 
@@ -129,6 +149,28 @@ def _analyzer_accepts_link_root(analyzer: Analyzer) -> bool:
     )
 
 
+@lru_cache(maxsize=256)
+def _analyzer_accepts_use_external_api(analyzer: Analyzer) -> bool:
+    """Return True when an analyzer declares a keyword-acceptable ``use_external_api`` parameter.
+
+    Only rules that send document-derived text to a third-party service (ADR 0007,
+    ``EXTERNAL_API_RULES``) declare it; every other analyzer is called exactly as
+    before. Signatures that cannot be introspected are treated as not accepting it.
+
+    :param analyzer: A registered analyzer callable.
+    :returns: True when ``use_external_api`` is forwarded by keyword.
+    """
+    try:
+        parameter = inspect.signature(analyzer).parameters.get("use_external_api")
+    except (ValueError, TypeError):
+        # Not introspectable: it cannot declare use_external_api; call it the legacy way.
+        parameter = None
+    return parameter is not None and parameter.kind in (
+        inspect.Parameter.KEYWORD_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    )
+
+
 def _analyzer_accepts_config(analyzer: Analyzer) -> bool:
     """Return True when the engine forwards effective config to an analyzer.
 
@@ -147,6 +189,7 @@ def _run_analyzer(
     documents: tuple[Document, ...],
     settings: Config,
     link_root: Optional[Path] = None,
+    use_external_api: Optional[bool] = None,
 ) -> tuple[Finding, ...]:
     """Invoke an analyzer, forwarding effective config when its signature accepts it.
 
@@ -156,11 +199,15 @@ def _run_analyzer(
     :param settings: Effective settings for this scan.
     :param link_root: The engine-validated link root, forwarded as ``link_root=``
         to analyzers that declare it; ``None`` forwards nothing.
+    :param use_external_api: The invoker's external-API request, forwarded as
+        ``use_external_api=`` to analyzers that declare it; ``None`` forwards nothing.
     :returns: The analyzer's findings.
     """
-    extra: dict[str, Path] = {}
+    extra: dict[str, object] = {}
     if link_root is not None and _analyzer_accepts_link_root(analyzer):
         extra["link_root"] = link_root
+    if use_external_api is not None and _analyzer_accepts_use_external_api(analyzer):
+        extra["use_external_api"] = use_external_api
     mode = _analyzer_config_mode(analyzer)
     if mode == _CONFIG_KEYWORD:
         return analyzer(directory, documents, config=settings, **extra)
@@ -310,7 +357,12 @@ def _partition_readable(
     return tuple(readable), tuple(unreadable)
 
 
-def _log_rule_plan(settings: Config, active_codes: tuple[str, ...], opt_in_off: tuple[tuple[str, str], ...]):
+def _log_rule_plan(
+    settings: Config,
+    active_codes: tuple[str, ...],
+    opt_in_off: tuple[tuple[str, str], ...],
+    external_off: int = 0,
+):
     """Log the rule plan of a scan at ``INFO`` and warn for an explicitly selected, inert opt-in rule.
 
     An opt-in policy rule whose option is unset evaluates nothing. When the user
@@ -321,13 +373,15 @@ def _log_rule_plan(settings: Config, active_codes: tuple[str, ...], opt_in_off: 
     :param settings: Effective settings for this scan.
     :param active_codes: Selected rule codes for the profile, in rule-code order.
     :param opt_in_off: ``(code, option)`` pairs of active opt-in rules whose policy is off.
+    :param external_off: Active external-API rules whose consent gate is closed (ADR 0007
+        Contract 6); they are not counted as evaluated.
     """
     disabled = ", ".join(f"{code} ({_hint_for(code, option)})" for code, option in opt_in_off) or "none"
     logger.info(
         "profile=%s: %d rules selected, %d evaluated; opt-in off: %s",
         settings.profile,
         len(active_codes),
-        len(active_codes) - len(opt_in_off),
+        len(active_codes) - len(opt_in_off) - external_off,
         disabled,
     )
     for code, option in opt_in_off:
@@ -409,50 +463,58 @@ def _log_selection(settings: Config, configured_exclude: tuple[str, ...], invoke
         logger.debug("selection: exclude %s (%s)", safe(pattern, _PATTERN_ECHO_LIMIT), source)
 
 
-def scan(
-    root: Union[Path, str] = ".",
+@dataclass(frozen=True)
+class _Inventory:
+    """The shared inventory step of :func:`scan` and :func:`extract_facts` (Story 05.0, decision X3).
+
+    :ivar directory: The canonical scan root the document paths are relative to.
+    :ivar settings: The effective settings, with the invoker selection merged in.
+    :ivar documents: The discovered inventory.
+    :ivar readable: The documents the analyzers can read, in inventory order.
+    :ivar unreadable: ``(document, reason)`` for each unreadable document, in inventory order.
+    :ivar skipped: The number of symlinked or excluded paths discovery skipped.
+    """
+
+    directory: Path
+    settings: Config
+    documents: tuple[Document, ...]
+    readable: tuple[Document, ...]
+    unreadable: tuple[tuple[Document, str], ...]
+    skipped: int
+
+
+def _inventory(
+    root: Union[Path, str],
+    config: Optional[Config],
+    include: Optional[Sequence[str]],
+    exclude: Optional[Sequence[str]],
     *,
-    config: Optional[Config] = None,
     link_root: Optional[Union[Path, str]] = None,
-    include: Optional[Sequence[str]] = None,
-    exclude: Optional[Sequence[str]] = None,
-) -> ScanResult:
-    """Inventory documents and run registered analyzers, without implicit deep checks.
+    command: str = "scan",
+) -> _Inventory:
+    """Resolve the target, load the settings, apply the selection, discover and partition the documents.
 
-    A discovered document that cannot be read, is not a regular file or is not
-    valid UTF-8 stays in the inventory but is withheld from every analyzer; unless
-    ``select``/``ignore`` drop ``DS100``, it gets one ``DS100`` error finding, in
-    every profile (an unconfirmed or dependency-less deep scan runs no rule and
-    reports none).
+    A single-file target ignores the invoker selectors with one ``WARNING``; invoker
+    selectors that admit no document are a ``ConfigError``. Unreadable documents are
+    logged by :func:`_partition_readable`, and one ``INFO`` line counts the inventory.
 
-    :param root: The directory or single file to scan.
+    :param root: The directory or single file to inventory.
     :param config: Settings to use verbatim, or ``None`` to load them from ``root``.
-    :param link_root: Trusted invoker override for the base of site-root-absolute
-        (``/``) targets (``scan --link-root``): an absolute path or one relative to the
-        current directory that must resolve to an existing scan root or ancestor (not
-        the filesystem root). It wins over ``config.link_root``; ``None`` uses the
-        configured, bounded value.
-    :param include: Invoker include patterns (``scan --include``), relative to the
-        scan root in the configuration grammar; they **replace** the effective
-        ``include`` (also of an injected ``config``, which is never mutated).
-        ``None`` (the default) means not given. A bare ``str``, an empty sequence,
-        more than 256 values or a value over 1,024 characters is a ``ConfigError``,
-        for every target; a single-file target then ignores the selectors with one
-        ``WARNING``.
-    :param exclude: Invoker exclude patterns (``scan --exclude``), same grammar and
-        bounds; they are **appended** to the effective ``exclude`` (duplicates
-        removed, configured entries first). Exclude wins over include.
-    :returns: The scan result.
-    :raises ConfigError: When the configured or invoker link root is invalid, when an
-        invoker selector is refused, or when ``include`` or ``exclude`` was given and
-        the selection admitted no document (a config-only empty inventory is not an
-        error).
+    :param include: The invoker include values, or ``None`` when not given.
+    :param exclude: The invoker exclude values, or ``None`` when not given.
+    :param link_root: The invoker link-root override, echoed in the ``DEBUG`` line only.
+    :param command: The command name prefixing the ``DEBUG`` line.
+    :returns: The inventory.
+    :raises ConfigError: For invalid settings, a refused selector value or an empty
+        invoker selection.
+    :raises ValueError: For a symlinked single-file target.
     """
     target = Path(root).resolve()
     selected_file = target.is_file()
     directory = target.parent if selected_file else target
     logger.debug(
-        "scan: root=%s, config=%s, link_root override=%s",
+        "%s: root=%s, config=%s, link_root override=%s",
+        command,
         safe(target),
         "injected" if config is not None else "discovered",
         "none" if link_root is None else safe(link_root),
@@ -490,6 +552,70 @@ def scan(
         skipped,
         len(unreadable),
     )
+    return _Inventory(
+        directory=directory,
+        settings=settings,
+        documents=documents,
+        readable=readable,
+        unreadable=unreadable,
+        skipped=skipped,
+    )
+
+
+def scan(
+    root: Union[Path, str] = ".",
+    *,
+    config: Optional[Config] = None,
+    link_root: Optional[Union[Path, str]] = None,
+    include: Optional[Sequence[str]] = None,
+    exclude: Optional[Sequence[str]] = None,
+    use_external_api: bool = False,
+) -> ScanResult:
+    """Inventory documents and run registered analyzers, without implicit deep checks.
+
+    A discovered document that cannot be read, is not a regular file or is not
+    valid UTF-8 stays in the inventory but is withheld from every analyzer; unless
+    ``select``/``ignore`` drop ``DS100``, it gets one ``DS100`` error finding, in
+    every profile (an unconfirmed or dependency-less deep scan runs no rule and
+    reports none).
+
+    :param root: The directory or single file to scan.
+    :param config: Settings to use verbatim, or ``None`` to load them from ``root``.
+    :param link_root: Trusted invoker override for the base of site-root-absolute
+        (``/``) targets (``scan --link-root``): an absolute path or one relative to the
+        current directory that must resolve to an existing scan root or ancestor (not
+        the filesystem root). It wins over ``config.link_root``; ``None`` uses the
+        configured, bounded value.
+    :param include: Invoker include patterns (``scan --include``), relative to the
+        scan root in the configuration grammar; they **replace** the effective
+        ``include`` (also of an injected ``config``, which is never mutated).
+        ``None`` (the default) means not given. A bare ``str``, an empty sequence,
+        more than 256 values or a value over 1,024 characters is a ``ConfigError``,
+        for every target; a single-file target then ignores the selectors with one
+        ``WARNING``.
+    :param exclude: Invoker exclude patterns (``scan --exclude``), same grammar and
+        bounds; they are **appended** to the effective ``exclude`` (duplicates
+        removed, configured entries first). Exclude wins over include.
+    :param use_external_api: Invoker consent for rules that send document-derived
+        text to a third-party service (``scan --use-external-api``; ADR 0007
+        Contract 1), forwarded only to the analyzers that declare it (``DS302``).
+        Never a configuration key; its environment form is read by the ``DS302``
+        gate helper only, never here. When ``DS302`` is active
+        and its gate is closed, it is not counted as evaluated and ``pending``
+        names what is missing.
+    :returns: The scan result.
+    :raises ConfigError: When ``use_external_api`` is not a ``bool``, when
+        ``fact_check_backend`` of an injected ``config`` is unknown and ``DS302`` is
+        active, when the configured or invoker link root is invalid, when an
+        invoker selector is refused, or when ``include`` or ``exclude`` was given and
+        the selection admitted no document (a config-only empty inventory is not an
+        error).
+    """
+    if not isinstance(use_external_api, bool):
+        raise ConfigError(USE_EXTERNAL_API_TYPE_MESSAGE)
+    inventory = _inventory(root, config, include, exclude, link_root=link_root)
+    directory, settings, documents = inventory.directory, inventory.settings, inventory.documents
+    readable, unreadable = inventory.readable, inventory.unreadable
 
     if settings.profile == "deep":
         if not _resolve_deep_confirm(settings):
@@ -538,7 +664,18 @@ def scan(
     opt_in_off: tuple[tuple[str, str], ...] = tuple(
         (code, RULES[code].opt_in_option) for code in active_codes if not opt_in_satisfied(RULES[code], settings)
     )
-    _log_rule_plan(settings, active_codes, opt_in_off)
+    # Rules that send text to a third-party service self-gate on invoker consent and an
+    # API key (ADR 0007 Contract 6). The gate is resolved only when such a rule is
+    # active; while it is closed the rule is not counted as evaluated and ``pending``
+    # names what is missing. The analyzer logs the WARNING, so a scan logs it once.
+    external_active = EXTERNAL_API_RULES.intersection(active_codes)
+    external_gate: Optional[ExternalApiGate] = None
+    forwarded_consent: Optional[bool] = None
+    if external_active:
+        external_gate = resolve_external_api_gate(settings, use_external_api=use_external_api)
+        forwarded_consent = external_api_requested(use_external_api)
+    external_off = len(external_active) if external_gate is not None and not external_gate.open else 0
+    _log_rule_plan(settings, active_codes, opt_in_off, external_off)
     # Resolve ``link_root`` once per scan (the ``.git`` walk runs a single time, and
     # only when a rule that resolves ``/`` targets is active) and hand the validated
     # directory to the analyzers that declare ``link_root``; an invalid or unbounded
@@ -559,7 +696,9 @@ def scan(
         if code not in ANALYZERS:
             continue
         started = time.perf_counter()
-        produced = tuple(_run_analyzer(ANALYZERS[code], directory, readable, settings, resolved_link_root))
+        produced = tuple(
+            _run_analyzer(ANALYZERS[code], directory, readable, settings, resolved_link_root, forwarded_consent)
+        )
         logger.debug("%s: %d findings in %.2fs", code, len(produced), time.perf_counter() - started)
         collected.extend(produced)
     findings = tuple(collected)
@@ -580,8 +719,8 @@ def scan(
         )
     rules_evaluated = 0
     if active_codes:
-        pending = ()
-        rules_evaluated = len(active_codes) - len(opt_in_off)
+        pending = (external_gate.skip_message(),) if external_gate is not None and external_off else ()
+        rules_evaluated = len(active_codes) - len(opt_in_off) - external_off
         notice = evaluated_notice(settings.profile, rules_evaluated, opt_in_off)
     elif not profile_codes:
         if settings.profile == "deep":
@@ -603,4 +742,222 @@ def scan(
         notice=notice,
         rules_evaluated=rules_evaluated,
         opt_in_off=opt_in_off,
+    )
+
+
+#: ``extract_facts`` notice: the fixed heuristic/offline sentence (trusted engine constant).
+_FACTS_NOTICE_BASE: Final[str] = (
+    "Heuristic, offline claim extraction; no network call was made and nothing was verified. "
+)
+
+#: ``extract_facts`` notice tail when the selection equals the ``DS302`` one (threat model E12).
+_FACTS_NOTICE_MATCHES: Final[str] = (
+    "The selected facts are the claims DS302 would send, at most and in this order, "
+    "if it ran with both gates open on the same configuration and selection, "
+    "with DS302 among the active rules; fact_check_time_budget_seconds can stop it earlier."
+)
+
+#: ``extract_facts`` notice tail when a setting differs; ``{names}`` comes from :data:`_FACT_SETTING_NAMES`.
+_FACTS_NOTICE_DIFFERS: Final[str] = "Settings differ from DS302 ({names}); DS302 would send a different set."
+
+#: The fixed setting-name vocabulary of the notice, in display order.
+_FACT_SETTING_NAMES: Final[tuple[str, ...]] = (
+    "min_salience",
+    "max_per_document",
+    "max_total",
+    "weights",
+    "dedup_threshold",
+)
+
+#: Most items of one fact's ``numbers``/``entities`` list (threat model E8; preview only).
+MAX_FACT_LIST_ITEMS: Final[int] = 32
+
+#: Most code points of one ``numbers``/``entities`` item (threat model E8).
+MAX_FACT_ITEM_CHARS: Final[int] = 200
+
+#: ``ConfigError`` text for an ``include_rejected`` value that is not a ``bool``.
+INCLUDE_REJECTED_TYPE_MESSAGE: Final[str] = "include_rejected must be True or False"
+
+
+def _exploration_policy(
+    weights: Optional[tuple[float, float, float]], dedup_threshold: Optional[float]
+) -> SelectionPolicy:
+    """Build and validate the selection policy, field by field over ``DS302_POLICY``.
+
+    :param weights: ``(numeric, entity, distinctiveness)``, or ``None`` for the ``DS302`` weights.
+    :param dedup_threshold: The clustering threshold, or ``None`` for the ``DS302`` value.
+    :returns: The validated policy.
+    :raises ValueError: When ``weights`` is not three finite non-``bool`` numbers in ``[0, 1]``
+        summing to ``1.0``, or ``dedup_threshold`` is not a finite non-``bool`` number in ``(0, 1]``.
+    """
+    policy = SelectionPolicy(
+        DS302_POLICY.weights if weights is None else weights,
+        DS302_POLICY.dedup_threshold if dedup_threshold is None else dedup_threshold,
+    )
+    return validate_selection_policy(policy)
+
+
+def _bounded(values: Sequence[str]) -> tuple[str, ...]:
+    """Cap a per-fact ``numbers``/``entities`` list (threat model 0010 extract-facts E8).
+
+    :param values: The claim's object numbers or entities.
+    :returns: At most :data:`MAX_FACT_LIST_ITEMS` items of at most :data:`MAX_FACT_ITEM_CHARS`
+        code points each.
+    """
+    return tuple(value[:MAX_FACT_ITEM_CHARS] for value in tuple(values)[:MAX_FACT_LIST_ITEMS])
+
+
+def _fact(rank: int, candidate: CandidateClaim, disposition: str) -> ExtractedFact:
+    """Map one traced candidate to an :class:`ExtractedFact`.
+
+    :param rank: The 1-based position in the listed order.
+    :param candidate: The traced candidate.
+    :param disposition: Its disposition.
+    :returns: The fact; ``text`` is the candidate text verbatim.
+    """
+    claim = candidate.claim
+    return ExtractedFact(
+        rank=rank,
+        path=claim.path,
+        paragraph_index=claim.paragraph_index,
+        text=candidate.text,
+        score=candidate.score,
+        numeric=candidate.numeric,
+        entity=candidate.entity,
+        distinctiveness=candidate.distinctiveness,
+        cluster_id=candidate.cluster_id,
+        cluster_size=candidate.cluster_size,
+        numbers=_bounded(claim.object_numbers),
+        entities=_bounded(claim.object_entities),
+        disposition=disposition,
+    )
+
+
+def _traced(inventory: _Inventory, settings: Config, policy: SelectionPolicy) -> CandidateTrace:
+    """Run ``trace_candidates`` and contain extraction-stage exceptions (threat model E7).
+
+    ``ConfigError``, ``OSError`` and ``UnicodeDecodeError`` pass through. Any other exception (from
+    spaCy, textacy or scikit-learn, whose text may carry document tokens) is replaced by a
+    type-name-only ``RuntimeError`` raised outside the handler, so it has no ``__cause__`` and no
+    ``__context__``, and it is logged without ``exc_info``.
+
+    :param inventory: The shared inventory.
+    :param settings: The effective settings with the overrides applied.
+    :param policy: The validated selection policy.
+    :returns: The trace.
+    :raises ConfigError: When a selection value is invalid.
+    :raises OSError: When a document cannot be read.
+    :raises RuntimeError: For any other extraction failure, naming the exception type only.
+    """
+    failure: Optional[str] = None
+    try:
+        return trace_candidates(inventory.directory, inventory.readable, settings, policy=policy)
+    except (ConfigError, OSError, UnicodeDecodeError):
+        raise
+    except BaseException as exc:  # contained below: only the type name survives (E7, mirrors M5)
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            raise
+        failure = type(exc).__name__
+    logger.warning("extract-facts: claim extraction failed (%s)", failure, extra=FILE_ONLY)
+    raise RuntimeError(f"extract-facts: claim extraction failed ({failure})")
+
+
+def extract_facts(
+    root: Union[Path, str] = ".",
+    *,
+    config: Optional[Config] = None,
+    include: Optional[Sequence[str]] = None,
+    exclude: Optional[Sequence[str]] = None,
+    min_salience: Optional[float] = None,
+    max_per_document: Optional[int] = None,
+    max_total: Optional[int] = None,
+    weights: Optional[tuple[float, float, float]] = None,
+    dedup_threshold: Optional[float] = None,
+    include_rejected: bool = False,
+) -> FactExtractionResult:
+    """Offline preview of the ``DS302`` fact set (plan contract C11); no gate, no network, no backend.
+
+    The inventory step is the one :func:`scan` uses (discovery, include/exclude, a
+    single-file target, unreadable-document skips and the empty-invoker-selection
+    error). Claims come from ``detectors.fact_check.trace_candidates``, the same
+    function ``DS302`` selects its candidates with, so with no override the selected
+    texts are the ones ``DS302`` would send for the same root, configuration and
+    selection. ``profile``, ``select``, ``ignore``, ``baseline`` and ``deep_confirm``
+    are not read, no environment variable is read here and no backend is imported.
+    Claim text is never logged; the INFO line carries counts only.
+
+    :param root: The directory or single file to extract facts from.
+    :param config: Settings to use verbatim, or ``None`` to load them from ``root``.
+    :param include: Invoker include patterns, as for :func:`scan`.
+    :param exclude: Invoker exclude patterns, as for :func:`scan`.
+    :param min_salience: Override of ``fact_check_min_salience`` for this run.
+    :param max_per_document: Override of ``fact_check_max_claims_per_document`` for this run.
+    :param max_total: Override of ``fact_check_max_claims_total`` for this run.
+    :param weights: Exploration salience weights ``(numeric, entity, distinctiveness)``;
+        never a configuration key and never used by ``DS302``.
+    :param dedup_threshold: Exploration clustering threshold; never a configuration key
+        and never used by ``DS302``.
+    :param include_rejected: List every extracted claim with its disposition, not only
+        the selected ones.
+    :returns: The facts, the effective settings, ``matches_ds302`` and a fixed notice.
+    :raises ConfigError: Invalid config/override, ``include_rejected`` that is not a
+        ``bool``, or an invoker selection admitting no document.
+    :raises ValueError: Invalid weights/threshold, or a symlinked single-file target.
+    :raises RuntimeError: The deep extras or the spaCy model are unavailable, or claim
+        extraction failed (the message names the exception type only).
+    """
+    if not isinstance(include_rejected, bool):
+        raise ConfigError(INCLUDE_REJECTED_TYPE_MESSAGE)
+    policy = _exploration_policy(weights, dedup_threshold)
+    check_invoker_selector_shape(include, exclude)
+    inventory = _inventory(root, config, include, exclude, command="extract-facts")
+
+    base = inventory.settings
+    overrides = {
+        "fact_check_min_salience": min_salience,
+        "fact_check_max_claims_per_document": max_per_document,
+        "fact_check_max_claims_total": max_total,
+    }
+    changes = {name: value for name, value in overrides.items() if value is not None}
+    settings = replace(base, **changes) if changes else base
+    # The selection's own validator, run before the (slow) extraction so a bad value fails fast.
+    effective = {name: validate_fact_check_option(name, getattr(settings, name)) for name in overrides}
+    differs = (
+        *(getattr(base, key) != getattr(settings, key) for key in overrides),
+        policy.weights != DS302_POLICY.weights,
+        policy.dedup_threshold != DS302_POLICY.dedup_threshold,
+    )
+    changed = tuple(name for name, flag in zip(_FACT_SETTING_NAMES, differs, strict=True) if flag)
+    matches_ds302 = not changed and policy == DS302_POLICY
+    if not deep_ready():
+        raise RuntimeError(f"extract-facts needs the deep extras and the spaCy model - {DEEP_EXTRA_HINT}")
+
+    trace = _traced(inventory, settings, policy)
+    listed = tuple(entry for entry in trace.entries if include_rejected or entry[1] == "selected")
+    facts = tuple(_fact(rank, candidate, disposition) for rank, (candidate, disposition) in enumerate(listed, start=1))
+    selected_count = sum(1 for _, disposition in trace.entries if disposition == "selected")
+    logger.info(
+        "extract-facts: %d documents read, %d claims, %d selected, %d listed (policy %s)",
+        trace.documents_read,
+        trace.claims_extracted,
+        selected_count,
+        len(facts),
+        "ds302" if policy == DS302_POLICY else "custom",
+    )
+    tail = _FACTS_NOTICE_MATCHES if matches_ds302 else _FACTS_NOTICE_DIFFERS.format(names=", ".join(changed))
+    return FactExtractionResult(
+        documents=inventory.documents,
+        documents_unreadable=len(inventory.unreadable),
+        claims_extracted=trace.claims_extracted,
+        facts=facts,
+        settings=FactSettings(
+            min_salience=float(effective["fact_check_min_salience"]),
+            max_per_document=int(effective["fact_check_max_claims_per_document"]),
+            max_total=int(effective["fact_check_max_claims_total"]),
+            weights=policy.weights,
+            dedup_threshold=policy.dedup_threshold,
+        ),
+        matches_ds302=matches_ds302,
+        include_rejected=include_rejected,
+        notice=_FACTS_NOTICE_BASE + tail,
     )

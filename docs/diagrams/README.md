@@ -30,6 +30,14 @@ rendered `.svg` and `.png`. Re-render from the repository root with
 
 ![Invoker include and exclude selection: CLI early validation, engine normalisation and merge, discovery, and the empty-selection ConfigError](sequence/scan-selection/scan-selection.svg)
 
+### DS302 consent gate and fail-soft paths
+
+![DS302 consent gate: engine gate resolution, closed-gate skip, backend load, per-claim failures and the time budget](sequence/ds302-fact-check-gate/ds302-fact-check-gate.svg)
+
+### extract-facts offline preview
+
+![extract-facts: CLI, shared inventory, the one candidate source and render_facts, with no network edge](sequence/extract-facts/extract-facts.svg)
+
 ## Layout
 
 ```text
@@ -41,6 +49,8 @@ docs/diagrams/
 │   └── reporting/   component-reporting.{puml,svg,png}
 └── sequence/
     ├── config-layered-load/   config-layered-load.{puml,svg,png}
+    ├── ds302-fact-check-gate/ ds302-fact-check-gate.{puml,svg,png}
+    ├── extract-facts/         extract-facts.{puml,svg,png}
     └── scan-selection/        scan-selection.{puml,svg,png}
 ```
 

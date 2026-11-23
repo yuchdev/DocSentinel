@@ -34,20 +34,29 @@ _HELPER = "load_python_target"
 _GATED_FUNCTIONS = {"find_spec": "_check_origins"}
 
 #: Every fixed-literal dynamic import allowed outside the helper: ``(module, function, literal)``. The
-#: threat model names ``deep_support.py``, ``contradictions.py`` and ``_triples.py``;
+#: threat model names ``deep_support.py``, ``contradictions.py`` and ``_triples.py`` (now
+#: ``mining/nlp.py`` and ``mining/claims.py``);
 #: ``detectors/loader.py`` and ``detectors/standard/signatures.py`` predate it and import fixed
 #: optional-dependency modules too. A new literal needs a new, reviewed entry here.
 _LITERAL_SITES = frozenset(
     {
-        ("deep_support.py", "import_module", "spacy"),
-        ("deep_support.py", "import_module", "textacy"),
-        ("deep_support.py", "import_module", "spacy.util"),
-        ("detectors/contradictions.py", "import_module", "docsentinel.detectors._triples"),
-        ("detectors/_triples.py", "import_module", "textacy.extract"),
+        ("mining/nlp.py", "import_module", "spacy"),
+        ("mining/nlp.py", "import_module", "textacy"),
+        ("mining/nlp.py", "import_module", "spacy.util"),
+        ("detectors/contradictions.py", "import_module", "docsentinel.mining.claims"),
+        # Milestone 0010 plan contract C7: DS302 reuses the DS301 claim extraction, lazily.
+        ("detectors/fact_check.py", "import_module", "docsentinel.mining.claims"),
+        # Story 02.0: the salience filter (and scikit-learn through clustering) loads only when
+        # DS302 selects candidates, so `import docsentinel` stays free of scikit-learn.
+        ("detectors/fact_check.py", "import_module", "docsentinel.mining.salience"),
+        ("mining/salience.py", "import_module", "docsentinel.mining.clustering"),
+        ("mining/claims.py", "import_module", "textacy.extract"),
         ("detectors/loader.py", "__import__", "docsentinel.detectors.standard"),
-        ("detectors/loader.py", "import_module", "docsentinel.detectors.standard.corpus"),
+        ("detectors/loader.py", "import_module", "docsentinel.mining.corpus"),
         ("detectors/standard/signatures.py", "import_module", "docsig.messages"),
         ("detectors/standard/signatures.py", "import_module", "docsig"),
+        # Milestone 0010 threat model M7: the one static backend module of FACT_CHECK_BACKEND_MODULES.
+        ("fact_check/protocol.py", "import_module", "docsentinel.fact_check.lenz"),
     }
 )
 
@@ -721,7 +730,7 @@ def test_literal_sites_are_exact_and_a_new_literal_is_caught():
     [Unit] importlib tripwire: verifies allowed literal imports are exact (module, function, literal) entries.
 
     Scenario:
-        Given an allowed literal import in deep_support.py and a new literal in the same module
+        Given an allowed literal import in mining/nlp.py and a new literal in the same module
         When the tripwire scans each
         Then the listed literal passes and the unlisted one is reported.
 
@@ -733,8 +742,8 @@ def test_literal_sites_are_exact_and_a_new_literal_is_caught():
     On failure, first check:
         - ``_LITERAL_SITES``
     """
-    assert import_violations("deep_support.py", "import importlib\nimportlib.import_module('spacy')\n") == []
-    assert import_violations("deep_support.py", "import importlib\nimportlib.import_module('os')\n")
+    assert import_violations("mining/nlp.py", "import importlib\nimportlib.import_module('spacy')\n") == []
+    assert import_violations("mining/nlp.py", "import importlib\nimportlib.import_module('os')\n")
 
 
 @pytest.mark.parametrize(

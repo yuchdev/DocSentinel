@@ -45,6 +45,7 @@ FAULT_CLASSES: Final[dict[str, str]] = {
     "DS203": "low_information",
     "DS204": "contract_mismatch",
     "DS301": "contradiction_candidate",
+    "DS302": "unverified_claim",
 }
 
 #: Rule code -> registered rule title for every shipped rule. The standard
@@ -77,6 +78,7 @@ RULE_TITLES: Final[dict[str, str]] = {
     "DS203": "Low-information content",
     "DS204": "Docstring/signature mismatch",
     "DS301": "Fact-contradiction candidate",
+    "DS302": "External fact-check disagreement",
 }
 
 #: Fallback class for a rule with no ``fault-classes.md`` row (a review failure).

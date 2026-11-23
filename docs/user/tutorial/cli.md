@@ -15,6 +15,7 @@ DocSentinel provides the following CLI subcommands:
 | `docsentinel init`     | Create a starter `docsentinel.toml` (or, with `--user`, your user settings file) |
 | `docsentinel rules`    | List all available and active rules per profile                         |
 | `docsentinel doctor`   | Diagnose environment readiness and optional dependency installations    |
+| `docsentinel extract-facts` | Offline list of the claims `DS302` would send to a fact-check service |
 
 ---
 
@@ -92,6 +93,48 @@ docsentinel scan --profile deep --i-understand-deep-is-heuristic
 # or via environment variable
 DOCSENTINEL_DEEP_CONFIRM=1 docsentinel scan --profile deep
 ```
+
+##### External fact-checking (`DS302`)
+
+> **Warning: this sends text to a third party.** `DS302` sends claim sentences taken from your
+> documents to an external fact-checking service. It is off by default. Its verdicts are advisory,
+> heuristic third-party output, not ground truth: a finding is a prompt to review a sentence, and it
+> never fails a scan.
+
+`DS302` runs only when you give **two independent opt-ins** on top of the deep confirmation:
+
+1. `--use-external-api` on `scan` or `baseline`, or `DOCSENTINEL_USE_EXTERNAL_API=1` (exactly `1`).
+2. The backend's API key in `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`, for the `lenz` backend
+   `DOCSENTINEL_FACTCHECK_LENZ_API_KEY`.
+
+Neither is a configuration key: a project or user settings file that names `use_external_api` is
+rejected. Preview what would be sent first with
+[`extract-facts`](#previewing-what-ds302-would-send-docsentinel-extract-facts).
+
+```bash
+# <your key here> is a placeholder: use your own key, from your own shell, for this one command
+DOCSENTINEL_FACTCHECK_LENZ_API_KEY=<your key here> \
+  docsentinel scan docs --profile deep --i-understand-deep-is-heuristic --use-external-api
+```
+
+Tune it with the `fact_check_*` options in the
+[configuration reference](../reference/configuration.md#external-fact-checking-ds302). Each finding has
+type `unverified claim` and a `value` such as `false (confidence 0.87): <claim>`.
+
+While either opt-in is missing, a confirmed deep scan logs one WARNING, lists the reason under
+`Pending:` (and in `pending` in JSON), and does not count `DS302` as evaluated:
+
+```text
+Pending: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY
+```
+
+`docsentinel doctor` shows the same state as `fact-check gate: on (backend: lenz)`,
+`fact-check gate: off (<reasons>)` or `fact-check gate: unknown (configuration error)`.
+
+**Safe invocation.** Never put `--use-external-api` in a pre-commit `args:` list or a hook definition,
+never use it in a `pull_request_target` workflow, and never export the key variable (or
+`DOCSENTINEL_USE_EXTERNAL_API`) for a whole CI job, shell profile, `.envrc` or `.env`: anything that can
+change those files or that job could then make a scan send text out. Set them for one command, as above.
 
 ---
 
@@ -480,6 +523,80 @@ All existing issues recorded in `.docsentinel-baseline.json` are suppressed. The
 
 ---
 
+## Previewing what DS302 would send (`docsentinel extract-facts`)
+
+`extract-facts` lists the verifiable claims that `DS302` would send to a fact-check service. It is
+offline: it makes no network call, loads no backend, reads no API key and needs no `--use-external-api`.
+It is not an LLM and verifies nothing. Use it as the preview to review before you pass
+`--use-external-api`. It needs the deep extras (`docsentinel[deep]`) and the spaCy model, but not
+`deep_confirm`.
+
+```bash
+docsentinel extract-facts docs
+docsentinel extract-facts docs --format facts-json -o /tmp/facts.json
+```
+
+| Option | Effect |
+|--------|--------|
+| `ROOT` | Directory or file to read (default `.`). |
+| `--include`, `--exclude` | Document selection, as for `scan`. |
+| `--config FILE.json`, `--no-user-settings` | Configuration sources, as for `scan`. |
+| `--format NAME` | `facts-text` (default), `facts-json`, or a facts template in `report_templates_dir`. |
+| `--template PATH` | Your own facts template; wins over `--format`. |
+| `-o`, `--output PATH` | Write the output to a file instead of standard output. |
+| `--min-salience FLOAT` | Override `fact_check_min_salience` for this run. |
+| `--max-per-document INT` | Override `fact_check_max_claims_per_document` for this run. |
+| `--max-total INT` | Override `fact_check_max_claims_total` for this run. |
+| `--weights N,E,D` | Exploration only: numeric, entity and distinctiveness weights summing to 1. |
+| `--dedup-threshold FLOAT` | Exploration only: near-duplicate threshold in (0, 1]. |
+| `--all` | Also list claims that were not selected, with their disposition. |
+| `-v`, `-q` | Logging verbosity. |
+
+With no overrides, the default output is the set `DS302` would send for the same root, configuration,
+selection and spaCy model. The `matches_ds302` field of `facts-json` (and the `Matches the DS302
+selection` line of `facts-text`) says `no` when an override or exploration setting changed it.
+`--weights` and `--dedup-threshold` never change `DS302` and are not configuration keys.
+
+`--all` lists every extracted claim, each with a disposition: `selected`, `duplicate`, `below_floor`,
+`document_cap` or `total_cap`; `rank` then counts the listed entries.
+
+The output contains text from your documents. Treat a `-o` file like the documents: keep it out of the
+scan root and out of version control. Exit codes: `0` on success (even with no facts) and `2` for a
+configuration, selection or readiness failure (including missing deep extras); the command never exits
+`1`. `docsentinel scan --format facts-text` (or `facts-json`) exits `2` and points here.
+
+Example (`facts-text`, synthetic sentence; the exact numbers depend on your documents):
+
+```text
+docs/towers.md
+  #1 score 0.81 (numeric 0.90, entity 0.60, distinct 0.80) cluster 1/1 paragraph 0: The Example Tower was completed in 1889 and stands 330 metres tall.
+Facts: 1 selected, 1 listed, from 3 claims in 2 document(s) (0 unreadable skipped)
+Matches the DS302 selection for this configuration: yes
+Heuristic, offline claim extraction; no network call was made and nothing was verified. ...
+```
+
+Example (`facts-json`, schema `docsentinel-facts` 1, abridged):
+
+```json
+{
+  "schema": "docsentinel-facts",
+  "schema_version": 1,
+  "matches_ds302": true,
+  "summary": {"documents": 2, "claims_extracted": 3, "facts_selected": 1, "facts_listed": 1},
+  "facts": [
+    {
+      "rank": 1,
+      "path": "docs/towers.md",
+      "text": "The Example Tower was completed in 1889 and stands 330 metres tall.",
+      "score": 0.81,
+      "disposition": "selected"
+    }
+  ]
+}
+```
+
+---
+
 ## Environment Diagnostics (`docsentinel doctor`)
 
 Verify which profiles, dependencies, and language models are ready on your machine:
@@ -497,7 +614,9 @@ deep profile: not ready
   ✗ deep model missing (en_core_web_sm): python -m spacy download en_core_web_sm
 fast rules: 18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)
 standard rules: 4 registered
-deep rules: 1 registered
+deep rules: 2 registered
+fact-check gate: off (pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY)
+fact templates (packaged): facts-json, facts-text
 user settings: ~/.local/share/docsentinel/settings.json (loaded, 2 options)
 project config: docsentinel.toml (4 options)
 reference scope: links (DS103 off)
@@ -509,6 +628,11 @@ directory unknown)`), and the `project config` line the project file name with i
 `none`. Counts only, never values. A configuration error in the current directory (a refused user
 settings file, say) prints one `config sources: error:` line instead, and `doctor` still exits `0`.
 `docsentinel doctor --no-user-settings` leaves the user layer out of these lines.
+
+The `fact-check gate` line shows whether the `DS302` network opt-ins are met (it imports the backend, and
+so `httpx`, only when both the flag-or-environment opt-in and the key are set). The `fact templates
+(packaged)` line lists the `extract-facts` templates, and a `templates (report_templates_dir)` line lists
+your own, with `(context checked at load)`.
 
 The `reference scope` line shows the scope of the configuration in the current directory
 (`links` or `strict`) and whether `DS103` is on.

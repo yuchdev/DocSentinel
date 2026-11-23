@@ -2,12 +2,13 @@
 
 **Repository:** https://github.com/yuchdev/DocSentinel
 **Milestone path:** `/docs/roadmap/0010-fact-check/`
-**Status:** 📝 specification only — no code, ADR or threat model exists yet
+**Status:** 📝 specification only — no code or threat model exists yet; ADR 0007 is `Proposed` (2026-11-21; amended 2026-11-23 for Story 05.0)
 **New rule:** `DS302` (`deep` profile)
 **Reserved ADR number:** `0007` (Story 01.0; see [status.md](./status.md))
 **Dependencies:** Milestone 0003 (deep profile, `deep_confirm` triple-gate, advisory-only exit code),
-the existing `DS301` claim-extraction machinery (`src/docsentinel/detectors/_triples.py`,
-`src/docsentinel/deep_support.py`), Milestone 0007 (typed `Finding.value`/`type`/`column`, the
+the existing `DS301` claim-extraction machinery (`src/docsentinel/mining/claims.py`, formerly
+`detectors/_triples.py`, and `src/docsentinel/mining/nlp.py`, formerly `deep_support.py`; moved by
+the 2026-11-21 mining-layer decision, contract C9), Milestone 0007 (typed `Finding.value`/`type`/`column`, the
 neutralizing report sinks), Milestone 0009 Story 03.0 (layered configuration, the "project config
 is untrusted" trust-tier model this milestone reuses for the API key and base-URL decisions).
 
@@ -68,7 +69,7 @@ must not follow, not an instruction from the project owner.
 1. **One engine, same gate shape.** `DS302` is dispatched by `engine.scan()` exactly like every
    other analyzer; it adds no second scan path for CLI/library/pytest-plugin consumers.
 2. **Reuse the extraction, not the gate.** `DS302` consumes `DS301`'s `Claim` objects
-   (`_triples.py`) unchanged; it never spins up a second spaCy pipeline. It is a new, *independent*
+   (`mining/claims.py`) unchanged; it never spins up a second spaCy pipeline. It is a new, *independent*
    filter plus a new, *independent* network stage layered on the same extraction output.
 3. **Data mining, not a sentence sweep.** A claim only becomes a network candidate after it
    survives a salience/dedup filter (Story 02.0). The filter is explicitly designed to bound both
@@ -101,15 +102,19 @@ must not follow, not an instruction from the project owner.
 | Story | Deliverable | Depends on |
 |---|---|---|
 | [01.0](/docs/roadmap/0010-fact-check/01.0-backend-protocol-and-rule-contract/README.md) | **Backend interface and rule contract (the core ask):** `FactCheckClient` Protocol, `FactCheckResult`/`CandidateClaim` data contracts, `DS302` registration, the dual consent-gate design (`--use-external-api`, `DOCSENTINEL_USE_EXTERNAL_API`, the per-backend API-key environment variable), the `fact_check_*` config surface, and how a gate failure is reported. ADR 0007 and the pre-code threat model are named here but **not written** in this milestone | Milestone 0003, 0007 |
-| [02.0](/docs/roadmap/0010-fact-check/02.0-claim-salience-and-data-mining/README.md) | **Claim salience / data-mining filter:** numeric-claim density, named-entity count, corpus-wide TF-IDF salience and near-duplicate-claim clustering (scikit-learn) over `DS301`'s extracted `Claim` objects, producing a small, bounded, deterministically ordered `CandidateClaim` list | 01.0 (consumes its data contracts and config keys) |
+| [02.0](/docs/roadmap/0010-fact-check/02.0-claim-salience-and-data-mining/README.md) | **Claim salience / data-mining filter:** numeric-claim density, named-entity count, corpus-wide TF-IDF salience and near-duplicate-claim clustering (scikit-learn) over `DS301`'s extracted `Claim` objects, producing a small, bounded, deterministically ordered `CandidateClaim` list. The scoring and clustering are pure functions in the mining layer (`mining/salience.py`, `mining/clustering.py`, C9); the `Config` adapter `select_candidates()` is a thin wrapper in `detectors/fact_check.py` | 01.0 (consumes its data contracts and config keys) |
 | [03.0](/docs/roadmap/0010-fact-check/03.0-lenz-backend-client/README.md) | **Lenz backend client:** the one concrete `FactCheckClient` implementation against the documented `/assess` shape, `httpx`-based, fixed base URL/timeout/response cap, verdict normalization, and the pre-code security review of the actual egress code | 01.0, 02.0 |
-| [04.0](/docs/roadmap/0010-fact-check/04.0-fixtures-tests-and-docs/README.md) | **Fixtures, tests, docs and release notes:** fake-backend integration tests, mock tests for the dual gate and the network-failure path, `rules.md`/`fault-classes.md`/`finding-types.md`/`configuration.md`/`cli.md` updates, `RELEASE_NOTES.json` proposal, diagram follow-up recorded (not drawn — see [Diagrams](#diagrams)) | 01.0, 02.0, 03.0 |
+| [05.0](/docs/roadmap/0010-fact-check/05.0-extract-facts-cli/README.md) | **`extract-facts` CLI command and `docsentinel.extract_facts()` (added 2026-11-23, owner request):** an offline, non-LLM preview of the exact fact set `DS302` would send. One shared candidate function (`trace_candidates()`/`collect_candidates()`, contract C11) feeds both; CLI overrides for the three `fact_check_*` selection settings, CLI-only exploration weights and dedup threshold, `--all`, and template-rendered `facts-text`/`facts-json` output. No gate, no backend, no network | 01.0, 02.0 |
+| [04.0](/docs/roadmap/0010-fact-check/04.0-fixtures-tests-and-docs/README.md) | **Fixtures, tests, docs and release notes:** fake-backend integration tests, mock tests for the dual gate and the network-failure path, the `extract-facts`/DS302 equality test (C11), `rules.md`/`fault-classes.md`/`finding-types.md`/`configuration.md`/`cli.md`/`report-template-format.md` updates, `RELEASE_NOTES.json` proposal, diagram follow-up recorded (not drawn — see [Diagrams](#diagrams)) | 01.0, 02.0, 03.0, 05.0 |
 
-Execution order is **01.0, then 02.0, then 03.0, then 04.0** — each later story consumes a data
-contract or config key the previous one defines; they are not parallelizable.
+Execution order is **01.0, then 02.0, then 05.0, then 03.0, then 04.0**. 05.0 needs only 01.0's
+contracts and 02.0's pipeline, not the Lenz client, so it may also run in parallel with 03.0. The
+recommended order puts it first, so that the Story 03.0 egress review can inspect exactly which
+texts would be sent. 04.0 comes last because its docs and its C11 equality test cover the command.
 
 ```text
-01.0 protocol & rule contract ──► 02.0 salience filter ──► 03.0 Lenz client ──► 04.0 tests & docs
+01.0 protocol & rule contract ──► 02.0 salience filter ──┬─► 05.0 extract-facts ──┐
+                                                         └─► 03.0 Lenz client ────┴─► 04.0 tests & docs
 ```
 
 ## Shared contracts (authoritative)
@@ -165,8 +170,11 @@ alternative.
 A backend class fixes, as class constants never read from any config layer: its base URL, request
 timeout, and maximum response size it will read. `Config` may only tune *what is sent* and *how
 much*: `fact_check_backend` (which registered class), `fact_check_min_salience`,
-`fact_check_min_confidence`, `fact_check_max_claims_per_document`, `fact_check_max_claims_total`.
-None of the five names a path, a URL or a secret.
+`fact_check_min_confidence`, `fact_check_max_claims_per_document`, `fact_check_max_claims_total`,
+and (owner ruling Q3, 2026-11-21) `fact_check_time_budget_seconds`. None of the six names a path,
+a URL or a secret.
+
+**Amended 2026-11-24 (egress threat model):** "request timeout" is a hard wall-clock per-request deadline enforced outside blocking reads (daemon worker thread, E4), the response cap counts raw bytes of an identity-encoded body (E5), the client sets `trust_env=False` (E3), and the lock keeps `httpx>=0.28`, `h11>=0.16.0`, `httpcore>=1.0.9` (E10) ([threat model](/docs/security/threat-model-0010-fact-check-egress-2026-11-24.md)).
 
 ### C5 — `use_external_api` is never a configuration-file key
 
@@ -191,10 +199,32 @@ exit status, only report volume. (Requirement check, Milestone 0010 instructions
 
 ### C7 — Extraction reuse, no second NLP pipeline
 
-`DS302` imports `docsentinel.detectors._triples` (lazily, on first deep call, exactly like `DS301`
+`DS302` imports `docsentinel.mining.claims` (lazily, on first deep call, exactly like `DS301`
 does via `importlib.import_module`) and calls the same `extract_claims()` / shares the same
-`deep_support.load_pipeline()` spaCy model. Story 02.0's salience filter takes `Claim` tuples as
-input and returns `CandidateClaim` tuples; it adds no new spaCy/textacy call.
+`docsentinel.mining.nlp.load_pipeline()` spaCy model. Story 02.0's mining functions
+(`mining/salience.py`, `mining/clustering.py`) take `Claim` tuples (or their sentences) as input and
+return scored, clustered results; the detector-side wrapper `select_candidates()` in
+`detectors/fact_check.py` turns them into `CandidateClaim` tuples. None of them adds a new
+spaCy/textacy call.
+
+### C9 — Layering: mining, detectors, fact-check backends
+
+Owner decision 2026-11-21. Three layers, dependencies pointing downwards only:
+
+| Layer | Modules (this milestone) | May import | Never imports |
+|---|---|---|---|
+| Mining | `mining/corpus.py`, `mining/claims.py`, `mining/nlp.py` (moved, as-built in parallel); `mining/salience.py`, `mining/clustering.py` (new, Story 02.0) | stdlib, third-party mining libraries (scikit-learn, numpy, scipy, spaCy, textacy), `docsentinel.models`, `docsentinel.log`, and other `docsentinel.mining.*` modules | `config`, `rules`, `detectors`, `engine`, `cli`, `reporting`, `telemetry`, `baseline`, `discovery`, `fact_check`, `httpx` |
+| Fact-check backends | `fact_check/protocol.py` (Story 01.0), `fact_check/lenz.py` (Story 03.0) | stdlib, `httpx` (only `lenz.py`), `docsentinel.log`, and other `docsentinel.fact_check.*` modules | everything the mining layer refuses, plus `docsentinel.mining` |
+| Detectors | `detectors/fact_check.py` (`DS302`) | everything above, `config`, `rules`, `models`, `log` | `engine`, `cli`, `reporting` |
+
+`mining/__init__.py` and `fact_check/__init__.py` import nothing. Mining functions are pure and
+take explicit numeric parameters, never a `Config`; the `Config`-to-parameter adaptation lives in
+the detector. The mining rule is enforced by `tests/unit/test_mining_layering.py` (landing with
+the module moves); the fact-check rule by a new `tests/unit/test_fact_check_layering.py`
+(Story 01.0 Task 06). The fact-check backends are not in `mining/` because they do network I/O,
+and not in `detectors/` because a backend is not a rule analyzer: a module under
+`docsentinel.detectors` runs the detectors package `__init__` (every rule registration) on import,
+and the egress code is easier to audit as one small package with no upward imports.
 
 ### C8 — Fail soft on the network, never on consent
 
@@ -204,6 +234,60 @@ project rule that an opt-in/consent gate being off is never a scan failure (comp
 being inert). A per-claim network failure (timeout, non-2xx, malformed JSON) is caught inside
 `DS302`'s own loop, logged at `DEBUG`/`WARNING`, and that one claim is skipped; it never raises
 into `engine.scan()` and never aborts the remaining candidates.
+
+### C10 — Owner rulings Q1–Q4 (2026-11-21)
+
+Realised in [ADR 0007](/docs/adr/0007-fact-check-backend-protocol-and-dual-consent-gate.md)
+Contracts 6 to 9; where an older story text disagrees, this section and the ADR win.
+
+- **Q1, evaluated count.** While either gate is closed, `DS302` is not counted in
+  `ScanResult.rules_evaluated`, so `notice` does not count it. `scan()` resolves the gate only when
+  `EXTERNAL_API_RULES` intersects the active codes and subtracts the closed codes from
+  `rules_evaluated` (and from the `_log_rule_plan` INFO count). `DS302` never enters `opt_in_off`
+  and `Rule.opt_in_option` is not used (D5). Every scan where `DS302` is not active is
+  byte-identical to master.
+- **Q2, fingerprint stability.** The finding `message` carries no confidence:
+  `external fact-check: '<snippet>' rated <verdict> by <backend> - review to confirm`. The
+  confidence goes in the report-only `value` (`compare=False`):
+  `<verdict> (confidence <0.00>): <exact text sent>`.
+- **Q3, time budget.** `fact_check_time_budget_seconds` (int, default `300`, `1` to `3600`,
+  `bool`/`float` refused, allowed in user settings and project config) bounds the network stage of
+  one scan, measured with `time.monotonic()` from just before the first `check_claim`. Claims not yet
+  sent when it runs out are skipped with exactly one WARNING (counts only); an in-flight request is
+  not interrupted, so the worst case is the budget plus one backend request timeout.
+  **Amended 2026-11-24 (egress threat model):** this bound holds only with the hard per-request deadline of mitigation E4 (the `httpx` per-operation timeout alone lets a dripping peer hang a call indefinitely, EG-4) ([threat model](/docs/security/threat-model-0010-fact-check-egress-2026-11-24.md)).
+- **Q4, unrecognised verdict.** A backend raises `FactCheckError` for any raw verdict it does not
+  recognise; `DS302` logs the per-claim WARNING and skips it. No unknown value is ever mapped to
+  `mixed` (or to `unverifiable`); the Lenz mid-confidence band is dropped.
+
+### C11 — One candidate source for DS302 and extract-facts
+
+Added 2026-11-23 for [Story 05.0](/docs/roadmap/0010-fact-check/05.0-extract-facts-cli/README.md).
+
+- Exactly one function turns `(root, documents, config)` into scored, dispositioned claims:
+  `trace_candidates(root, documents, config, *, policy=DS302_POLICY)` in
+  `detectors/fact_check.py`. The extraction loop (`.md` filter, strict UTF-8 read,
+  `mining.nlp.load_pipeline()`, `mining.claims.extract_claims()`, pooling) and the adaptation to
+  `mining.salience.trace_salience()` exist only there.
+- `collect_candidates(root, documents, config) -> tuple[CandidateClaim, ...]` is
+  `trace_candidates(...).selected` under `DS302_POLICY` and has **no** `policy` parameter.
+  `DS302` `detect()` calls it after both gates pass, and contains no extraction code of its own.
+- `mining.salience.select_salient()` is the `selected` subsequence of `trace_salience()`. Ordering,
+  tie-breaks, floor and caps are implemented once.
+- `engine.extract_facts()` (and the `extract-facts` command) calls `trace_candidates()` with no
+  gate. It shares the engine's inventory step with `scan()`, so discovery, selection, single-file
+  targets and unreadable-document skips are identical. With default settings, the texts it lists
+  are byte-equal, in order, to the texts a gate-open DS302 scan of the same root, configuration and
+  selection passes to `check_claim()`. A Story 04.0 integration test with a recording fake backend
+  asserts this.
+- Settings that make `extract-facts` differ from DS302 (a CLI override that differs from the
+  effective config, or an exploration `SelectionPolicy`) set `matches_ds302 = false` and are named
+  in the output notice. An exploration policy is never a `Config` field, never read from any file
+  or environment variable, and cannot reach `DS302`.
+- `extract-facts` never resolves `use_external_api`, never reads `DOCSENTINEL_USE_EXTERNAL_API` or a
+  `DOCSENTINEL_FACTCHECK_*` variable, and never imports `httpx` or a backend module. C1 and C5 are
+  untouched because no egress path exists in the command.
+- **Correction 2026-11-24 (threat model F1/E1):** spaCy itself imports `httpx`, so "never imports `httpx`" here and in exit gate 9 means no backend module, no `httpx` reference in DocSentinel code on the path and no outbound socket ([Story 05.0 X10](/docs/roadmap/0010-fact-check/05.0-extract-facts-cli/README.md#decisions), [threat model](/docs/security/threat-model-0010-extract-facts-2026-11-24.md)).
 
 ## Cross-cutting rules
 
@@ -223,6 +307,9 @@ into `engine.scan()` and never aborts the remaining candidates.
   under `/docs/adr/` from the Architect task **once code is implemented**, and a `Diagram impact`
   line handed to `diagram-creator` **after** the code lands (see [Diagrams](#diagrams)) — this
   milestone, being spec-only, does neither yet.
+- Layering per contract C9: `tests/unit/test_mining_layering.py` stays green when
+  `mining/salience.py` and `mining/clustering.py` land, and `tests/unit/test_fact_check_layering.py`
+  stays green when `fact_check/protocol.py` and `fact_check/lenz.py` land.
 - Test layout per `/CLAUDE.md` "Test layout": unit tests for the salience scorer and the gate
   resolution with tiny inline strings; mock tests for the Lenz client with `httpx` mocked (never a
   real network call); integration tests for `DS302` end to end against a fake in-repo
@@ -235,9 +322,28 @@ No diagram changes land with this milestone: it is specification only, and `/doc
 the as-built package (per the project's diagram rule, a diagram documenting a planned design
 rather than shipped code is deferred, not drawn early). Story 04.0 records, as a follow-up task for
 `python-expert` to hand to `diagram-creator` **after** Story 03.0's code lands:
-`component-detectors.puml` (a new `mentions.py`-style box for `DS302`/the salience module/the Lenz
-client, and the Protocol boundary) and `component-overview.puml` (the new outbound network edge —
-the first one this project has ever drawn — clearly labelled opt-in/gated).
+`component-detectors.puml` (a `detectors/fact_check.py` box for `DS302`, its dependency edges into
+the mining layer's `mining/salience.py`/`mining/clustering.py`/`mining/claims.py`/`mining/nlp.py`,
+and the `FactCheckClient` Protocol boundary to the `fact_check/` backend package holding
+`fact_check/protocol.py` and `fact_check/lenz.py`) and `component-overview.puml` (the mining layer
+and the `fact_check/` package as components, and the new outbound network edge from
+`fact_check/lenz.py`, the first one this project has ever drawn, clearly labelled opt-in/gated).
+The mining-layer boxes for the three moved modules are drawn by the change that moves them, not by
+this milestone.
+
+Story 05.0 (added 2026-11-23) adds the following to the same deferred follow-up, drawn only after
+its code lands:
+
+- `component-overview.puml`: the `extract-facts` CLI subcommand calling `engine.extract_facts`,
+  with no network edge.
+- `component-detectors.puml`: `trace_candidates()`/`collect_candidates()` in
+  `detectors/fact_check.py` as the one candidate source, shared by `DS302` and
+  `engine.extract_facts`.
+- `component-reporting.puml`: `telemetry/facts_model.py`, the `facts-text`/`facts-json`
+  templates and the loader's `context` kind.
+- `scan-selection.puml`: the inventory step it draws is now shared by `scan()` and
+  `extract_facts()`, so its label changes.
+- A possible new `sequence/extract-facts` diagram.
 
 **Diagram impact: none (specification only; no code, module or contract has landed yet).**
 
@@ -245,8 +351,8 @@ the first one this project has ever drawn — clearly labelled opt-in/gated).
 
 1. `uv sync --locked --extra test --extra deep`, then
    `uv run --locked pytest -p docsentinel.pytest_plugin` green on Python 3.12 and 3.13, with the
-   full test matrix for Stories 01.0–04.0, including the gate-skip path, run with **no** real
-   network access and **no** real API key.
+   full test matrix for Stories 01.0–05.0, including the gate-skip path and the C11
+   `extract-facts`/DS302 equality test, run with **no** real network access and **no** real API key.
 2. `uv run --locked docsentinel scan . --format json` exits `0` and reports **zero** `DS302`
    findings on this repository's own self-scan, because neither `--use-external-api` nor any
    `DOCSENTINEL_FACTCHECK_*_API_KEY` is ever set in CI or local hooks (C1 gate 2 fails closed to
@@ -265,6 +371,10 @@ the first one this project has ever drawn — clearly labelled opt-in/gated).
 8. No test, fixture, CI workflow or documentation file in this change set ever contains the literal
    API key embedded in `examples/docs/lenz_fact-checking.md`, and no test ever calls the real Lenz
    endpoint. A grep-based regression check for the key's literal prefix is part of Story 04.0.
+9. `uv run --locked docsentinel extract-facts tests/assets/ds302/<case> --format facts-json` exits
+   `0` offline. Its default output reports `matches_ds302: true`, and a fresh-interpreter run
+   shows that neither `httpx` nor a backend module was imported (C11). Story 05.0's template-loader
+   delta has a Security Auditor verdict of PASS or PASS_WITH_FOLLOWUP.
 
 ## Out of scope
 
@@ -275,12 +385,15 @@ the first one this project has ever drawn — clearly labelled opt-in/gated).
   add a second detector or a backend mode for the heavier tiers.
 - A deep-profile-specific baseline file or mechanism (C6) — the existing generic one is reused
   unchanged.
-- Any change to `DS301`, its extraction code, or the `deep_confirm` triple-gate itself.
+- Any change to `DS301`, its extraction code, or the `deep_confirm` triple-gate itself. (The move
+  of that extraction code into `mining/` is a separate, behaviour-preserving change made outside
+  this milestone; this milestone only consumes the new paths.)
 - Caching or deduplicating identical claims *across scans* (only *within* one scan's corpus, by
   Story 02.0's clustering).
-- A UI/CLI surface for inspecting or exporting what was sent to the backend; the report's own
-  `DS302` finding `value` (the bounded claim text) is the only persisted record of what left the
-  machine.
+- A UI/CLI surface for inspecting or exporting what **was** sent to the backend in a past run; the
+  report's own `DS302` finding `value` (the bounded claim text) is the only persisted record of
+  what left the machine. (Amended 2026-11-23: a preview of what *would* be sent is now in scope as
+  Story 05.0 `extract-facts`. It recomputes the set offline and records nothing about a real send.)
 - Running `examples/check_fact.py` or calling the real `lenz.io` API as part of this milestone's
   own work, its tests, or its CI.
 

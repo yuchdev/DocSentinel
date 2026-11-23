@@ -13,6 +13,7 @@
 | [`docs/specs/fault-event-contract.md`](specs/fault-event-contract.md) | Canonical cross-tool fault-event contract shared with FlakeForge: event fields/types, `tier`/`outcome` vocabularies, `schema_version` and its bump policy, the `FaultEventSink` Protocol, and runnable `JsonlSink`/`LoggingSink`/`SqliteSink`/custom-sink examples. Shared as a document only — no shared code. |
 | [`docs/adr/0003-template-driven-reporting-on-telemetry.md`](adr/0003-template-driven-reporting-on-telemetry.md) | ADR 0003 (Proposed, owner sign-off pending): template-driven reporting on a `telemetry/` package, decisions D1-D6. |
 | [`docs/adr/0004-reference-scope-and-at-document-references.md`](adr/0004-reference-scope-and-at-document-references.md) | ADR 0004 (Proposed): `reference_scope` (`links` default, `strict`) makes DS103 opt-in via the new `Rule.opt_in_values`/`opt_in_hint` contract; new fast rule DS124 for dangling `@`-document mentions (`AtReference` scanner record, DS116 covers mention escapes); Milestone 0009 D1-D16 recorded. |
+| [`docs/adr/0007-fact-check-backend-protocol-and-dual-consent-gate.md`](adr/0007-fact-check-backend-protocol-and-dual-consent-gate.md) | ADR 0007 (Proposed): the `FactCheckClient` Protocol, the dual consent gate and the API-key convention for `DS302`. |
 | [`docs/specs/report-template-format.md`](specs/report-template-format.md) | Contract for report templates and extensions: pipeline, context variables, filters, `builtin:domain`, trust gate and errors. |
 | [`docs/specs/logging.md`](specs/logging.md) | Logging contract: the `docsentinel.log` wrapper, the per-run log file and its rotation, stderr levels (`-v`/`-q`, `DOCSENTINEL_LOG_LEVEL`), when to use each level, and what may be logged. |
 | [`docs/specs/fault-classes.md`](/docs/specs/fault-classes.md) | Hand-maintained rule-code → fault-class mapping table consumed by the telemetry adapter in `telemetry/`; co-maintained with `rules.py`. |
@@ -52,6 +53,9 @@
 | `docs/security/threat-model-0007-template-engine-2026-10-31.md` | Milestone 0007 template engine and loader threat model. |
 | `docs/security/threat-model-0007-extensions-2026-11-03.md` | Milestone 0007 extension API, `python:` trust gate and `telemetry_domains` threat model. |
 | `docs/security/threat-model-0007-closure-2026-11-04.md` | Milestone 0007 closure addendum (Story 05.0): acceptance-report leakage, docs constraints, open follow-ups. |
+| `docs/security/threat-model-0010-fact-check-gating-2026-11-23.md` | Milestone 0010 threat model for the `DS302` dual consent gate: who can switch on network egress, and safe invocation in pre-commit and CI. |
+| `docs/security/threat-model-0010-fact-check-egress-2026-11-24.md` | Milestone 0010 threat model for the fact-check backend client: fixed URL, deadline, response cap, key handling. |
+| `docs/security/threat-model-0010-extract-facts-2026-11-24.md` | Milestone 0010 threat model for the offline `extract-facts` command and facts templates. |
 | `docs/test/README.md` | Test suite guide: configuration, categories, techniques, coverage, lint gates. |
 | `docs/test/code_test_coverage.md` | Coverage requirements checklist and workflow. |
 | `docs/test/user-settings.md` | Manual test checklist for the user settings file, JSON project configuration and the permission rule. |

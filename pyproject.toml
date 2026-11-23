@@ -17,6 +17,8 @@ dependencies = [
     # textacy needs floret, which publishes wheels for 3.12 only; installing it on 3.13 would
     # compile C++ from source. The deep profile reports itself unavailable there (`doctor`).
     "textacy>=0.13; python_version < '3.13'",
+    # deep profile (DS302 fact-check backend)
+    "httpx>=0.28,<1",
 ]
 
 [project.scripts]

@@ -13,7 +13,8 @@ pytest.importorskip("sklearn")
 pytest.importorskip("textstat")
 
 from docsentinel import models
-from docsentinel.detectors.standard import complexity, corpus
+from docsentinel.detectors.standard import complexity
+from docsentinel.mining import corpus
 
 # A single long, polysyllabic sentence: Flesch-Kincaid grade well above 14.
 _COMPLEX_SENTENCE = (

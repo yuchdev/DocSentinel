@@ -6,7 +6,8 @@ import pytest
 
 pytest.importorskip("sklearn")
 
-from docsentinel.detectors.standard import corpus, low_information
+from docsentinel.detectors.standard import low_information
+from docsentinel.mining import corpus
 from tests.asset_helpers import AssetCase
 
 

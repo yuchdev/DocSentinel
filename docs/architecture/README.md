@@ -540,7 +540,7 @@ and [Story 04.0](../roadmap/0002-standard-profile-detectors/04.0-doc-vs-code-sig
 | `min_paragraph_chars` | `30`    | Integer `>= 0`. Paragraphs with fewer visible characters stay out of that corpus.   |
 
 A paragraph must clear both paragraph floors. The two floors are part of the `build_corpus_model`
-memoization key, so distinct settings never reuse a stale corpus within a process. The TF-IDF
+memoization key (in `mining/corpus.py`), so distinct settings never reuse a stale corpus within a process. The TF-IDF
 vectorizer settings, the `DS203` normalization references and the `DS201` Flesch-Kincaid metric are
 fixed calibration internals and are not configurable. All defaults reproduce historical behavior
 byte-for-byte.
@@ -593,6 +593,17 @@ under strict safety and advisory boundaries:
   An unconfirmed scan runs zero deep analyzers and reports an explanatory pending notice.
 - **Optional dependencies, loaded lazily.** `spacy`, `textacy` and the `en_core_web_sm` model live in
   the `docsentinel[deep]` extra and load only when a confirmed deep scan runs.
+- **One opt-in network edge (`DS302`, Milestone 0010).** The deep profile also registers `DS302`, which
+  sends a few high-salience claim sentences to a third-party fact-check service. It is the only outbound
+  network edge in DocSentinel and stays closed unless the invoker gives both `--use-external-api` (or
+  `DOCSENTINEL_USE_EXTERNAL_API=1`) and the backend's `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`; neither
+  is a configuration key. Verdicts are advisory third-party heuristics. The rule lives in
+  `detectors/fact_check.py`; candidate selection uses the mining layer (`mining/salience.py`,
+  `mining/clustering.py`); the backend sits behind the `FactCheckClient` Protocol in
+  `fact_check/protocol.py`, with the only implementation in `fact_check/lenz.py` (fixed URL, no
+  redirects or proxies, bounded response; `httpx` is a declared dependency imported only when the gate is
+  open). `docsentinel extract-facts` previews the same candidate set offline. See
+  [ADR 0007](../adr/0007-fact-check-backend-protocol-and-dual-consent-gate.md) (`Proposed`).
 - **Advisory-only exit codes.** Deep findings are candidates for review. A deep scan always exits
   `0`, even under `--strict` or with findings present, and prints an advisory banner. Promoting deep
   findings to build failures (for example `--fail-on-deep`) is deferred.

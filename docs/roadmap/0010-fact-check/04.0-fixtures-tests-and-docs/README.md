@@ -1,13 +1,21 @@
 # Story 04.0 — Fixtures, tests, docs and release notes
 
 **Touches:** `docs/user/reference/rules.md`, `docs/user/reference/configuration.md`,
-`docs/user/tutorial/cli.md`, `docs/specs/finding-types.md`, `docs/specs/fault-classes.md`,
+`docs/user/tutorial/cli.md`, `docs/specs/report-template-format.md`,
+`docs/user/tutorial/custom-reports.md`, `docs/specs/finding-types.md`, `docs/specs/fault-classes.md`,
 `src/docsentinel/telemetry/classify.py` (`FAULT_CLASSES`), `CLAUDE.md`, `README.md`,
 `examples/docsentinel.toml`, `RELEASE_NOTES.json`, `tests/assets/ds302/`.
 **Parent:** [Milestone 0010 plan](/docs/roadmap/0010-fact-check/plan.md) (exit gates, item 8).
 **Security-sensitive:** no new surface, but this story owns the milestone-wide regression check
-that nothing produced across Stories 01.0–04.0 ever carries the embedded Lenz example key or
+that nothing produced across Stories 01.0–05.0 ever carries the embedded Lenz example key or
 exercises the real endpoint — see the acceptance criteria below.
+
+> **Amended 2026-11-23 (Story 05.0, plan contract C11).** This story now also depends on
+> [Story 05.0](/docs/roadmap/0010-fact-check/05.0-extract-facts-cli/README.md) (`extract-facts`) and
+> runs last. Task 02 gains the C11 equality test, which checks that `extract-facts` default output
+> equals the texts DS302 sends to the recording fake backend. Task 04 documents the command in
+> `/docs/user/tutorial/cli.md` and the template `context` key in
+> `/docs/specs/report-template-format.md`. Task 05 adds the Story 05.0 diagram items.
 
 ## Goal
 
@@ -21,11 +29,11 @@ example key.
 
 | Task | Deliverable | Role | Status |
 |---|---|---|---|
-| `01-fixtures-and-fake-backend.md` | `tests/assets/ds302/` asset cases; an in-repo `FakeFactCheckClient` test double registered only inside the test suite (never in `FACT_CHECK_BACKENDS` at import time) | Testing Expert | ⬜ Not written |
-| `02-integration-and-mock-tests.md` | End-to-end `scan()` tests for: both gates on with a clean verdict, both gates on with a false/mixed verdict producing a `DS302` finding, each gate individually off, a per-claim `FactCheckError` skip, and the embedded-key regression grep | Testing Expert | ⬜ Not written |
-| `03-rules-table-and-fault-class.md` | `rules.md` row, `fault-classes.md` row (`unverified_claim`), `finding-types.md` row (`unverified claim`), `FAULT_CLASSES` entry; `tests/integration/test_rules_table.py` kept green | Python Expert | ⬜ Not written |
-| `04-docs-and-release-notes.md` | `configuration.md` (the five `fact_check_*` keys plus the dual-gate explanation), `cli.md` (`--use-external-api`, `DOCSENTINEL_USE_EXTERNAL_API`, `DOCSENTINEL_FACTCHECK_LENZ_API_KEY`, a worked example with placeholder key material), `CLAUDE.md`/`README.md` updates, `examples/docsentinel.toml` annotation, proposed `RELEASE_NOTES.json` entry | Docs Writer | ⬜ Not written |
-| `05-diagram-follow-up.md` | `Diagram impact` line for `diagram-creator`: `component-detectors.puml` (new `fact_check.py`/`fact_check_salience.py`/`fact_check_lenz.py` boxes and the `FactCheckClient` Protocol boundary) and `component-overview.puml` (the first outbound-network edge this project draws, labelled gated/opt-in) | Python Expert (reports the line; `app-architect` or the orchestrator invokes `diagram-creator`) | ⬜ Not written |
+| `01-fixtures-and-fake-backend.md` | `tests/assets/ds302/` asset cases; an in-repo `FakeFactCheckClient` test double registered only inside the test suite (never in `FACT_CHECK_BACKENDS` at import time) | Testing Expert | ✅ Complete |
+| `02-integration-and-mock-tests.md` | End-to-end `scan()` tests for: both gates on with a clean verdict, both gates on with a false/mixed verdict producing a `DS302` finding, each gate individually off, a per-claim `FactCheckError` skip, the C11 `extract-facts`/DS302 equality test, and the embedded-key regression grep | Testing Expert | ✅ Complete |
+| `03-rules-table-and-fault-class.md` | `rules.md` row, `fault-classes.md` row (`unverified_claim`), `finding-types.md` row (`unverified claim`), `FAULT_CLASSES` entry; `tests/integration/test_rules_table.py` kept green | Python Expert | ✅ Complete |
+| `04-docs-and-release-notes.md` | `configuration.md` (the six `fact_check_*` keys plus the dual-gate explanation), `cli.md` (`--use-external-api`, `DOCSENTINEL_USE_EXTERNAL_API`, `DOCSENTINEL_FACTCHECK_LENZ_API_KEY`, a worked example with placeholder key material, and the `extract-facts` command), `report-template-format.md` (`context` key, facts context), `custom-reports.md`, `CLAUDE.md`/`README.md` updates, `examples/docsentinel.toml` annotation, proposed `RELEASE_NOTES.json` entry | Docs Writer | ⬜ Not started |
+| `05-diagram-follow-up.md` | `Diagram impact` line for `diagram-creator`: `component-detectors.puml` (a `detectors/fact_check.py` box, its edges into the mining layer's `mining/salience.py`/`mining/clustering.py`/`mining/claims.py`/`mining/nlp.py`, and the `FactCheckClient` Protocol boundary to the `fact_check/` package with `fact_check/protocol.py` and `fact_check/lenz.py`) and `component-overview.puml` (the mining layer and `fact_check/` package, and the first outbound-network edge this project draws, from `fact_check/lenz.py`, labelled gated/opt-in) | Python Expert (reports the line; `app-architect` or the orchestrator invokes `diagram-creator`) | ✅ Complete |
 
 ## Scope
 
@@ -51,7 +59,7 @@ example key.
 ```python
 # tests/mock/_fake_fact_check_backend.py (test-only; never imported by src/)
 
-from docsentinel.detectors.fact_check_protocol import FactCheckResult
+from docsentinel.fact_check.protocol import FactCheckResult
 
 
 class FakeFactCheckClient:
@@ -80,8 +88,10 @@ never exercised by any test in this project.
 `gate_off_no_flag`, `gate_off_no_key`, `both_gates_on_clean_verdict`,
 `both_gates_on_false_verdict_reports`, `both_gates_on_mixed_verdict_reports`,
 `per_claim_network_error_skipped`, `salience_filter_drops_trivial_claim`,
-`corpus_dedup_collapses_repeated_claim` (shared with Story 02.0's own unit tests, but exercised
-here end to end through `scan()`), `deep_confirm_off_skips_everything_including_ds302`.
+`corpus_dedup_collapses_repeated_claim` (the behaviour Story 02.0 unit-tests in
+`tests/unit/test_mining_salience.py` and `tests/unit/test_mining_clustering.py`, exercised
+here end to end through `scan()`), `deep_confirm_off_skips_everything_including_ds302`, and
+`extract_facts_basic` (adopted from Story 05.0 Task 04 if it already exists).
 
 Every fixture's claim text is written by hand for this milestone (short, clearly synthetic
 sentences with a number or a named entity) — none of it is copied from
@@ -108,6 +118,17 @@ sentences with a number or a named entity) — none of it is copied from
       `--use-external-api`/`DOCSENTINEL_USE_EXTERNAL_API` or any `DOCSENTINEL_FACTCHECK_*_API_KEY`.
 - [ ] `RELEASE_NOTES.json` gains a proposed entry describing `DS302` as off-by-default,
       advisory-only, and requiring two independent, explicit opt-ins before any network call.
+- [ ] Both layering tripwires, `tests/unit/test_mining_layering.py` and
+      `tests/unit/test_fact_check_layering.py`, are green with every module of Stories 01.0–03.0
+      in place (plan contract C9).
+- [ ] For every `tests/assets/ds302/` case with a reportable or clean verdict, the default
+      `extract_facts()` texts (and the `extract-facts --format facts-json` `facts[].text` values)
+      equal, in order, the `FakeFactCheckClient.calls` of a gate-open `scan()` of the same root and
+      config, and `matches_ds302` is `true`. When `fact_check_max_claims_total` is lowered in the
+      config, both sides shrink together (plan contract C11).
+- [ ] `/docs/user/tutorial/cli.md` documents `extract-facts`: its options, the default equalling
+      the DS302 set, the `matches_ds302` marker, exploration flags never reaching DS302, the offline
+      guarantee, and exit codes `0`/`2`.
 - [ ] `diagram-creator` is invoked (or the `Diagram impact` line handed to whoever can invoke it)
       only after this story's code is merged, per the project rule that `/docs/diagrams/` shows
       the as-built package, never a planned one.
@@ -121,6 +142,7 @@ sentences with a number or a named entity) — none of it is copied from
 | Integration | `test_ds302_gate_variations_ds301.py` | Each of: no `deep_confirm` (both DS301 and DS302 skipped, existing behaviour unchanged); `deep_confirm` on, gate 2 off (DS301 runs, DS302 skips with the WARNING); both gates on (both run) |
 | Mock | `test_ds302_per_claim_network_error_skipped.py` | One candidate's `check_claim()` raises `FactCheckError`; the scan still completes, the other candidates are still checked, and the failure is logged without the claim text |
 | Mock/regression | `test_no_lenz_example_key_leaked.py` | The milestone-wide grep guard described above |
+| Integration | `test_fact_check_extract_facts_equivalence_ds302.py` | C11: `extract-facts` default output equals the texts DS302 sends to the recording fake backend, in order, through `scan()`/`extract_facts()` and through the CLI |
 | Integration (existing) | `tests/integration/test_rules_table.py` | Updated for the new `DS302` row |
 
 ## Docs to update
@@ -130,15 +152,19 @@ Triggers R, C and K of `/docs/dev/documentation_sync.md`, all landed in this sto
 
 - `/docs/user/reference/rules.md` (`DS302` row);
 - `/docs/user/reference/configuration.md` (new section "External fact-checking (DS302)" covering
-  the five `fact_check_*` keys, the dual consent gate, and the per-backend API-key convention);
+  the six `fact_check_*` keys, the dual consent gate, and the per-backend API-key convention);
 - `/docs/user/tutorial/cli.md` (deep profile section: `--use-external-api`, the two environment
   variables, a worked example using placeholder key material, and an explicit warning that this
-  sends document-derived text to a third party);
+  sends document-derived text to a third party; plus a new `extract-facts` section, Story 05.0);
+- `/docs/specs/report-template-format.md` (the `context` key and the facts context schema) and
+  `/docs/user/tutorial/custom-reports.md` (one paragraph on `facts` templates), Story 05.0;
 - `/docs/specs/finding-types.md` (`DS302` row, type `unverified claim`),
   `/docs/specs/fault-classes.md` (`DS302` row, fault class `unverified_claim`);
-- `/CLAUDE.md` (Architecture section's deep-profile bullet; the "Environment variables read by
+- `/CLAUDE.md` (Architecture section's deep-profile bullet, naming `mining/salience.py`,
+  `mining/clustering.py`, `detectors/fact_check.py` and the `fact_check/` package; the
+  "Environment variables read by
   DocSentinel" line gains `DOCSENTINEL_USE_EXTERNAL_API` and
   `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`);
 - `/README.md` rule list and configuration example;
-- `/examples/docsentinel.toml` (the five `fact_check_*` keys, commented, never the API key);
+- `/examples/docsentinel.toml` (the six `fact_check_*` keys, commented, never the API key);
 - a proposed `/RELEASE_NOTES.json` entry (version left to the owner, decision D9).

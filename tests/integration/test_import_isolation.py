@@ -4,7 +4,7 @@ The 15.0 contract requires that importing :mod:`docsentinel` and running a fast 
 never imports the optional standard (scikit-learn/textstat/docsig) or deep
 (spacy/textacy) dependencies. Before this task a plain ``import docsentinel`` pulled in
 spaCy eagerly through ``detectors/__init__`` -> ``contradictions`` -> ``_triples``; the
-analyzer's ``_triples`` import is now deferred to the first deep scan, while the DS301
+analyzer's ``_triples`` (now ``mining.claims``) import is now deferred to the first deep scan, while the DS301
 rule metadata and analyzer stay registered eagerly. These tests prove the boundary in a
 fresh isolated interpreter so no earlier in-process import can mask a leak.
 """
@@ -91,7 +91,7 @@ _DEEP_LAZY_PROBE: str = """
     (root / "doc.md").write_text("# Title\\n\\nSome prose.\\n", encoding="utf-8")
     scan(root)
     before = "spacy" in sys.modules
-    importlib.import_module("docsentinel.detectors._triples")
+    importlib.import_module("docsentinel.mining.claims")
     after = "spacy" in sys.modules
     print(f"{before},{after}")
 """
@@ -103,8 +103,8 @@ def test_deep_analyzer_code_path_loads_spacy_lazily():
 
     Scenario:
         Given a fresh interpreter that imports docsentinel and runs a fast scan
-        When spaCy's presence is checked before and after importing the deep analyzer's _triples module
-        Then spaCy is absent after import+fast-scan and present only once _triples is imported, proving
+        When spaCy's presence is checked before and after importing the deep analyzer's mining.claims module
+        Then spaCy is absent after import+fast-scan and present only once mining.claims is imported, proving
         the lazy boundary is the deep analyzer module, independent of the spaCy model being installed.
 
     Boundaries:
@@ -114,7 +114,7 @@ def test_deep_analyzer_code_path_loads_spacy_lazily():
 
     On failure, first check:
         - Whether the first flag is True (spaCy leaked before any deep work) or the second is False
-        - Whether _triples stopped importing spaCy at module load
+        - Whether mining.claims stopped importing spaCy at module load
     """
     assert _run_probe(_DEEP_LAZY_PROBE) == "False,True"
 
@@ -177,7 +177,7 @@ def test_plain_import_docsentinel_does_not_load_spacy():
         - Scope: one isolated interpreter
 
     On failure, first check:
-        - Whether a module reintroduced an eager ``from docsentinel.detectors._triples import ...``
+        - Whether a module reintroduced an eager ``from docsentinel.mining.claims import ...``
     """
     probe = """
         import sys

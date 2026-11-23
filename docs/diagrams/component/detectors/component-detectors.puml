@@ -41,14 +41,28 @@ package "Standard DS2xx - lazy: detectors/loader.py ensure_standard_loaded()" {
   [duplication.py DS202] as ds202
   [low_information.py DS203] as ds203
   [signatures.py DS204] as ds204
-  [corpus.py\nbuild_corpus_model (lru_cache)] as corpus
 }
 
-package "Deep DS301 - opt-in gate, advisory-only" {
+package "Deep DS301, DS302 - opt-in gate, advisory-only" {
   [contradictions.py DS301\nrule registered eagerly] as ds301
-  [_triples.py\nextract_claims] as triples
-  [deep_support.py\ndeep_ready()] as deepsup
+  [fact_check.py DS302\nresolve_external_api_gate, detect(),\ntrace_candidates / collect_candidates\n(the one candidate source)] as ds302
 }
+
+package "Mining layer - src/docsentinel/mining (depends only on models and log)" {
+  [corpus.py\nbuild_corpus_model (lru_cache), paragraphs,\ncreate_vectorizer()] as corpus
+  [claims.py\nClaim, extract_claims (lazy)] as triples
+  [nlp.py\nload_pipeline, deep_ready()] as deepsup
+  [salience.py\ntrace_salience, select_salient] as salience
+  [clustering.py\ncluster_near_duplicates] as clustering
+}
+
+package "Backend package - src/docsentinel/fact_check (outside detectors/ and mining/)" {
+  [protocol.py\nFactCheckClient Protocol, FactCheckResult,\nFactCheckError, load_backend] as fcproto
+  [lenz.py\nLenzFactCheckClient (only httpx importer)] as lenz
+}
+[engine.py\nscan(), extract_facts()] as engine
+[models.py] as models
+[log.py] as log
 
 [code_discovery.py] as codedisc
 [detectors/loader.py] as loader
@@ -59,6 +73,8 @@ cloud "extra: standard" {
   [textstat] as ts
   [docsig] as docsig
 }
+cloud "External Lenz service (POST /assess)" as lenzsvc
+
 cloud "extra: deep" {
   [spaCy] as spacy
   [textacy] as textacy
@@ -91,25 +107,42 @@ ds114 ..> config : ConfigError
 ds115 ..> config : ConfigError
 ds118 ..> config : ConfigError
 
-ds202 --> corpus
-ds203 --> corpus
+ds202 --> corpus : mining.corpus
+ds203 --> corpus : mining.corpus
 corpus ..> sk
 ds202 ..> sk
 ds201 ..> ts
 ds204 ..> docsig : importlib
 ds204 --> codedisc
 
-ds301 ..> deepsup
-ds301 ..> triples : importlib, first deep call
+ds301 ..> deepsup : mining.nlp
+ds301 ..> triples : mining.claims, importlib,\nfirst deep call
 triples ..> spacy
 triples ..> textacy : importlib
 deepsup ..> spacy : readiness probe
 deepsup ..> textacy
 
+ds302 ..> triples : mining.claims, importlib
+ds302 --> deepsup : mining.nlp
+ds302 ..> salience : mining.salience, importlib
+salience ..> clustering : importlib, lazy
+clustering --> corpus : create_vectorizer
+ds302 --> fcproto : FactCheckClient (Protocol boundary),\nload_backend, FactCheckError
+fcproto ..> lenz : importlib, lazy,\nafter both consent gates
+lenz --> fcproto : FactCheckResult
+lenz --> lenzsvc : HTTPS, opt-in
+ds302 ..> config : ConfigError, fact_check_* options
+engine --> ds302 : resolve_external_api_gate;\nextract_facts -> trace_candidates
+
+corpus --> models
+triples --> models
+deepsup ..> log
+corpus ..> log
 loader ..> errors : ExtraNotInstalledError\nwhen sklearn/textstat/docsig missing
 
 ds101 ..> rules : each detector module\nregisters its Rule + Analyzer\nat import time
 ds301 ..> rules
+ds302 ..> rules : registered; in EXTERNAL_API_RULES
 
 note right of ds100
   engine._partition_readable checks every document once;
@@ -123,6 +156,16 @@ note right of pb
   backslash, control). DS101/DS113/DS112/DS115
   defer to it via is_ds116_owned.
   Code-span scope is narrowed (Story 11.0).
+end note
+
+note bottom of ds302
+  Gate 1: deep_confirm. Gate 2: ~-~-use-external-api (or
+  DOCSENTINEL_USE_EXTERNAL_API=1) AND the backend API key variable
+  AND a loadable backend. Closed gate: one WARNING and a pending
+  entry, nothing imported or sent. extract-facts calls the same
+  trace_candidates offline: no gate, no backend, no network.
+  No edge points from mining/ or fact_check/ up into detectors/,
+  config or engine.
 end note
 
 note bottom of ds301

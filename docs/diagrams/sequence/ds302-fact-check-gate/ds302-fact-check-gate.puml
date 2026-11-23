@@ -1,0 +1,62 @@
+@startuml ds302-fact-check-gate
+title DS302 consent gate and fail-soft paths (as built, engine.py / detectors/fact_check.py)
+skinparam shadowing false
+skinparam sequenceMessageAlign left
+
+participant "engine.scan" as engine
+participant "detectors/fact_check.py\nDS302" as ds302
+participant "fact_check/protocol.py\nload_backend" as proto
+participant "fact_check/lenz.py\nLenzFactCheckClient" as lenz
+participant "Lenz service\n/assess" as svc
+
+== engine: gate resolution (only when DS302 is active) ==
+engine -> ds302 : resolve_external_api_gate(settings,\nuse_external_api=)
+ds302 -> ds302 : requested = flag or\nDOCSENTINEL_USE_EXTERNAL_API == "1"\nkey_present = backend key variable set and not empty
+opt requested and key present
+  ds302 -> proto : load_backend(name) (probe)
+  proto --> ds302 : class, or ImportError / KeyError / TypeError (backend unavailable)
+end
+ds302 --> engine : ExternalApiGate (open or closed, no key value)
+alt gate closed
+  engine -> engine : not counted as evaluated;\npending = "DS302 skipped: <reasons>"
+else gate open
+  engine -> engine : counted as evaluated
+end
+engine -> ds302 : detect(root, documents, config,\nuse_external_api=)
+
+== DS302 detect() ==
+alt gate closed (re-resolved)
+  ds302 --> engine : one WARNING, no findings\n(nothing read, imported or sent)
+else gate open
+  ds302 -> proto : load_backend(name)
+  proto -> lenz : importlib, lazy (httpx imported here)
+  proto --> ds302 : client class
+  alt backend unavailable, constructor FactCheckError,\nor key vanished
+    ds302 --> engine : one WARNING, no findings
+  else client constructed
+    ds302 -> ds302 : collect_candidates(root, documents, config)
+    loop each candidate, in order
+      alt time budget exhausted
+        ds302 -> ds302 : WARNING, remaining claims not sent, stop
+      else within budget
+        ds302 -> lenz : check_claim(text)
+        lenz -> svc : HTTPS request (API key header)
+        svc --> lenz : response
+        alt FactCheckError (transport, status, bad body,\nunrecognised verdict)
+          lenz --> ds302 : FactCheckError
+          ds302 -> ds302 : WARNING (document, type name only),\nskip this claim
+        else FactCheckResult
+          lenz --> ds302 : verdict, confidence
+          ds302 -> ds302 : reportable verdict and\nconfidence >= fact_check_min_confidence\n-> advisory Finding
+        end
+      end
+    end
+    ds302 -> lenz : close()
+    note right of ds302
+      Any other exception becomes RuntimeError
+      with the type name only, no chaining.
+    end note
+    ds302 --> engine : findings sorted by (path, message)
+  end
+end
+@enduml

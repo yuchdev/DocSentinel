@@ -506,6 +506,7 @@ source = { editable = "." }
 dependencies = [
     { name = "docsig" },
     { name = "flakeforge" },
+    { name = "httpx" },
     { name = "release-saga" },
     { name = "scikit-learn" },
     { name = "spacy" },
@@ -522,6 +523,7 @@ test = [
 requires-dist = [
     { name = "docsig", specifier = ">=0.96" },
     { name = "flakeforge", specifier = "==1.1.0" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8,<10" },
     { name = "release-saga", specifier = "==1.2.0" },
     { name = "scikit-learn", specifier = ">=1.4" },

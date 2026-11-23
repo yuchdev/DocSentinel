@@ -1,7 +1,8 @@
 """Hardcode-ban tripwire for the template-only reporting path (Milestone 0007 Story 03.0 Task 02).
 
-``reporting.py`` and ``telemetry/engine.py`` must hold no output format of their own: every
-report byte comes from a template. The tripwire parses both modules with :mod:`ast` and fails
+``reporting.py``, ``telemetry/engine.py`` and ``telemetry/facts_model.py`` (Milestone 0010
+Story 05.0 Task 02) must hold no output format of their own: every report byte comes from a
+template. The tripwire parses the modules with :mod:`ast` and fails
 on a string constant equal to a format name, a string carrying a fragment of a legacy layout
 (the GitHub ``::`` command marker, ``Schema version``, ``Profile:``, ``bytes)``), a
 ``json.dumps`` call in ``reporting.py``, or a comparison against a format name. A second case
@@ -15,11 +16,19 @@ from pathlib import Path
 import pytest
 
 from docsentinel import reporting
-from docsentinel.telemetry import engine
-from docsentinel.telemetry.loader import packaged_template_names
+from docsentinel.telemetry import engine, facts_model
+from docsentinel.telemetry.loader import CONTEXTS, packaged_template_names
 
-#: Format names a module may not spell: the legacy three plus every packaged template name.
-_FORMAT_NAMES: frozenset[str] = frozenset({"text", "json", "github"}) | frozenset(packaged_template_names())
+#: Format names a module may not spell: the legacy three plus every packaged template name of
+#: both contexts (``report`` and ``facts``).
+_FORMAT_NAMES: frozenset[str] = frozenset({"text", "json", "github"}).union(
+    *(packaged_template_names(context) for context in sorted(CONTEXTS))
+)
+
+#: Context field names ``telemetry/facts_model.py`` may spell, and only as a dict-literal key: the
+#: fact's ``text`` field (``ExtractedFact.text``, story 05.0 facts context table) is data, never a
+#: format selection.
+_FACTS_MODEL_KEY_NAMES: frozenset[str] = frozenset({"text"})
 
 #: Substrings of the legacy hand-built layouts.
 _LAYOUT_FRAGMENTS: tuple[str, ...] = ("::", "Schema version", "Profile:", "bytes)")
@@ -48,16 +57,27 @@ def _is_json_dumps(node: ast.AST) -> bool:
     return isinstance(func, ast.Name) and func.id == "dumps"
 
 
-def violations(source: str, *, ban_json_dumps: bool) -> list[str]:
+def violations(source: str, *, ban_json_dumps: bool, key_names: frozenset[str] = frozenset()) -> list[str]:
     """Return every hardcode-ban violation in a module's source.
 
     :param source: Python source text.
-    :param ban_json_dumps: Also flag ``json.dumps`` calls (``reporting.py`` only).
+    :param ban_json_dumps: Also flag ``json.dumps`` calls (``reporting.py``, ``facts_model.py``).
+    :param key_names: Format names allowed only as a key of a dict literal (a context field name).
     :returns: One ``line N: reason`` entry per violation, in walk order.
     """
+    tree = ast.parse(source)
+    allowed = {
+        id(key)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Dict)
+        for key in node.keys
+        if isinstance(key, ast.Constant) and key.value in key_names
+    }
     found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
+    for node in ast.walk(tree):
         line = getattr(node, "lineno", 0)
+        if id(node) in allowed:
+            continue
         if _is_format_name(node):
             found.append(f"line {line}: format-name literal {node.value!r}")
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
@@ -74,23 +94,28 @@ def violations(source: str, *, ban_json_dumps: bool) -> list[str]:
 
 
 @pytest.mark.parametrize(
-    ("module_file", "ban_json_dumps"),
-    [(reporting.__file__, True), (engine.__file__, False)],
-    ids=["reporting", "telemetry_engine"],
+    ("module_file", "ban_json_dumps", "key_names"),
+    [
+        (reporting.__file__, True, frozenset()),
+        (engine.__file__, False, frozenset()),
+        (facts_model.__file__, True, _FACTS_MODEL_KEY_NAMES),
+    ],
+    ids=["reporting", "telemetry_engine", "telemetry_facts_model"],
 )
-def test_module_holds_no_format_literals(module_file: str, ban_json_dumps: bool):
+def test_module_holds_no_format_literals(module_file: str, ban_json_dumps: bool, key_names: frozenset[str]):
     """
     [Unit] reporting tripwire: verifies the render path spells no format name, layout fragment or serializer.
 
     Scenario:
-        Given the source of ``reporting.py`` or ``telemetry/engine.py``
+        Given the source of ``reporting.py``, ``telemetry/engine.py`` or ``telemetry/facts_model.py``
         When it is parsed with ``ast`` and every node is inspected
-        Then no format-name constant, legacy layout fragment, format-name comparison or (reporting) ``json.dumps``
-            call is found.
+        Then no format-name constant, legacy layout fragment, format-name comparison or (reporting, facts model)
+            ``json.dumps`` call is found.
 
     Boundaries:
         - Focus: the template-only output contract (Story 03.0 Task 02, ADR 0003)
-        - Fixtures/params: parametrized over the two modules
+        - Fixtures/params: parametrized over the three modules; ``facts_model.py`` may use the fact field
+          name ``text`` only as a dict-literal key
         - Scope: static source analysis; nothing is imported beyond locating the files
 
     On failure, first check:
@@ -99,7 +124,7 @@ def test_module_holds_no_format_literals(module_file: str, ban_json_dumps: bool)
     """
     source = Path(module_file).read_text(encoding="utf-8")
 
-    assert violations(source, ban_json_dumps=ban_json_dumps) == []
+    assert violations(source, ban_json_dumps=ban_json_dumps, key_names=key_names) == []
 
 
 @pytest.mark.parametrize(
@@ -139,3 +164,26 @@ def test_tripwire_fires_on_a_reinjected_literal(injected: str, tmp_path: Path):
 
     assert violations(original, ban_json_dumps=True) == []
     assert violations(copy.read_text(encoding="utf-8"), ban_json_dumps=True)
+
+
+def test_facts_model_key_exemption_is_dict_key_only():
+    """
+    [Unit] reporting tripwire: verifies the facts-model ``text`` exemption covers only dict-literal keys.
+
+    Scenario:
+        Given sources spelling ``"text"`` as a dict key, as a value and as a comparison operand
+        When the tripwire inspects them with the facts-model key names
+        Then only the dict-key use is allowed.
+
+    Boundaries:
+        - Focus: the exemption cannot hide a format-name selection
+        - Fixtures/params: inline sources
+        - Scope: static source analysis
+
+    On failure, first check:
+        - The ``allowed`` id set in ``violations``
+    """
+    assert violations('ROW = {"text": 1}\n', ban_json_dumps=True, key_names=_FACTS_MODEL_KEY_NAMES) == []
+    assert violations('NAME = "text"\n', ban_json_dumps=True, key_names=_FACTS_MODEL_KEY_NAMES)
+    assert violations('ROW = {1: "text"}\n', ban_json_dumps=True, key_names=_FACTS_MODEL_KEY_NAMES)
+    assert violations('OK = name == "text"\n', ban_json_dumps=True, key_names=_FACTS_MODEL_KEY_NAMES)

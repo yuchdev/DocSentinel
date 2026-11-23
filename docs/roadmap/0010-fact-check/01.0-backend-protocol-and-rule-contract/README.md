@@ -1,15 +1,40 @@
 # Story 01.0 — Backend Protocol and rule contract (DS302 core design)
 
 **Profile:** `deep` · **New rule:** `DS302` (warning, advisory-only, always registered) ·
-**New Protocol:** `FactCheckClient` (`src/docsentinel/telemetry/`-style structural typing, but
-co-located with the detector, not telemetry) · **Touched/new sources (described, not yet written):**
+**New Protocol:** `FactCheckClient` (`src/docsentinel/telemetry/`-style structural typing, in the
+new `docsentinel.fact_check` backend package, not in telemetry, `mining/` or `detectors/`; see
+plan contract C9) · **Touched/new sources (described, not yet written):**
 `src/docsentinel/detectors/fact_check.py` (new, `DS302` registration + `detect()`),
-`src/docsentinel/detectors/fact_check_protocol.py` (new, `FactCheckClient`/`FactCheckResult`/
+`src/docsentinel/fact_check/__init__.py` (new, imports nothing),
+`src/docsentinel/fact_check/protocol.py` (new, `FactCheckClient`/`FactCheckResult`/
 `FactCheckError`), `src/docsentinel/config.py` (new `fact_check_*` keys), `src/docsentinel/cli.py`
 (new `--use-external-api` flag), `src/docsentinel/engine.py` (new `use_external_api` keyword on
 `scan()`, dispatch wiring), `src/docsentinel/rules.py` (no change — `DS302` needs no new
 opt-in-option mechanism, see decision S4).
-**Parent:** [Milestone 0010 plan](/docs/roadmap/0010-fact-check/plan.md) (contracts C1–C5, C7, C8).
+**Parent:** [Milestone 0010 plan](/docs/roadmap/0010-fact-check/plan.md) (contracts C1–C5, C7–C9).
+
+> **Amended 2026-11-21 (mining layer).** Claim extraction is consumed from `mining/claims.py` and
+> `mining/nlp.py` (formerly `detectors/_triples.py` and `deep_support.py`); the Protocol and
+> backend registry move from the planned `detectors/fact_check_protocol.py` to
+> `fact_check/protocol.py`, and the Lenz backend from `detectors/fact_check_lenz.py` to
+> `fact_check/lenz.py` (plan contract C9).
+
+> **Amended 2026-11-21 (owner rulings Q1–Q4, plan contract C10,
+> [ADR 0007](/docs/adr/0007-fact-check-backend-protocol-and-dual-consent-gate.md) Contracts 6–9).**
+> A closed gate removes `DS302` from `rules_evaluated`/`notice`; confidence moves from the finding
+> `message` into `value`; a sixth key, `fact_check_time_budget_seconds`, bounds the network loop;
+> an unrecognised verdict is skipped with a WARNING, never mapped to `mixed`. The sketches below
+> are updated where they showed the old behaviour.
+
+> **Amended 2026-11-23 (threat model).** The
+> [Task 02 threat model](/docs/security/threat-model-0010-fact-check-gating-2026-11-23.md)
+> (verdict PASS_WITH_FOLLOWUP; HIGH FC-5; MEDIUM FC-3, FC-4, FC-10) is authoritative where this
+> README conflicts with it. Amendment A8 is applied here: the consent variable is read only by the
+> gate helper in `detectors/fact_check.py`; the key is read once in `detect()` and passed to the
+> backend constructor; gate 1 is repository-settable, so gate 2 alone is the egress consent.
+> Decision S10, the CLI and library reference, the Security notes and the acceptance criteria
+> are amended in place. Tasks 03 to 06 carry amendments A1 to A7 and mitigations M1 to M12. The
+> code sketches below are illustrative only and do not show M3, M5, M7 or M10; Task 05 wins.
 **Security-sensitive:** yes. It designs where a secret enters the process and the exact shape of
 network consent. Task 02 (threat model) must run before any code, exactly as Milestone 0009's
 Stories 01.0/02.0/03.0 required.
@@ -25,12 +50,12 @@ and where a gate failure is reported. Nothing here calls a network backend — t
 
 | Task | Deliverable | Role | Status |
 |---|---|---|---|
-| `01-adr-and-rule-contract.md` | ADR 0007 (backend Protocol, dual consent gate, API-key convention); `DS302` rule-code reservation confirmed; the `Rule` registration literal | Architect | ⬜ Not written |
-| `02-threat-model-fact-check-gating.md` | Threat model for the dual consent gate, the API-key surface, and "what a `docsentinel.toml` can and cannot do here" | Security Auditor | ⬜ Not written |
-| `03-fact-check-config-cli-and-env-surface.md` | `fact_check_backend`/`fact_check_min_salience`/`fact_check_min_confidence`/`fact_check_max_claims_per_document`/`fact_check_max_claims_total` in `config.py`; `--use-external-api` on `scan`/`baseline`; `DOCSENTINEL_USE_EXTERNAL_API`; `doctor`/`rules` lines | Python Expert | ⬜ Not written |
-| `04-factcheckclient-protocol-and-data-contracts.md` | `FactCheckClient` Protocol, `FactCheckResult`, `FactCheckError`, the backend registry | Python Expert | ⬜ Not written |
-| `05-ds302-registration-and-engine-dispatch.md` | `DS302` `Rule` registration; `detect()` skeleton calling Story 02.0's filter and Story 03.0's client through the Protocol only; `engine.py` `use_external_api` keyword, dispatch to analyzers declaring it (mirrors `link_root`) | Python Expert | ⬜ Not written |
-| `06-fixtures-and-tests.md` | Unit tests for the gate resolution and config validation; mock tests for the engine dispatch wiring, with a fake `FactCheckClient` | Testing Expert | ⬜ Not written |
+| `01-adr-and-rule-contract.md` | ADR 0007 (backend Protocol, dual consent gate, API-key convention); `DS302` rule-code reservation confirmed; the `Rule` registration literal | Architect | ✅ Complete |
+| `02-threat-model-fact-check-gating.md` | Threat model for the dual consent gate, the API-key surface, and "what a `docsentinel.toml` can and cannot do here" | Security Auditor | ✅ Complete |
+| `03-fact-check-config-cli-and-env-surface.md` | `fact_check_backend`/`fact_check_min_salience`/`fact_check_min_confidence`/`fact_check_max_claims_per_document`/`fact_check_max_claims_total` in `config.py`; `--use-external-api` on `scan`/`baseline`; `DOCSENTINEL_USE_EXTERNAL_API`; `doctor`/`rules` lines | Python Expert | ✅ Complete |
+| `04-factcheckclient-protocol-and-data-contracts.md` | `FactCheckClient` Protocol, `FactCheckResult`, `FactCheckError`, the backend registry | Python Expert | ✅ Complete |
+| `05-ds302-registration-and-engine-dispatch.md` | `DS302` `Rule` registration; `detect()` skeleton calling Story 02.0's filter and Story 03.0's client through the Protocol only; `engine.py` `use_external_api` keyword, dispatch to analyzers declaring it (mirrors `link_root`) | Python Expert | ✅ Complete |
+| `06-fixtures-and-tests.md` | Unit tests for the gate resolution and config validation; mock tests for the engine dispatch wiring, with a fake `FactCheckClient` | Testing Expert | ✅ Complete |
 
 ## Scope
 
@@ -50,7 +75,7 @@ and where a gate failure is reported. Nothing here calls a network backend — t
   `CandidateClaim` shape the filter must produce and the config keys that bound it.
 - The Lenz client's internals (Story 03.0) — this story only defines the Protocol it must satisfy
   and the API-key environment-variable convention it must follow.
-- Changing `DS301`, `_triples.py`, `deep_support.py`, or the `deep_confirm` triple-gate itself.
+- Changing `DS301`, `mining/claims.py`, `mining/nlp.py`, or the `deep_confirm` triple-gate itself.
 - Any report-schema change. `ScanResult`'s *shape* gains one optional, defaulted mechanism (the
   `pending` entry — already an existing field, reused, not a new one) and no new top-level field.
 
@@ -60,7 +85,7 @@ and where a gate failure is reported. Nothing here calls a network backend — t
 
 | # | Decision | Rationale |
 |---|---|---|
-| S1 | `DS302` registers eagerly at import time, like `DS301`; `fact_check.py` imports `httpx` and the backend registry **lazily**, inside `detect()`, via `importlib.import_module`, exactly like `contradictions.py` imports `_triples` lazily | `import docsentinel` and every fast/standard scan must never pull in `httpx`, matching the existing spaCy/textacy lazy-import discipline |
+| S1 | `DS302` registers eagerly at import time, like `DS301`; `fact_check.py` imports `httpx` and the backend registry **lazily**, inside `detect()`, via `importlib.import_module`, exactly like `contradictions.py` imports `mining.claims` lazily | `import docsentinel` and every fast/standard scan must never pull in `httpx`, matching the existing spaCy/textacy lazy-import discipline |
 | S2 | `DS302` has **no** `opt_in_option`/`opt_in_values` on its `Rule` registration | Those fields describe a *configuration-file-driven* policy (`getattr(config, option)`); `use_external_api` is deliberately never a config-file value (C5), so the generic mechanism does not fit. `DS302` is an ordinary always-registered deep rule whose own `detect()` self-gates, exactly like the documented `DS103` "analyzer guards the scope itself" deviation (Milestone 0009 status, Task 03 note) |
 | S3 | `use_external_api` is a new **keyword-only parameter on `engine.scan()`**, not a `Config` field | Mirrors `link_root=` exactly: a trusted, invoker-only value threaded straight past `Config` to the analyzers that declare it (C5). The CLI resolves `--use-external-api` and the environment variable, then calls `scan(..., use_external_api=resolved)` |
 | S4 | `rules.py` gains a new frozenset, `EXTERNAL_API_RULES = frozenset({"DS302"})`, mirroring `LINK_ROOT_RULES` | `engine.py` needs a declarative list of "which analyzers want the resolved `use_external_api` value forwarded as a keyword", the same role `LINK_ROOT_RULES` plays for `link_root` |
@@ -69,7 +94,7 @@ and where a gate failure is reported. Nothing here calls a network backend — t
 | S7 | `fact_check_backend` is a `Config` string, enum-validated (`_require_enum`) against the names in a module-level backend registry, default `"lenz"` | Mirrors `reference_scope`/`table_dialect`'s enum validation style; it is **not** security-sensitive by itself (it only picks *which* class, never a URL or a secret), so it is an ordinary project-config-settable option, allowed at user-settings level too (not in `USER_SETTINGS_REFUSED_KEYS` — it names no path) |
 | S8 | The backend's base URL, request timeout, and maximum response size it will read are **fixed `ClassVar` constants on the backend class**, never `Config` fields | Generalizes the project's existing "an output artifact path is not root-constrained, but an *input* that could be redirected is" reasoning (ADR 0002's `telemetry_sink`) to the opposite direction: here the *destination* itself must never be redirectable by an untrusted project file (SSRF/key-exfiltration risk — see Security notes) |
 | S9 | A gate-2 failure (missing flag/env, or missing key) logs **one WARNING every time**, and additionally appends one entry to `ScanResult.pending` naming exactly which prerequisite is missing, and `docsentinel doctor` prints one `fact-check gate: off (...)` / `on (<backend>)` line — but it does **not** use the generic `Rule.opt_in_option`/`ScanResult.notice` "opt-in rule(s) not enabled" machinery | **Flagged open for the owner (plan.md D5).** That machinery tests exactly one `Config` attribute (`opt_in_satisfied`); gate 2 has *two* independent failure reasons (flag/env absent vs. key absent) that a single boolean attribute cannot distinguish, and S3 forbids making `use_external_api` a `Config` attribute at all. Reusing `pending` (already populated by the engine for the profile-wide `deep_confirm` gate, in the very same code path) needs no new `ScanResult` field and gives an equally discoverable, more precise message. The alternative — adding a non-file-settable `Config.use_external_api` shadow field purely so `opt_in_option="use_external_api"` can be reused — was considered and rejected as more code for a worse message |
-| S10 | `DS302`'s own network-failure handling (per-claim, not per-gate) catches only `FactCheckError` (new, defined in this story) raised by the Protocol's `check_claim`; a backend implementation must translate every transport/HTTP/parsing failure into `FactCheckError`, never let `httpx` exceptions or `KeyError`/`json.JSONDecodeError` escape | Keeps `DS302`'s own loop backend-agnostic: it never needs to know which transport library a given backend uses, exactly the point of the Protocol boundary |
+| S10 | `DS302`'s own network-failure handling (per-claim, not per-gate) catches only `FactCheckError` (new, defined in this story) raised by the Protocol's `check_claim`; a backend implementation must translate every transport/HTTP/parsing failure into `FactCheckError`, never let `httpx` exceptions or `KeyError`/`json.JSONDecodeError` escape. *Amended 2026-11-23 (threat model, A5/M5, HIGH FC-5):* any other exception from client construction, `check_claim` or `close()` does not propagate as is; `DS302` replaces it with `RuntimeError("DS302: backend <name> raised <type name>")`, raised outside the `except` block (no `__cause__`, no `__context__`), and that `RuntimeError` propagates as the programming error. A `FactCheckError` from the constructor is a fixed-text WARNING and `()` | Keeps `DS302`'s own loop backend-agnostic: it never needs to know which transport library a given backend uses, exactly the point of the Protocol boundary. The containment rule exists because `h11`/`httpx` transport errors can carry the full `Authorization` header value |
 
 ### Config reference
 
@@ -80,11 +105,15 @@ and where a gate failure is reported. Nothing here calls a network backend — t
 | `fact_check_min_confidence` | float | `0.6` | `0.0 <= value <= 1.0`, same style | yes | yes |
 | `fact_check_max_claims_per_document` | int | `3` | `_require_bounded_int`, `>= 1`, `<= 50` | yes | yes |
 | `fact_check_max_claims_total` | int | `25` | `_require_bounded_int`, `>= 1`, `<= 500` | yes | yes |
+| `fact_check_time_budget_seconds` | int | `300` | `_require_bounded_int`, `>= 1`, `<= 3600`; `bool` and `float` refused; message `fact_check_time_budget_seconds must be an integer from 1 to 3600` (owner ruling Q3; measured with `time.monotonic()`, see ADR 0007 Contract 7) | yes | yes |
 
-None of the five names a path, a URL, or a secret, so none joins `USER_SETTINGS_REFUSED_KEYS` (the
-C6 list in Milestone 0009's ADR 0005) and all five behave like any other Milestone 0005/0007 typed
+None of the six names a path, a URL, or a secret, so none joins `USER_SETTINGS_REFUSED_KEYS` (the
+C6 list in Milestone 0009's ADR 0005) and all six behave like any other Milestone 0005/0007 typed
 option: defaults reproduce "DS302 sends at most a few, well-chosen claims" out of the box, and a
-project may narrow (never widen past the hard caps above) its own exposure/cost. `use_external_api`
+project may narrow its own exposure/cost. *Amended 2026-11-23 (threat model, FC-13):* a project
+may also widen the defaults up to the hard caps above (for example 25 to 500 claims, 300 to 3600
+seconds); only the hard caps, the time budget and the required INFO counts line (M10) bound it
+(owner question OQ1). `use_external_api`
 is **deliberately absent** from this table and from `_CONFIG_OPTIONS` — see decision S3 and
 contract C5. The fact-check API key is likewise absent from `Config` entirely — see the CLI/env
 reference below.
@@ -96,10 +125,10 @@ reference below.
 | `scan` | `--use-external-api` | flag (`store_true`) | Resolves gate 2's flag component for this run |
 | `baseline` | `--use-external-api` | flag | Same, so a fact-check-enabled baseline run is possible |
 | library | `scan(..., use_external_api=True)` | keyword-only `bool`, default `False` | Same resolution, for a caller that is not the CLI (mirrors `link_root=`) |
-| environment | `DOCSENTINEL_USE_EXTERNAL_API` | exactly `"1"` | Alternative to the flag/keyword, read once by `engine.py` (mirrors the strict, non-lenient reading `ALLOW_PYTHON_EXTENSIONS_ENV` uses — `"true"`/`"yes"` do **not** count, unlike the more lenient `DOCSENTINEL_DEEP_CONFIRM`, because this gate authorizes outbound network egress of document content, a strictly higher-consequence action) |
-| environment, per backend | `DOCSENTINEL_FACTCHECK_LENZ_API_KEY` (today's only backend; pattern `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`) | non-empty string | The secret. Read **only** inside the backend's own client class, at construction time, **never** inside `cli.py`, `config.py` or `engine.py` — the only module that reads the raw value is the backend client itself |
+| environment | `DOCSENTINEL_USE_EXTERNAL_API` | exactly `"1"` | Alternative to the flag/keyword. *Amended 2026-11-23 (threat model, A8/M8):* read only by the gate helper `external_api_requested` in `detectors/fact_check.py`; `engine.py`, `cli.py` and `config.py` never read it (mirrors the strict, non-lenient reading `ALLOW_PYTHON_EXTENSIONS_ENV` uses — `"true"`/`"yes"` do **not** count, unlike the more lenient `DOCSENTINEL_DEEP_CONFIRM`, because this gate authorizes outbound network egress of document content, a strictly higher-consequence action) |
+| environment, per backend | `DOCSENTINEL_FACTCHECK_LENZ_API_KEY` (today's only backend; pattern `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`) | non-empty string | The secret. *Amended 2026-11-23 (threat model, A8/M5/M8):* read once in `DS302`'s `detect()` (`detectors/fact_check.py`) with `os.environ.get(...)` inside the `cls(api_key=...)` call and handed to the backend constructor; otherwise only tested for presence. **Never** read inside `cli.py`, `config.py`, `engine.py` or any `fact_check/` backend module (a backend receives the key only through its constructor). No module reads `LENZ_API_KEY` |
 | `rules` | — | — | `DS302` is listed as an ordinary deep rule (warning, advisory), with a one-line note "requires --use-external-api and a backend API key; see `docsentinel doctor`" |
-| `doctor` | — | — | New line: `fact-check gate: off (pass --use-external-api and set DOCSENTINEL_FACTCHECK_LENZ_API_KEY)` or `fact-check gate: on (backend: lenz)` — never prints whether the key's *value* looks valid, only whether the named variable is set |
+| `doctor` | — | — | New line: `fact-check gate: off (pass --use-external-api and set DOCSENTINEL_FACTCHECK_LENZ_API_KEY)` or `fact-check gate: on (backend: lenz)` — never prints whether the key's *value* looks valid, only whether the named variable is set. *Amended 2026-11-23 (threat model, A2/M6):* on a configuration error the line is exactly `fact-check gate: unknown (configuration error)`; the line is fixed text in every state |
 
 There is no CLI flag and no config key for the API key itself (decision requirement 6 in the
 milestone brief): a secret passed as a CLI argument is visible in shell history and process
@@ -108,7 +137,8 @@ listings, which this project's existing conventions already avoid everywhere els
 ### Interface contracts
 
 ```python
-# src/docsentinel/detectors/fact_check_protocol.py (new; stdlib + typing only, no httpx import)
+# src/docsentinel/fact_check/protocol.py (new; stdlib + typing only, no httpx import, no
+# docsentinel.config/detectors/mining import -- plan contract C9)
 
 from __future__ import annotations
 
@@ -182,13 +212,14 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from docsentinel import deep_support, models, rules
+from docsentinel import models, rules
 from docsentinel.config import Config
 from docsentinel.log import safe
+from docsentinel.mining import nlp
 
 if TYPE_CHECKING:
-    from docsentinel.detectors._triples import Claim
-    from docsentinel.detectors.fact_check_protocol import FactCheckClient
+    from docsentinel.fact_check.protocol import FactCheckClient
+    from docsentinel.mining.claims import Claim
 
 DS302 = rules.register_rule(
     rules.Rule(
@@ -230,7 +261,7 @@ def detect(
     """
     resolved_use_external_api = use_external_api or _env_allows_external_api()
 
-    backends = importlib.import_module("docsentinel.detectors.fact_check_protocol").FACT_CHECK_BACKENDS
+    backends = importlib.import_module("docsentinel.fact_check.protocol").FACT_CHECK_BACKENDS
     client_cls = backends[config.fact_check_backend]  # enum-validated at config load time
     api_key = os.environ.get(client_cls.API_KEY_ENV_VAR, "")
 
@@ -245,8 +276,8 @@ def detect(
         # exact reason into ScanResult.pending and a `doctor` line.
         return ()
 
-    extract_claims = importlib.import_module("docsentinel.detectors._triples").extract_claims
-    pipeline = deep_support.load_pipeline()
+    extract_claims = importlib.import_module("docsentinel.mining.claims").extract_claims
+    pipeline = nlp.load_pipeline()
     all_claims: list[Claim] = []
     for doc in documents:
         if not doc.path.endswith(".md"):
@@ -254,8 +285,9 @@ def detect(
         text = (root / doc.path).read_text(encoding="utf-8")
         all_claims.extend(extract_claims(pipeline, text, doc.path))
 
-    salience = importlib.import_module("docsentinel.detectors.fact_check_salience")
-    candidates = salience.select_candidates(tuple(all_claims), config)  # Story 02.0
+    # Story 02.0: a thin wrapper in this module; it lazily imports docsentinel.mining.salience
+    # and passes explicit numbers to select_salient() (Story 02.0 decision T8).
+    candidates = select_candidates(tuple(all_claims), config)
 
     client: FactCheckClient = client_cls(api_key=api_key)
     try:
@@ -280,14 +312,20 @@ Finding(
     rule=DS302.code,
     path=candidate.claim.path,
     message=(
-        f"external fact-check: '{bounded_claim_text}' rated {result.verdict} "
-        f"(confidence {result.confidence:.2f}) by {result.backend} - review to confirm"
+        f"external fact-check: '{snippet}' rated {result.verdict} "
+        f"by {result.backend} - review to confirm"
     ),
     severity=DS302.severity,
-    value=bounded_claim_text,      # same bounded candidate.text, neutralized at report time
+    # report-only (compare=False): confidence lives here, never in message (owner ruling Q2)
+    value=f"{result.verdict} (confidence {result.confidence:.2f}): {candidate.text}",
     type="unverified claim",
 )
 ```
+
+`_check_candidates` also enforces `fact_check_time_budget_seconds` with `time.monotonic()` (owner
+ruling Q3, ADR 0007 Contract 7): the deadline is taken just before the first `check_claim`; when it
+passes, the loop stops before the next call, logs one WARNING with counts only, and returns the
+findings built so far.
 
 `engine.py` additions (sketch): a new constant in `rules.py`,
 `EXTERNAL_API_RULES: Final[frozenset[str]] = frozenset({"DS302"})`; `scan()` gains
@@ -304,15 +342,26 @@ that never selected `DS302` touches none of this).
 |---|---|---|---|
 | Log | One `WARNING`: `DS302 skipped: <reason(s)>` | One `DEBUG`/`WARNING` per failed claim, naming the claim's document path only (never the claim text) | nothing beyond the normal per-rule debug line |
 | `ScanResult.pending` (recommended, open as D5) | One entry naming `DS302` and the missing prerequisite(s) | unaffected | unaffected |
+| `ScanResult.notice` / `rules_evaluated` (owner ruling Q1) | `DS302` not counted | counted | counted |
 | `ScanResult.findings` | none | none for that claim; other candidates still checked | none |
 | Exit code | unaffected (`0`, deep is always advisory) | unaffected | unaffected |
 | `docsentinel doctor` | `fact-check gate: off (...)` | unaffected (gate state, not per-call status) | `fact-check gate: on (backend: lenz)` |
 
 ## Security notes
 
+*Amended 2026-11-23 (threat model).* The
+[Task 02 threat model](/docs/security/threat-model-0010-fact-check-gating-2026-11-23.md) is
+authoritative for this section; mitigations M1 to M12 and their tests are listed there and folded
+into Tasks 03 to 06.
+
 - **Data exfiltration is the primary new risk this story introduces**, not path traversal. The
   mitigation is layered: (a) gate 1 (`deep_confirm`) and gate 2 (`use_external_api` + API key) are
-  both required and both invoker-controlled; (b) Story 02.0's salience filter bounds *what* claims
+  both required. *Amended 2026-11-23 (threat model, A8, FC-4):* gate 1 is **not**
+  invoker-controlled: `profile` and `deep_confirm` are ordinary project keys, so a hostile
+  repository can open gate 1 itself. Gate 2 (flag, keyword or exact `"1"` environment value, plus
+  the key) is invoker-only and alone carries the egress consent; repository-controlled invocation
+  (pre-commit `args:`, workflows, `.envrc`) is addressed by documentation and repository-hygiene
+  tests (M4), not runtime code; (b) Story 02.0's salience filter bounds *what* claims
   are even candidates; (c) the per-document and per-scan caps (`fact_check_max_claims_*`) bound
   *how many*; (d) the backend's fixed base URL (S8) bounds *where* it can go.
 - **The backend base URL must be a fixed class constant, never config-sourced.** If a project
@@ -325,7 +374,13 @@ that never selected `DS302` touches none of this).
   `neutralize_text` report sinks already exist for this class of problem (every path/value this
   project logs goes through one of them); the key specifically never reaches either, because it
   never reaches a log call or a `Finding` field at all — only the backend client's own request
-  headers see it.
+  headers see it. *Amended 2026-11-23 (threat model, M5, HIGH FC-5):* the exception path is the
+  one leak the model found (an `h11`/`httpx` header error or a `UnicodeEncodeError` can carry the
+  key into `Scan failed:`, the ERROR line and the log-file traceback). `DS302` therefore re-raises
+  any non-`FactCheckError` exception from construction or `check_claim` as a type-name-only
+  `RuntimeError` with no exception chain, and uses no `exc_info`/`logger.exception` on these
+  paths. `citations` never reaches a finding, log record or report (M11). A gate-open run logs
+  one INFO line with counts only (M10).
 - **TLS verification stays on.** No config key is introduced that could disable certificate
   verification for a backend's HTTP client (Story 03.0 detail, named here as a constraint on the
   Protocol's implementers).
@@ -354,10 +409,14 @@ that never selected `DS302` touches none of this).
       `DOCSENTINEL_USE_EXTERNAL_API=1` (exact match only); it is **not** a `Config` field and is
       **not** accepted by any TOML/JSON/pyproject/user-settings file (an attempt raises the
       existing generic "unknown option" `ConfigError`).
-- [ ] The API key is read only inside a backend client class, only from its own
-      `API_KEY_ENV_VAR`, and never appears in a log line, a `Finding`, or `ScanResult`.
+- [ ] The API key is read only once in `DS302`'s `detect()`, only from the backend's
+      `API_KEY_ENV_VAR`, passed to the backend constructor, and never appears in a log line, a
+      `Finding`, or `ScanResult`. *Amended 2026-11-23 (threat model, A8/M5/M8):* this replaces
+      "read only inside a backend client class"; the sentinel also never appears on stderr, in the
+      log file or in a traceback.
 - [ ] `fact_check_backend`/`fact_check_min_salience`/`fact_check_min_confidence`/
-      `fact_check_max_claims_per_document`/`fact_check_max_claims_total` are typed, validated,
+      `fact_check_max_claims_per_document`/`fact_check_max_claims_total`/
+      `fact_check_time_budget_seconds` are typed, validated,
       loaded from standalone TOML, `[tool.doc_sentinel]`, JSON, user settings and an injected
       `Config`, with the defaults above.
 - [ ] A scan with gate 2 off logs exactly one `WARNING` naming the missing prerequisite(s) and
@@ -371,10 +430,12 @@ that never selected `DS302` touches none of this).
 | Layer | File (new) | Covers |
 |---|---|---|
 | Unit | `test_fact_check_gate_resolution.py` | `_env_allows_external_api`, the flag/keyword/env precedence, the two-reason WARNING message, exact `"1"`-only matching |
-| Unit | `test_fact_check_config.py` | Defaults, both TOML forms, JSON, invalid enum/range values, the five keys' bounds |
+| Unit | `test_fact_check_config.py` | Defaults, both TOML forms, JSON, invalid enum/range values, the six keys' bounds |
+| Unit | `test_fact_check_layering.py` | `docsentinel.fact_check` modules import only stdlib, `httpx` (`lenz.py` only) and `docsentinel.log`; never `config`, `rules`, `detectors`, `engine`, `cli`, `reporting`, `telemetry`, `baseline`, `discovery` or `mining`; `fact_check/__init__.py` imports nothing (plan contract C9) |
 | Unit | `test_fact_check_protocol.py` | A minimal fake client with only `name`/`API_KEY_ENV_VAR`/`check_claim` satisfies `isinstance(..., FactCheckClient)`; one missing member fails it; `FactCheckResult`/`FactCheckError` construction |
 | Mock | `test_fact_check_engine_dispatch.py` | `engine.py` forwards `use_external_api=` only to an analyzer declaring it; `EXTERNAL_API_RULES` short-circuits when `DS302` is not selected; a fake `FactCheckClient` registered in `FACT_CHECK_BACKENDS` is used, `httpx` is never imported by this test file |
 | Mock | `test_fact_check_no_key_logged.py` | A patched `logging` handler asserts the literal API key value never appears in any log record across every code path in this story |
+| Unit | `test_fact_check_env_reads.py`, `test_fact_check_repo_hygiene.py`, `test_fact_check_env_isolation.py` | *Amended 2026-11-23 (threat model, M4/M8/M12):* env-read ownership, flag-free hook and workflows, fixture isolation (see Task 06) |
 | Integration | `test_ds302_gate_off_ds101.py` | A full `scan(profile="deep", deep_confirm=True)` with no `use_external_api` reports zero `DS302` findings, one `WARNING`, and (once S9 lands) the `pending` entry |
 
 Asset cases live under the `ds302` folder once Story 04.0 adds fixtures (this story's own tests are

@@ -26,7 +26,7 @@ import scipy.sparse as sp
 
 from docsentinel import models, rules
 from docsentinel.config import Config, load_config
-from docsentinel.detectors.standard.corpus import CorpusModel, build_corpus_model
+from docsentinel.mining.corpus import CorpusModel, build_corpus_model
 
 DS203 = rules.register_rule(
     rules.Rule(

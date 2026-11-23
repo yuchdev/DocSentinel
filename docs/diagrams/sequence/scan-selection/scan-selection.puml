@@ -4,7 +4,7 @@ skinparam shadowing false
 skinparam sequenceMessageAlign left
 
 participant "CLI\ncli.py" as cli
-participant "engine.scan" as engine
+participant "engine.scan\n(inventory step is _inventory,\nshared with extract_facts)" as engine
 participant "discovery.py\ncheck_invoker_selector_shape,\nnormalize_invoker_selectors,\nselector_root_spellings,\ndiscover_with_stats" as disc
 
 == CLI early validation (_validate_selectors, scan and baseline) ==
@@ -21,7 +21,7 @@ end
 cli -> cli : INFO "scan started"
 cli -> engine : scan(root, config=settings,\ninclude=, exclude=) (only when given)
 
-== engine.scan ==
+== engine._inventory (called by scan() and by extract_facts()) ==
 engine -> disc : check_invoker_selector_shape (every target)
 disc --> engine : ok or ConfigError
 alt single-file target

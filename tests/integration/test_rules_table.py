@@ -35,7 +35,11 @@ _COLUMNS: tuple[str, ...] = (
     "config_keys",
 )
 _ROW_RE = re.compile(r"^\|\s*(DS\d{3})\s*\|.*\|\s*$", re.MULTILINE)
-_LISTING_RE = re.compile(r"^  (DS\d{3}): (.+?)(?: \[opt-in: set (\w+(?: = .+)?)\])?$")
+_LISTING_RE = re.compile(
+    r"^  (DS\d{3}): (.+?)"
+    r"(?: \[opt-in: set (\w+(?: = .+)?)\]"
+    r"| \[requires --use-external-api and a backend API key; see docsentinel doctor\])?$"
+)
 
 
 def _table_rows() -> dict[str, dict[str, str]]:

@@ -45,13 +45,16 @@ are explained in the [Configuration Reference](configuration.md) and the
 | DS203 | standard | warning | always | Low-information content | A paragraph is both lexically thin and non-distinctive. | `low_information` | `min_information_score`, `min_paragraph_words`, `min_paragraph_chars` |
 | DS204 | standard | error | always | Docstring/signature mismatch | A function docstring's documented parameters or returns do not match its signature. | `contract_mismatch` | `docsig_paths` |
 | DS301 | deep | warning | always | Fact-contradiction candidate | Two documents make differing numeric or named-entity claims about the same subject. | `contradiction_candidate` | `deep_confirm` |
+| DS302 | deep | warning | always | External fact-check disagreement | A high-salience claim is rated false or mixed by an external fact-checking backend. | `unverified_claim` | `fact_check_backend`, `fact_check_min_salience`, `fact_check_min_confidence`, `fact_check_max_claims_per_document`, `fact_check_max_claims_total`, `fact_check_time_budget_seconds`; advisory; also needs --use-external-api (or DOCSENTINEL_USE_EXTERNAL_API=1) and the backend API-key variable, gate state in docsentinel doctor |
 
 ## Profiles at a glance
 
 - **fast** (default): `DS101`–`DS118` and `DS124`, standard library only at scan time.
 - **standard**: `DS201`–`DS204`, needs `docsentinel[standard]`.
-- **deep**: `DS301`, needs `docsentinel[deep]` and explicit confirmation. Advisory only, so it never
-  fails a scan.
+- **deep**: `DS301`–`DS302`, needs `docsentinel[deep]` and explicit confirmation. Advisory only, so it
+  never fails a scan. `DS302` sends claim sentences to a third-party service, so it also needs the
+  invoker's `--use-external-api` (or `DOCSENTINEL_USE_EXTERNAL_API=1`) and a backend API key, and does
+  nothing until both are given; its verdicts are third-party heuristic output, not ground truth.
 
 The codes `DS107`, `DS111` and `DS119`–`DS123` are specified in
 [Milestone 0004](../../roadmap/0004-deepening-test-cases/plan.md) but not implemented. They have no

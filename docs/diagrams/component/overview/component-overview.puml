@@ -6,14 +6,14 @@ skinparam shadowing false
 skinparam packageStyle rectangle
 
 package "Consumers" {
-  [cli.py\nscan | baseline | init | rules | doctor\n~-~-include / ~-~-exclude on scan and baseline] as cli
+  [cli.py\nscan | baseline | extract-facts | init | rules | doctor\n~-~-include / ~-~-exclude on scan and baseline\n~-~-use-external-api on scan and baseline] as cli
   [~__init~__.py\nPython API: scan, load_config,\nload_config_with_sources, ConfigSources, ...] as api
   [pytest_plugin.py\ndocsentinel_scan fixture] as plugin
   [.pre-commit-hooks.yaml\ndocsentinel-fast / -standard] as precommit
 }
 
 package "Core" {
-  [engine.py\nscan()] as engine
+  [engine.py\nscan(..., use_external_api=), extract_facts()\nshared _inventory step] as engine
   [config.py\nConfig, load_config, ConfigError,\nload_config_with_sources, ConfigSources] as config
   [discovery.py\ndiscover(), discover_with_stats(),\nnormalize_invoker_selectors(),\nselector_root_spellings()] as discovery
   [rules.py\nRULES, ANALYZERS, opt_in_satisfied] as rules
@@ -28,15 +28,29 @@ package "Detectors (see component-detectors)" {
   [Fast DS1xx\nstdlib only, eager] as fast
   [unreadable.py DS100\nRule registration only, no analyzer] as unreadable
   [Standard DS2xx\nlazy via detectors/loader.py] as standard
-  [Deep DS301\nlazy spaCy/textacy] as deep
-  [deep_support.py\ndeep_ready()] as deepsup
+  [Deep DS301, DS302\nlazy spaCy/textacy;\nDS302 consent-gated] as deep
   [markdown_blocks.py\nshared scanner + resolver] as mdblocks
+}
+
+package "Mining (src/docsentinel/mining; depends only on models and log)" {
+  [corpus.py\nTF-IDF corpus model, create_vectorizer()] as miningcorpus
+  [claims.py\nClaim, extract_claims (lazy)] as claims
+  [nlp.py\nspaCy readiness, load_pipeline, deep_ready()] as deepsup
+  [salience.py\ntrace_salience, select_salient] as salience
+  [clustering.py\ncluster_near_duplicates] as clustering
+}
+
+package "Fact-check backends (src/docsentinel/fact_check; Protocol boundary, imports no detector, config or engine)" {
+  [protocol.py\nFactCheckClient Protocol, FactCheckResult,\nFactCheckError, static load_backend] as fcproto
+  [lenz.py\nLenzFactCheckClient\nonly module that imports httpx] as lenz
 }
 
 package "Reporting (see component-reporting)" {
   [reporting.py\nrender() shim] as reporting
-  [telemetry/\nReportModel, template loader+engine,\nextensions, classify] as telemetry
+  [telemetry/\nReportModel, FactsModel, template loader+engine,\nextensions, classify] as telemetry
 }
+
+cloud "External Lenz service\n(POST /assess)" as lenzsvc
 
 package "Inputs and outputs (file system)" {
   database "Markdown corpus" as corpus
@@ -54,10 +68,11 @@ cloud "Optional extras" as extras {
 }
 
 precommit ..> cli : runs "docsentinel scan"
-cli --> engine
+cli --> engine : scan / baseline\n(use_external_api)
+cli --> engine : extract-facts ->\nextract_facts() (offline,\nno network edge)
 api --> engine
 plugin --> engine
-cli --> reporting
+cli --> reporting : render, render_facts
 cli --> baseline : baseline cmd
 cli --> deepsup : doctor
 cli --> rules : rules cmd
@@ -71,6 +86,7 @@ engine --> baseline : filter
 engine --> models
 engine --> standard : ensure_standard_loaded()
 engine --> deepsup : deep gate
+engine --> deep : DS302 gate (resolve_external_api_gate);\nextract_facts -> trace_candidates
 cli ..> errors
 engine --> unreadable : emits DS100 finding\n(ENGINE_RULES, all profiles)
 engine --> corpus : reads each document once;\nonly readable ones go to analyzers
@@ -90,9 +106,26 @@ rules <.. deep : register (eager)
 fast --> mdblocks
 telemetry --> mdblocks : path resolver
 standard --> codedisc : DS204
+standard --> miningcorpus : DS202, DS203
+deep ..> claims : importlib, lazy
+deep --> deepsup
+deep ..> salience : importlib, lazy
+salience ..> clustering : importlib, lazy
+clustering --> miningcorpus : create_vectorizer
+deep --> fcproto : FactCheckClient,\nload_backend (only gate-open)
+fcproto ..> lenz : importlib, lazy,\nonly after both consent gates
+lenz --> lenzsvc : HTTPS, opt-in: deep_confirm +\n~-~-use-external-api + API key;\nadvisory
+lenz ..> fcproto : result types
+miningcorpus --> models
+claims --> models
+deepsup --> models
+miningcorpus ..> log : safe()
+deepsup ..> log : safe()
 standard ..> stdext : imports
 deep ..> deepext : importlib, lazy
 deepsup ..> deepext : readiness probe
+claims ..> deepext
+miningcorpus ..> stdext : scikit-learn
 reporting --> telemetry
 telemetry --> config
 telemetry --> rules : classify
@@ -127,6 +160,13 @@ note bottom of log
   Library stays quiet (NullHandler). Only the CLI configures handlers.
   Nearly every module (config, baseline, discovery, reporting, ...)
   also calls safe() for untrusted text; edges shown are representative.
+end note
+
+note bottom of lenz
+  The first outbound network edge. Imported only after both
+  consent gates are open (deep_confirm; ~-~-use-external-api or
+  DOCSENTINEL_USE_EXTERNAL_API=1 AND the API key variable AND the
+  backend loads). extract-facts never reaches it.
 end note
 
 note bottom of fast

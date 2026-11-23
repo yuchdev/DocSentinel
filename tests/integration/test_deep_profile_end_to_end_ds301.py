@@ -7,7 +7,8 @@ from typing import Any
 
 import pytest
 
-from docsentinel import Config, deep_support, scan
+from docsentinel import Config, engine, scan
+from docsentinel.mining import nlp
 from tests.asset_helpers import AssetCase
 
 
@@ -69,7 +70,7 @@ def test_unconfirmed_deep_does_not_load_model(
         """Fail immediately if model pipeline loading is attempted."""
         raise AssertionError("Model load should not be called when deep is unconfirmed")
 
-    monkeypatch.setattr(deep_support, "load_pipeline", fake_load_pipeline)
+    monkeypatch.setattr(nlp, "load_pipeline", fake_load_pipeline)
     case = asset_case("ds301", "single_claim_document")
 
     result = scan(case.root, config=Config(profile="deep", deep_confirm=False))
@@ -106,8 +107,11 @@ def test_confirmed_deep_deps_missing_does_not_load_model(
         """Fail immediately if model pipeline loading is attempted."""
         raise AssertionError("Model load should not be called when deps are missing")
 
-    monkeypatch.setattr(deep_support, "deep_ready", lambda: False)
-    monkeypatch.setattr(deep_support, "load_pipeline", fake_load_pipeline)
+    # The engine binds deep_ready by name, so patch it there too: with the model installed,
+    # patching only nlp.deep_ready leaves the engine's readiness check real.
+    monkeypatch.setattr(nlp, "deep_ready", lambda: False)
+    monkeypatch.setattr(engine, "deep_ready", lambda: False)
+    monkeypatch.setattr(nlp, "load_pipeline", fake_load_pipeline)
     case = asset_case("ds301", "single_claim_document")
 
     result = scan(case.root, config=Config(profile="deep", deep_confirm=True))
@@ -117,7 +121,7 @@ def test_confirmed_deep_deps_missing_does_not_load_model(
     assert "deep profile confirmed, but its dependencies are unavailable" in result.pending[0]
 
 
-@pytest.mark.skipif(not deep_support.deep_ready(), reason="deep dependencies and model not installed")
+@pytest.mark.skipif(not nlp.deep_ready(), reason="deep dependencies and model not installed")
 def test_confirmed_ready_deep_reports_candidates(asset_case: Callable[[str, str], AssetCase]):
     """
     [Integration] deep profile end to end ds301: verifies confirmed ready deep reports candidates.
@@ -139,7 +143,8 @@ def test_confirmed_ready_deep_reports_candidates(asset_case: Callable[[str, str]
     """
     case = asset_case("ds301", "number_contradiction")
 
-    result = scan(case.root, config=Config(profile="deep", deep_confirm=True))
+    # DS301 only: DS302 is gate-closed here and would add a pending entry (covered below).
+    result = scan(case.root, config=Config(profile="deep", deep_confirm=True, select=("DS301",)))
 
     assert len(result.findings) == 1
     assert result.findings[0].rule == "DS301"
@@ -148,7 +153,7 @@ def test_confirmed_ready_deep_reports_candidates(asset_case: Callable[[str, str]
     assert "advisory" in result.notice
 
 
-@pytest.mark.skipif(not deep_support.deep_ready(), reason="deep dependencies and model not installed")
+@pytest.mark.skipif(not nlp.deep_ready(), reason="deep dependencies and model not installed")
 def test_model_loaded_once_for_multi_document_corpus(
     asset_case: Callable[[str, str], AssetCase],
     monkeypatch: pytest.MonkeyPatch,
@@ -172,7 +177,7 @@ def test_model_loaded_once_for_multi_document_corpus(
         - Recent changes in code paths exercised by deep profile end to end ds301
     """
     load_count = 0
-    real_load = deep_support.load_pipeline
+    real_load = nlp.load_pipeline
 
     def spy_load() -> Any:
         """Track invocation count while delegating to real load."""
@@ -180,7 +185,7 @@ def test_model_loaded_once_for_multi_document_corpus(
         load_count += 1
         return real_load()
 
-    monkeypatch.setattr(deep_support, "load_pipeline", spy_load)
+    monkeypatch.setattr(nlp, "load_pipeline", spy_load)
     case = asset_case("ds301", "multi_document_corpus")
 
     result = scan(case.root, config=Config(profile="deep", deep_confirm=True))
@@ -189,7 +194,7 @@ def test_model_loaded_once_for_multi_document_corpus(
     assert load_count == 1
 
 
-@pytest.mark.skipif(not deep_support.deep_ready(), reason="deep dependencies and model not installed")
+@pytest.mark.skipif(not nlp.deep_ready(), reason="deep dependencies and model not installed")
 def test_consistent_corpus_zero_candidates_but_evaluated_notice(asset_case: Callable[[str, str], AssetCase]):
     """
     [Integration] deep profile end to end ds301: verifies consistent corpus zero candidates but evaluated notice.
@@ -214,6 +219,13 @@ def test_consistent_corpus_zero_candidates_but_evaluated_notice(asset_case: Call
     result = scan(case.root, config=Config(profile="deep", deep_confirm=True))
 
     assert result.findings == ()
-    assert result.enabled_rules == ("DS301",)
-    assert "evaluated" in result.notice
+    # The whole deep profile: DS302 is active, but its gate is closed, so it is pending
+    # and not counted as evaluated (Milestone 0010 D5).
+    assert result.enabled_rules == ("DS301", "DS302")
+    assert result.rules_evaluated == 1
+    assert result.pending == (
+        "DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); "
+        "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY",
+    )
+    assert "1 deep rule(s) evaluated" in result.notice
     assert "not implemented" not in result.notice

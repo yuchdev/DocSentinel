@@ -15,8 +15,8 @@ pytest.importorskip("docsig")
 
 from docsentinel.cli import main
 from docsentinel.config import Config
-from docsentinel.detectors.standard import corpus
 from docsentinel.engine import scan
+from docsentinel.mining import corpus
 from tests.asset_helpers import AssetCase
 
 #: The DS201 finding line printed directly under the ``dense.md`` document header of the text report.

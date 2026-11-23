@@ -30,6 +30,7 @@ All three initial milestones are complete, providing a fully working command-lin
   * `DS204` Python docstring-to-code signature mismatch
 * **`deep` profile:** Semantic NLP contradiction candidate analysis via `docsentinel[deep]`. Gated by explicit opt-in confirmation with advisory-only exit codes.
   * `DS301` fact-contradiction candidates across documents 
+  * `DS302` external fact-check disagreement: a high-salience claim sentence that a third-party fact-checking service rates false or mixed (warning severity, advisory only). **It sends claim sentences from your documents to a third party** and is off until you give both `--use-external-api` (or `DOCSENTINEL_USE_EXTERNAL_API=1`) and the backend's API key variable (`DOCSENTINEL_FACTCHECK_LENZ_API_KEY` for `lenz`); neither is a configuration key. Verdicts are third-party heuristic output, not ground truth. Preview what would be sent, offline, with `docsentinel extract-facts`. Never use the flag in pre-commit `args:` or a `pull_request_target` workflow, or export the key for a whole CI job
 
 ## Requirements and Installation
 
@@ -82,6 +83,10 @@ uv run docsentinel scan docs/README.md
 # Scan with standard or deep profile
 uv run docsentinel scan --profile standard
 uv run docsentinel scan --profile deep --i-understand-deep-is-heuristic
+
+# Preview, offline, the claims DS302 would send to a fact-check service (no network, no key)
+uv run docsentinel extract-facts docs
+# DS302 itself needs --use-external-api AND a key in the environment; see docs/user/tutorial/cli.md
 
 # Output formats: text (default), json (schema 2), json-v1 (old schema 1), json-documents, github annotations
 uv run docsentinel scan --format json
@@ -158,6 +163,16 @@ min_paragraph_chars = 30        # DS202/DS203: skip paragraphs shorter than this
 
 # Deep profile opt-in confirmation (optional)
 deep_confirm = false
+
+# DS302 external fact-check (deep profile; sends claim sentences to a third party). Defaults shown.
+# These only tune it: it also needs --use-external-api and an API key in the environment,
+# which are never configuration keys. See the configuration reference.
+# fact_check_backend = "lenz"
+# fact_check_min_salience = 0.5
+# fact_check_min_confidence = 0.6
+# fact_check_max_claims_per_document = 3
+# fact_check_max_claims_total = 25
+# fact_check_time_budget_seconds = 300
 
 # Base for /-rooted links (DS101, DS103, DS112, DS113, DS116, DS124). "auto" = the nearest
 # .git ancestor, else the scan root; use "." for untrusted content nested in another checkout

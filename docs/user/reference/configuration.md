@@ -2,7 +2,7 @@
 
 This page is the reference for every configuration option introduced in
 Milestone 0005 for the fast-profile rules DS104–DS118 and, since Milestone 0009, the
-reference-scope options of DS103 and DS124. All defaults and
+reference-scope options of DS103 and DS124, and since Milestone 0010 the `fact_check_*` options of DS302. All defaults and
 valid values on this page were verified against
 `src/docsentinel/config.py` before publication.
 
@@ -1296,6 +1296,144 @@ at_reference_extensions = ["md", "txt", "py"]
 
 ---
 
+## External fact-checking (DS302)
+
+`DS302` is a deep-profile rule (advisory, warning severity) that sends a few high-salience claim
+sentences from your documents to a third-party fact-checking service and reports the ones the service
+rates false or mixed. **It is off until both of its independent opt-ins are met, and what it reports is
+third-party heuristic output, not ground truth.** Treat a finding as a prompt to review the sentence.
+
+**Sending text to a third party.** When the rule runs, the text of each selected claim sentence (at most
+1,000 characters each) leaves your machine for the backend. Preview exactly what would be sent with
+`docsentinel extract-facts` first; see
+[the CLI guide](../tutorial/cli.md#previewing-what-ds302-would-send-docsentinel-extract-facts).
+
+**The dual gate.** Nothing is sent unless all of these hold:
+
+1. the deep profile is confirmed (`--i-understand-deep-is-heuristic`, `deep_confirm` or
+   `DOCSENTINEL_DEEP_CONFIRM=1`);
+2. the invoker passes `--use-external-api` (on `scan` and `baseline`), or sets
+   `DOCSENTINEL_USE_EXTERNAL_API=1` (exactly `1`), or calls `scan(..., use_external_api=True)`;
+3. the backend's API-key variable is set and not empty: `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`, for
+   the `lenz` backend `DOCSENTINEL_FACTCHECK_LENZ_API_KEY`;
+4. the backend loads.
+
+While the gate is closed the scan logs one WARNING (`DS302 skipped: ...` with what is missing), adds the
+same text to `ScanResult.pending`, and does not count `DS302` as evaluated in the scan notice.
+`docsentinel doctor` prints `fact-check gate: on (backend: lenz)`, `off (<reasons>)` or
+`unknown (configuration error)`.
+
+**Never a configuration key.** `use_external_api` and the API key are not configuration options, in the
+project file, the JSON file or the user settings file. A file that names one is rejected as an unknown
+option (`Unknown config options: use_external_api`, exit code 2). A repository you scan must never be able to switch on network egress or carry a key, so consent
+comes only from the invoker's command line and environment. Never put `--use-external-api` in a
+pre-commit `args:` list or a `pull_request_target` workflow, and never export the key variable for a
+whole CI job.
+
+**Fixed transport.** The service URL, the 30-second request deadline, the response size cap and the
+rules on redirects and proxies are fixed in the backend and are not configurable.
+
+**What a finding says.** Its `type` is `unverified claim` and its `value` is
+`<verdict> (confidence 0.87): <claim>`, so the backend confidence is visible. A verdict the backend
+returns that DocSentinel does not recognise is skipped with a WARNING and never reported.
+
+The six keys below are allowed in the user settings file as well as the project file.
+
+### `fact_check_backend`
+
+| Field | Value |
+|-------|-------|
+| Type | string enum |
+| Default | `"lenz"` |
+| Valid values | `"lenz"` |
+| Consumed by | DS302 |
+
+Chooses which backend receives the claims. Choosing one grants no consent; the gate above still applies.
+
+```toml
+fact_check_backend = "lenz"
+```
+
+### `fact_check_min_salience`
+
+| Field | Value |
+|-------|-------|
+| Type | number |
+| Default | `0.5` |
+| Valid values | `0.0` to `1.0` inclusive |
+| Consumed by | DS302 |
+
+The salience score a claim needs before it may be sent. Raise it to send fewer, more number- and
+entity-heavy claims.
+
+```toml
+fact_check_min_salience = 0.7
+```
+
+### `fact_check_min_confidence`
+
+| Field | Value |
+|-------|-------|
+| Type | number |
+| Default | `0.6` |
+| Valid values | `0.0` to `1.0` inclusive |
+| Consumed by | DS302 |
+
+The backend confidence a false or mixed verdict needs to become a finding.
+
+```toml
+fact_check_min_confidence = 0.8
+```
+
+### `fact_check_max_claims_per_document`
+
+| Field | Value |
+|-------|-------|
+| Type | integer |
+| Default | `3` |
+| Valid values | `1` to `50` |
+| Consumed by | DS302 |
+
+Most claims sent per document.
+
+```toml
+fact_check_max_claims_per_document = 5
+```
+
+### `fact_check_max_claims_total`
+
+| Field | Value |
+|-------|-------|
+| Type | integer |
+| Default | `25` |
+| Valid values | `1` to `500` |
+| Consumed by | DS302 |
+
+Most claims sent per scan, over every document.
+
+```toml
+fact_check_max_claims_total = 50
+```
+
+### `fact_check_time_budget_seconds`
+
+| Field | Value |
+|-------|-------|
+| Type | integer |
+| Default | `300` |
+| Valid values | `1` to `3600` |
+| Consumed by | DS302 |
+
+Budget, in whole seconds, for the network stage of one scan. It is measured with a monotonic clock.
+Claims not yet sent when it runs out are skipped with one WARNING. A request already in flight can
+overrun the budget by up to one backend timeout.
+
+```toml
+fact_check_time_budget_seconds = 120
+```
+
+---
+
 ## Summary table
 
 The following table lists every option on this page with its default and
@@ -1340,6 +1478,12 @@ the rule that consumes it. All defaults were verified against
 | `link_root` | `"auto"` | DS101, DS103, DS112, DS113, DS116, DS124 |
 | `reference_scope` | `"links"` | DS103 (opt-in, on with `"strict"`) |
 | `at_reference_extensions` | `["md","markdown","mdx","txt","rst","toml","json","yaml","yml","py"]` | DS124 |
+| `fact_check_backend` | `"lenz"` | DS302 (needs `--use-external-api` and an API key) |
+| `fact_check_min_salience` | `0.5` | DS302 |
+| `fact_check_min_confidence` | `0.6` | DS302 |
+| `fact_check_max_claims_per_document` | `3` | DS302 |
+| `fact_check_max_claims_total` | `25` | DS302 |
+| `fact_check_time_budget_seconds` | `300` | DS302 |
 | `document_id_field` | `"id"` | DS114 |
 | `document_id_scope` | `"corpus"` | DS114 |
 | `document_id_case_sensitive` | `true` | DS114 |

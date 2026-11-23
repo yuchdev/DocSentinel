@@ -56,6 +56,7 @@ cross-tool wire shape.
 | Rule  | Profile | Fault class              | Notes |
 |-------|---------|--------------------------|-------|
 | DS301 | deep    | `contradiction_candidate` | Semantic contradiction candidate (advisory-only) |
+| DS302 | deep    | `unverified_claim`        | An external backend rated a high-salience claim false or mixed (advisory-only) |
 
 ## Fault-mode aggregates these classes feed
 

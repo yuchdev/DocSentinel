@@ -335,12 +335,17 @@ def _filter_gha_data(value: JsonValue) -> str:
 def _filter_json(value: JsonValue) -> str:
     """``json`` filter: ASCII-safe ``json.dumps`` of any JSON value.
 
+    Every ``##[`` (the GitHub legacy command marker) is written as ``##\\u005b``. JSON has no
+    ``#`` token, so the marker can only occur inside a string, where the escape decodes to the
+    same text: lossless, and the marker never reaches a text sink through this filter.
+
     :raises TemplateError: When the value is not serializable JSON data.
     """
     try:
-        return json.dumps(value, ensure_ascii=True, allow_nan=False)
+        dumped = json.dumps(value, ensure_ascii=True, allow_nan=False)
     except (TypeError, ValueError, RecursionError):
         raise TemplateError(f"filter json cannot serialize a {_kind_name(value)}") from None
+    return dumped.replace(LEGACY_COMMAND_MARKER, LEGACY_COMMAND_MARKER[:-1] + "\\u005b")
 
 
 def _filter_join(value: JsonValue, separator: str) -> str:

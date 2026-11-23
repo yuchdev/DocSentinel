@@ -7,11 +7,11 @@ from collections.abc import Callable
 
 import pytest
 
-from docsentinel import deep_support
 from docsentinel.detectors.contradictions import detect
+from docsentinel.mining import nlp
 from tests.asset_helpers import AssetCase
 
-pytestmark = pytest.mark.skipif(not deep_support.deep_ready(), reason="deep dependencies and model not installed")
+pytestmark = pytest.mark.skipif(not nlp.deep_ready(), reason="deep dependencies and model not installed")
 
 
 def test_detect_end_to_end_number_contradiction(asset_case: Callable[[str, str], AssetCase]):

@@ -1,0 +1,8 @@
+{
+  "verdicts": {
+    "The Fenwick canal links 12 locks between Arlow and Pellmouth.": {"verdict": "false", "confidence": 0.87},
+    "The Ostrava signal tower recorded 87 lightning strikes during 2023.": {"verdict": "false", "confidence": 0.87},
+    "The Wendmoor basin authority recorded 4,410 barge passages during 2022 across the twelve western locks, the six eastern basins, the long Arlow cutting, the Pellmouth tidal gate, the narrow Quenby feeder channel and the old Tolvar brickworks wharf beside the river.": {"verdict": "false", "confidence": 0.87}
+  },
+  "fail_on": []
+}

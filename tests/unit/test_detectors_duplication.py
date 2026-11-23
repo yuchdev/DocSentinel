@@ -11,7 +11,7 @@ import numpy as np
 import scipy.sparse as sp
 
 from docsentinel.detectors.standard import duplication
-from docsentinel.detectors.standard.corpus import CorpusModel, Paragraph
+from docsentinel.mining.corpus import CorpusModel, Paragraph
 
 
 def test_rule_metadata():

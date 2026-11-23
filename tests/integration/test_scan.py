@@ -41,7 +41,7 @@ def captured_cli_configs(monkeypatch: pytest.MonkeyPatch) -> list[Config]:
     """Fixture capturing Config instances passed to docsentinel.scan via CLI."""
     configs: list[Config] = []
 
-    def fake_scan(root: str, *, config: Config) -> ScanResult:
+    def fake_scan(root: str, *, config: Config, use_external_api: bool = False) -> ScanResult:
         """Capture configuration argument and return stub ScanResult."""
         configs.append(config)
         return ScanResult(
@@ -895,7 +895,7 @@ def test_rules_command_lists_real_registry(capsys: pytest.CaptureFixture[str]):
         else:
             assert "DS301" in profile_output
             assert "(none registered)" not in profile_output
-    assert tuple(sorted(RULES)) == (*expected_codes, "DS201", "DS202", "DS203", "DS204", "DS301")
+    assert tuple(sorted(RULES)) == (*expected_codes, "DS201", "DS202", "DS203", "DS204", "DS301", "DS302")
 
 
 def test_doctor_command_reports_counts(capsys: pytest.CaptureFixture[str]):
@@ -941,6 +941,7 @@ def test_doctor_command_reports_counts(capsys: pytest.CaptureFixture[str]):
         "DS203",
         "DS204",
         "DS301",
+        "DS302",
     )
     assert main(["doctor"]) == 0
 
@@ -950,7 +951,8 @@ def test_doctor_command_reports_counts(capsys: pytest.CaptureFixture[str]):
     assert "deep profile:" in output
     assert "fast rules: 18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)" in output
     assert "standard rules: 4 registered" in output
-    assert "deep rules: 1 registered" in output
+    assert "deep rules: 2 registered" in output
+    assert "fact-check gate: off (" in output
     assert tuple(sorted(RULES)) == expected_codes
 
 
@@ -1015,7 +1017,7 @@ def test_cli_scan_returns_one_and_renders_findings(
         - Recent changes in code paths exercised by scan
     """
 
-    def fake_scan(root: str, *, config: Config) -> ScanResult:
+    def fake_scan(root: str, *, config: Config, use_external_api: bool = False) -> ScanResult:
         """Return stub scan result with one error finding."""
         return ScanResult(
             profile=config.profile,
@@ -1675,8 +1677,9 @@ def test_deep_confirmed_via_config_flag(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: ())
     result = scan(tmp_path, config=Config(profile="deep", deep_confirm=True))
     assert result.findings == ()
-    assert result.enabled_rules == ("DS301",)
-    assert "evaluated" in result.notice
+    # DS302 is selected too; with its consent gate closed it is not counted as evaluated.
+    assert result.enabled_rules == ("DS301", "DS302")
+    assert result.notice == "1 deep rule(s) evaluated (heuristic, advisory-only)."
 
 
 def test_deep_confirmed_via_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -1703,8 +1706,9 @@ def test_deep_confirmed_via_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: ())
     result = scan(tmp_path, config=Config(profile="deep"))
     assert result.findings == ()
-    assert result.enabled_rules == ("DS301",)
-    assert "evaluated" in result.notice
+    # DS302 is selected too; with its consent gate closed it is not counted as evaluated.
+    assert result.enabled_rules == ("DS301", "DS302")
+    assert result.notice == "1 deep rule(s) evaluated (heuristic, advisory-only)."
 
 
 def test_deep_confirmed_via_cli_flag(

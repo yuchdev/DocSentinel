@@ -10,7 +10,7 @@ import numpy as np
 import scipy.sparse as sp
 
 from docsentinel.detectors.standard import low_information
-from docsentinel.detectors.standard.corpus import CorpusModel, Paragraph
+from docsentinel.mining.corpus import CorpusModel, Paragraph
 
 
 def test_reuses_corpus_model_without_refitting():

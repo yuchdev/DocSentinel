@@ -16,8 +16,9 @@ what DocSentinel really prints.
 4. [A worked `--template` example](#a-worked---template-example)
 5. [Writing a `python:` extension](#writing-a-python-extension)
 6. [The `document_stats` builtin](#the-document_stats-builtin)
-7. [Trust model](#trust-model)
-8. [Further reading](#further-reading)
+7. [Writing a `facts` template](#writing-a-facts-template)
+8. [Trust model](#trust-model)
+9. [Further reading](#further-reading)
 
 ---
 
@@ -334,6 +335,20 @@ trust gate:
 Enable it with `--extension builtin:document_stats` or
 `telemetry_extensions = ["builtin:document_stats"]`, and list `document_stats` in your
 template's `requires_extensions`.
+
+---
+
+## Writing a `facts` template
+
+`docsentinel extract-facts` renders through the same template engine, but over a different context. A
+template that sets `"context": "facts"` can use only the facts variables
+([report template format](/docs/specs/report-template-format.md#6a-facts-context-schema-context-facts)):
+the run settings and summary, and each fact's `rank`, `score`, `signals`, `cluster`, `numbers`,
+`entities`, `disposition` and (untrusted) `text`. It has no `ext` data, so `requires_extensions` must be
+empty. The trust rule is unchanged: the fact `text` and `path` must pass through a sink filter such as
+`neutralize` in a text template. A `report` template cannot be used with `extract-facts`, and a `facts`
+template cannot be used with `scan`; either mismatch exits `2`. Start from the packaged `facts-text` or
+`facts-json` template, and put yours in `report_templates_dir` or pass it with `--template`.
 
 ---
 

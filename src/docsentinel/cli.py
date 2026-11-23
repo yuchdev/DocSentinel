@@ -11,7 +11,6 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Optional
 
-from docsentinel import deep_support
 from docsentinel.baseline import save_baseline
 from docsentinel.config import (
     USER_SETTINGS_ENV,
@@ -24,23 +23,30 @@ from docsentinel.config import (
     load_config_with_sources,
     user_settings_path,
 )
+from docsentinel.detectors.fact_check import ExternalApiGate, resolve_external_api_gate
 from docsentinel.detectors.loader import ensure_standard_loaded
 from docsentinel.discovery import check_invoker_selector_shape, normalize_invoker_selectors, selector_root_spellings
-from docsentinel.engine import scan
+from docsentinel.engine import extract_facts, scan
 from docsentinel.errors import ExtraNotInstalledError
 from docsentinel.log import FILE_ONLY, configure_cli_logging, safe, shutdown_cli_logging
+from docsentinel.mining import nlp
 from docsentinel.models import ScanResult
-from docsentinel.reporting import neutralize_text, render
-from docsentinel.rules import RULES, Rule, opt_in_hint, opt_in_satisfied, rules_for_profile
+from docsentinel.reporting import neutralize_text, render, render_facts
+from docsentinel.rules import EXTERNAL_API_RULES, RULES, Rule, opt_in_hint, opt_in_satisfied, rules_for_profile
 from docsentinel.telemetry.extensions import ExtensionError, LoadedExtensions, check_template, resolve_extensions
 from docsentinel.telemetry.filters import TemplateError
 from docsentinel.telemetry.loader import (
+    CONTEXT_FACTS,
+    CONTEXT_REPORT,
+    DEFAULT_FACTS_TEMPLATE,
     DEFAULT_TEMPLATE,
+    PACKAGED_TEMPLATE_CONTEXTS,
     Template,
     available_templates,
     load_named_template,
     load_template,
     packaged_template_names,
+    require_context,
 )
 
 # Named explicitly: under "python -m docsentinel.cli" __name__ is "__main__", which is
@@ -93,6 +99,29 @@ NO_USER_SETTINGS_HELP = (
 )
 
 
+#: The ``--use-external-api`` help text shared by ``scan`` and ``baseline`` (ADR 0007).
+USE_EXTERNAL_API_HELP = (
+    "Allow rules that send document-derived text (candidate claims) to a third-party "
+    "fact-check service (DS302, deep profile); the backend's API key environment variable "
+    "must also be set (see docsentinel doctor). Never put it in pre-commit args"
+)
+
+#: The ``rules`` listing suffix of every rule in :data:`~docsentinel.rules.EXTERNAL_API_RULES`.
+EXTERNAL_API_SUFFIX = " [requires --use-external-api and a backend API key; see docsentinel doctor]"
+
+
+def _rule_suffix(rule: Rule) -> str:
+    """Return the ``rules`` listing suffix of ``rule``: external-API consent, else opt-in, else empty.
+
+    :param rule: A registered rule.
+    :returns: :data:`EXTERNAL_API_SUFFIX` for a rule in
+        :data:`~docsentinel.rules.EXTERNAL_API_RULES`, otherwise :func:`_opt_in_suffix`.
+    """
+    if rule.code in EXTERNAL_API_RULES:
+        return EXTERNAL_API_SUFFIX
+    return _opt_in_suffix(rule)
+
+
 def _opt_in_suffix(rule: Rule) -> str:
     """Return the ``rules`` listing suffix marking an opt-in policy rule, else empty.
 
@@ -113,33 +142,31 @@ def _standard_rule_lines() -> list[str]:
         return missing_msg
     registered = rules_for_profile("standard")
     if registered:
-        return [f"  {rule.code}: {rule.title}{_opt_in_suffix(rule)}" for rule in registered]
+        return [f"  {rule.code}: {rule.title}{_rule_suffix(rule)}" for rule in registered]
     return ["  (none registered)"]
 
 
 def _deep_doctor_lines() -> list[str]:
     """Return formatted lines for doctor describing deep profile readiness."""
-    libs = deep_support.libraries_available()
-    model = deep_support.model_available()
-    ready = deep_support.deep_ready()
+    libs = nlp.libraries_available()
+    model = nlp.model_available()
+    ready = nlp.deep_ready()
 
     lines = []
     if ready:
         lines.append("deep profile: ready")
         lines.append("  ✓ deep libraries installed (spacy, textacy)")
-        lines.append(f"  ✓ deep model installed ({deep_support.MODEL_NAME})")
+        lines.append(f"  ✓ deep model installed ({nlp.MODEL_NAME})")
     else:
         lines.append("deep profile: not ready")
         if libs:
             lines.append("  ✓ deep libraries installed (spacy, textacy)")
         else:
-            lines.append(f"  ✗ deep libraries missing: {deep_support.DEEP_EXTRA_HINT}")
+            lines.append(f"  ✗ deep libraries missing: {nlp.DEEP_EXTRA_HINT}")
         if model:
-            lines.append(f"  ✓ deep model installed ({deep_support.MODEL_NAME})")
+            lines.append(f"  ✓ deep model installed ({nlp.MODEL_NAME})")
         else:
-            lines.append(
-                f"  ✗ deep model missing ({deep_support.MODEL_NAME}): python -m spacy download {deep_support.MODEL_NAME}"
-            )
+            lines.append(f"  ✗ deep model missing ({nlp.MODEL_NAME}): python -m spacy download {nlp.MODEL_NAME}")
     return lines
 
 
@@ -161,54 +188,85 @@ def _exit_code(result: ScanResult, *, strict: bool = False) -> int:
     return 1 if any(finding.severity == "error" for finding in result.findings) else 0
 
 
-def _report_template(format_name: str, template_path: Optional[Path], settings: Config, root: Path) -> Template:
-    """Resolve the report template for ``scan`` before the scan runs.
+def _command_template(
+    format_name: str, template_path: Optional[Path], settings: Config, root: Path, *, context: str
+) -> Template:
+    """Resolve the template of ``scan`` or ``extract-facts`` before the run starts.
 
     ``--template PATH`` wins and is trusted invoker input, read through the loader's
     regular-file/size/encoding gate. Otherwise ``--format`` must name one of the
-    discovered templates (packaged, then ``report_templates_dir``).
+    discovered templates of ``context`` (packaged, then ``report_templates_dir``). A
+    packaged template of the other context is loaded only so that
+    :func:`~docsentinel.telemetry.loader.require_context` can name the command that
+    renders it (``scan --format facts-json``, ``extract-facts --format json``).
 
     :param format_name: The ``--format`` value.
     :param template_path: The ``--template`` value, or ``None``.
     :param settings: The effective configuration.
     :param root: The scan root directory ``report_templates_dir`` is relative to.
-    :returns: The validated template.
-    :raises TemplateError: When the template is unknown, unreadable or invalid.
+    :param context: ``CONTEXT_REPORT`` for ``scan``, ``CONTEXT_FACTS`` for ``extract-facts``.
+    :returns: The validated template of ``context``.
+    :raises TemplateError: When the template is unknown, unreadable, invalid or of the
+        other context.
     """
     if template_path is not None:
-        return load_template(template_path)
-    names = available_templates(root, settings.report_templates_dir)
-    if format_name not in names:
-        raise TemplateError(f"unknown --format {format_name[:80]!r}; choose from: {', '.join(names)}")
-    return load_named_template(format_name, root=root, templates_dir=settings.report_templates_dir)
+        template = load_template(template_path)
+    else:
+        names = available_templates(root, settings.report_templates_dir, context=context)
+        if format_name not in names and format_name not in PACKAGED_TEMPLATE_CONTEXTS:
+            raise TemplateError(f"unknown --format {format_name[:80]!r}; choose from: {', '.join(names)}")
+        template = load_named_template(format_name, root=root, templates_dir=settings.report_templates_dir)
+    require_context(template, context)
+    return template
+
+
+def _report_template(format_name: str, template_path: Optional[Path], settings: Config, root: Path) -> Template:
+    """Resolve the report template for ``scan`` before the scan runs.
+
+    :param format_name: The ``--format`` value.
+    :param template_path: The ``--template`` value, or ``None``.
+    :param settings: The effective configuration.
+    :param root: The scan root directory ``report_templates_dir`` is relative to.
+    :returns: The validated ``report`` template.
+    :raises TemplateError: When the template is unknown, unreadable, invalid or a
+        ``facts`` template.
+    """
+    return _command_template(format_name, template_path, settings, root, context=CONTEXT_REPORT)
 
 
 def _doctor_template_lines(settings: Optional[Config], error: Optional[Exception]) -> list[str]:
-    """Return the ``doctor`` lines listing the selectable report templates.
+    """Return the ``doctor`` lines listing the selectable templates.
 
-    The packaged templates are always listed. When the configuration discovered in
-    the current directory sets ``report_templates_dir``, its templates are listed
-    too; a configuration or directory problem is reported on one neutralized line
-    instead of failing ``doctor``.
+    The packaged ``report`` and ``facts`` templates are always listed, on one line
+    each, from the static name table. When the configuration discovered in the
+    current directory sets ``report_templates_dir``, its template names are listed
+    on one name-only line that is not split by context (threat model
+    0010-extract-facts E2): no directory file is opened, so a template's context is
+    checked only when it is loaded. A configuration or directory problem is reported
+    on that line, neutralized, instead of failing ``doctor``.
 
     :param settings: The configuration of the current directory, or ``None`` when
         loading it failed.
     :param error: The configuration error, or ``None``.
     :returns: The formatted lines.
     """
-    lines = [f"report templates (packaged): {', '.join(packaged_template_names())}"]
+    lines = [
+        f"report templates (packaged): {', '.join(packaged_template_names(CONTEXT_REPORT))}",
+        f"fact templates (packaged): {', '.join(packaged_template_names(CONTEXT_FACTS))}",
+    ]
     if settings is None:
-        lines.append(f"report templates (report_templates_dir): unavailable: {neutralize_text(str(error))}")
+        lines.append(f"templates (report_templates_dir): unavailable: {neutralize_text(str(error))}")
         return lines
     try:
         if settings.report_templates_dir:
-            packaged = set(packaged_template_names())
             extra = [
-                name for name in available_templates(Path.cwd(), settings.report_templates_dir) if name not in packaged
+                name
+                for name in available_templates(Path.cwd(), settings.report_templates_dir)
+                if name not in PACKAGED_TEMPLATE_CONTEXTS
             ]
-            lines.append(f"report templates (report_templates_dir): {', '.join(extra) or '(none)'}")
+            lines.append(f"templates (report_templates_dir): {', '.join(extra) or '(none)'} (context checked at load)")
     except (ConfigError, TemplateError, OSError) as exc:
-        lines.append(f"report templates (report_templates_dir): unavailable: {neutralize_text(str(exc))}")
+        lines.append(f"templates (report_templates_dir): unavailable: {neutralize_text(str(exc))}")
     return lines
 
 
@@ -362,6 +420,37 @@ def _doctor_reference_scope_line(settings: Optional[Config], error: Optional[Exc
         return f"reference scope: error: {neutralize_text(str(error))}"
     state = "on" if opt_in_satisfied(RULES["DS103"], settings) else "off"
     return f"reference scope: {settings.reference_scope} (DS103 {state})"
+
+
+#: The ``doctor`` gate line while the configuration cannot be loaded (threat model 0010 M6).
+FACT_CHECK_GATE_UNKNOWN = "fact-check gate: unknown (configuration error)"
+
+
+def _doctor_fact_check_gate_line(settings: Optional[Config]) -> str:
+    """Return the ``doctor`` line naming the ``DS302`` consent gate state (ADR 0007 Contract 3).
+
+    It is resolved as if no ``--use-external-api`` flag were given, so it reflects the
+    environment only. Every form is fixed text, the backend's API-key variable name and the
+    validated backend name; a configuration error never echoes its message here (it stays on
+    the other ``doctor`` error lines).
+
+    :param settings: The configuration of the current directory, or ``None`` when loading it
+        failed.
+    :returns: ``fact-check gate: on (backend: <name>)``, ``fact-check gate: off (<reasons>)`` or
+        :data:`FACT_CHECK_GATE_UNKNOWN`.
+    """
+    gate: Optional[ExternalApiGate] = None
+    if settings is not None:
+        try:
+            gate = resolve_external_api_gate(settings, use_external_api=False)
+        except ConfigError:
+            # An injected or partially valid configuration: the message stays on the error lines.
+            gate = None
+    if gate is None:
+        return FACT_CHECK_GATE_UNKNOWN
+    if gate.open:
+        return f"fact-check gate: on (backend: {gate.backend})"
+    return f"fact-check gate: off ({'; '.join(gate.reasons())})"
 
 
 def _option_count(count: int) -> str:
@@ -703,6 +792,114 @@ def _add_selector_options(parser: argparse.ArgumentParser):
     )
 
 
+#: Help text of the exploration-only ``extract-facts`` options (story decision X5).
+EXPLORATION_HELP = (
+    "exploration only: changes this command's output, never DS302; the output is then marked as not matching DS302"
+)
+
+#: Help text suffix of the three config-backed ``extract-facts`` overrides (decision X6).
+FACT_OVERRIDE_HELP = "default: the effective fact_check_* configuration value"
+
+
+def _weights_argument(text: str) -> tuple[float, float, float]:
+    """Parse ``--weights N,E,D`` into three floats (range checks stay with the engine).
+
+    :param text: The option value as typed.
+    :returns: ``(numeric, entity, distinctiveness)``.
+    :raises argparse.ArgumentTypeError: When the value is not three comma-separated numbers.
+    """
+    parts = text.split(",")
+    message = "expected three comma-separated numbers N,E,D (numeric, entity, distinctiveness)"
+    if len(parts) != 3:
+        raise argparse.ArgumentTypeError(message)
+    try:
+        numeric, entity, distinctiveness = (float(part.strip()) for part in parts)
+    except ValueError:
+        raise argparse.ArgumentTypeError(message) from None
+    return numeric, entity, distinctiveness
+
+
+def _add_extract_facts_parser(commands: argparse._SubParsersAction, verbosity: argparse.ArgumentParser):
+    """Add the ``extract-facts`` subcommand (Milestone 0010 Story 05.0 Task 03).
+
+    Deliberately has no ``--profile``, ``--select``, ``--ignore``, ``--baseline``,
+    ``--strict``, ``--use-external-api``, ``--i-understand-deep-is-heuristic``,
+    ``--link-root``, ``--reference-scope``, ``--extension`` or
+    ``--allow-python-extensions``: passing one is an argparse error (exit ``2``).
+
+    :param commands: The subparsers action of the top-level parser.
+    :param verbosity: The shared ``-v``/``-q`` parent parser.
+    """
+    parser = commands.add_parser(
+        "extract-facts", help="List the verifiable facts DS302 would check (offline; no network)", parents=[verbosity]
+    )
+    parser.add_argument("root", nargs="?", default=".", help="Directory or file to extract facts from")
+    parser.add_argument("--config", type=Path)
+    _add_selector_options(parser)
+    parser.add_argument(
+        "--format",
+        default=DEFAULT_FACTS_TEMPLATE,
+        metavar="NAME",
+        help=(
+            f"Fact template name: one of {', '.join(packaged_template_names(CONTEXT_FACTS))}, "
+            "or a facts template in report_templates_dir (default: %(default)s)"
+        ),
+    )
+    parser.add_argument(
+        "--template",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Render with this facts template file (wins over --format)",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Write the output to this file (UTF-8, overwritten; parent directories are created) "
+            "instead of standard output; relative paths resolve against the current directory. "
+            "It holds document text: keep it out of the scan root and out of version control"
+        ),
+    )
+    parser.add_argument(
+        "--min-salience", type=float, default=None, metavar="FLOAT", help=f"Salience floor; {FACT_OVERRIDE_HELP}"
+    )
+    parser.add_argument(
+        "--max-per-document",
+        type=int,
+        default=None,
+        metavar="INT",
+        help=f"Most facts per document; {FACT_OVERRIDE_HELP}",
+    )
+    parser.add_argument(
+        "--max-total", type=int, default=None, metavar="INT", help=f"Most facts overall; {FACT_OVERRIDE_HELP}"
+    )
+    parser.add_argument(
+        "--weights",
+        type=_weights_argument,
+        default=None,
+        metavar="N,E,D",
+        help=f"Numeric, entity and distinctiveness salience weights summing to 1; {EXPLORATION_HELP}",
+    )
+    parser.add_argument(
+        "--dedup-threshold",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help=f"Near-duplicate clustering threshold in (0, 1]; {EXPLORATION_HELP}",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        dest="include_rejected",
+        help="also list claims that were not selected, with the reason",
+    )
+    parser.add_argument("--no-user-settings", action="store_true", help=NO_USER_SETTINGS_HELP)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Return the ``docsentinel`` argument parser.
 
@@ -793,6 +990,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_selector_options(scan_parser)
     scan_parser.add_argument("--no-user-settings", action="store_true", help=NO_USER_SETTINGS_HELP)
     scan_parser.add_argument("--strict", action="store_true")
+    scan_parser.add_argument("--use-external-api", action="store_true", help=USE_EXTERNAL_API_HELP)
     scan_parser.add_argument(
         "--i-understand-deep-is-heuristic",
         action="store_true",
@@ -828,6 +1026,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_selector_options(baseline_parser)
     baseline_parser.add_argument("--no-user-settings", action="store_true", help=NO_USER_SETTINGS_HELP)
+    baseline_parser.add_argument("--use-external-api", action="store_true", help=USE_EXTERNAL_API_HELP)
     init_parser = commands.add_parser("init", help="Create a starter config", parents=[verbosity])
     init_parser.add_argument(
         "root", nargs="?", default=".", help="Directory for docsentinel.toml (default: current directory)"
@@ -850,6 +1049,7 @@ def _build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument(
         "--yes", "-y", action="store_true", help="Do not ask for confirmation when running in a terminal"
     )
+    _add_extract_facts_parser(commands, verbosity)
     commands.add_parser("rules", help="List active detection rules", parents=[verbosity])
     doctor_parser = commands.add_parser("doctor", help="Show M0 capabilities", parents=[verbosity])
     doctor_parser.add_argument("--no-user-settings", action="store_true", help=NO_USER_SETTINGS_HELP)
@@ -942,7 +1142,7 @@ def _dispatch(args: argparse.Namespace) -> int:
                 registered = rules_for_profile(profile)
                 if registered:
                     for rule in registered:
-                        print(f"  {rule.code}: {rule.title}{_opt_in_suffix(rule)}")
+                        print(f"  {rule.code}: {rule.title}{_rule_suffix(rule)}")
                 else:
                     print("  (none registered)")
         return 0
@@ -953,16 +1153,6 @@ def _dispatch(args: argparse.Namespace) -> int:
             print("standard profile: not installed (pip install docsentinel[standard])")
         else:
             print("standard profile: available")
-        for line in _deep_doctor_lines():
-            print(line)
-        for profile in ("fast", "standard", "deep"):
-            registered = rules_for_profile(profile)
-            opt_in = tuple(rule for rule in registered if rule.opt_in_option)
-            summary = f"{profile} rules: {len(registered)} registered"
-            if opt_in:
-                codes = ", ".join(rule.code for rule in opt_in)
-                summary += f" ({len(opt_in)} opt-in, off unless configured: {codes})"
-            print(summary)
         # One load shared by every config-dependent line (ADR 0005 affected components).
         settings: Optional[Config] = None
         sources: Optional[ConfigSources] = None
@@ -971,6 +1161,17 @@ def _dispatch(args: argparse.Namespace) -> int:
             settings, sources = load_config_with_sources(Path.cwd(), user_settings=not args.no_user_settings)
         except (ConfigError, OSError) as exc:
             error = exc
+        for line in _deep_doctor_lines():
+            print(line)
+        print(_doctor_fact_check_gate_line(settings))
+        for profile in ("fast", "standard", "deep"):
+            registered = rules_for_profile(profile)
+            opt_in = tuple(rule for rule in registered if rule.opt_in_option)
+            summary = f"{profile} rules: {len(registered)} registered"
+            if opt_in:
+                codes = ", ".join(rule.code for rule in opt_in)
+                summary += f" ({len(opt_in)} opt-in, off unless configured: {codes})"
+            print(summary)
         for line in _doctor_template_lines(settings, error):
             print(line)
         for line in _doctor_extension_lines(settings, error):
@@ -983,6 +1184,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return 0
     if args.command == "baseline":
         return _run_baseline(args)
+    if args.command == "extract-facts":
+        return _cmd_extract_facts(args)
     return _run_scan(args)
 
 
@@ -1044,9 +1247,10 @@ def _scan_overrides(args: argparse.Namespace) -> dict[str, object]:
     """Return the ``scan()`` keywords the invoker gave, so unset ones are not passed.
 
     :param args: The parsed ``scan`` or ``baseline`` command line.
-    :returns: ``link_root``, ``include`` and ``exclude`` when given.
+    :returns: ``link_root``, ``include`` and ``exclude`` when given, and always
+        ``use_external_api`` (``False`` without ``--use-external-api``).
     """
-    overrides: dict[str, object] = {}
+    overrides: dict[str, object] = {"use_external_api": args.use_external_api}
     if args.link_root is not None:
         overrides["link_root"] = args.link_root
     if args.include is not None:
@@ -1206,6 +1410,104 @@ def _run_scan(args: argparse.Namespace) -> int:
         exit_code,
     )
     return exit_code
+
+
+#: The ``extract-facts`` options logged by *name* in ``extract-facts started`` (never their values).
+_FACT_OPTION_NAMES: tuple[tuple[str, str], ...] = (
+    ("min_salience", "--min-salience"),
+    ("max_per_document", "--max-per-document"),
+    ("max_total", "--max-total"),
+    ("weights", "--weights"),
+    ("dedup_threshold", "--dedup-threshold"),
+)
+
+
+def _fact_overrides(args: argparse.Namespace) -> dict[str, object]:
+    """Return the ``extract_facts()`` keywords the invoker gave, so unset ones are not passed.
+
+    :param args: The parsed ``extract-facts`` command line.
+    :returns: ``include``/``exclude`` and the five selection settings when given.
+    """
+    overrides: dict[str, object] = {}
+    if args.include is not None:
+        overrides["include"] = tuple(args.include)
+    if args.exclude is not None:
+        overrides["exclude"] = tuple(args.exclude)
+    for dest, _flag in _FACT_OPTION_NAMES:
+        value = getattr(args, dest)
+        if value is not None:
+            overrides[dest] = value
+    return overrides
+
+
+def _cmd_extract_facts(args: argparse.Namespace) -> int:
+    """Run ``docsentinel extract-facts``: the offline preview of the ``DS302`` fact set.
+
+    One code path through :func:`~docsentinel.engine.extract_facts`, rendered through a
+    ``facts`` template. The config and the template are resolved, and the deep
+    readiness is checked, before any document is read. No external-API gate, backend
+    or fact-check environment variable is consulted, no deep confirmation is needed,
+    and claim text is never logged at any level (threat model 0010-extract-facts E13).
+
+    :param args: The parsed command line.
+    :returns: ``0`` on success (also with zero facts), ``2`` on any failure; never ``1``.
+    """
+    started = time.perf_counter()
+    output_format = str(args.template) if args.template is not None else args.format
+    try:
+        target = _resolve_root(args.root)
+        directory = target.parent if target.is_file() else target
+        settings, sources = load_config_with_sources(directory, args.config, user_settings=not args.no_user_settings)
+        template = _command_template(args.format, args.template, settings, directory, context=CONTEXT_FACTS)
+        _validate_selectors(args, target)
+        if not nlp.deep_ready():
+            raise RuntimeError(f"extract-facts needs the deep extras and the spaCy model - {nlp.DEEP_EXTRA_HINT}")
+        given = [flag for dest, flag in _FACT_OPTION_NAMES if getattr(args, dest) is not None]
+        if args.include_rejected:
+            given.append("--all")
+        logger.info(
+            "extract-facts started: root=%s, format=%s, output=%s, include %d, exclude %d, options %s",
+            safe(args.root),
+            safe(output_format),
+            "stdout" if args.output is None else safe(args.output),
+            len(args.include or ()),
+            len(args.exclude or ()),
+            ", ".join(given) or "none",
+        )
+        logger.info("config: %s", _config_sources_text(sources))
+        result = extract_facts(
+            args.root, config=settings, include_rejected=args.include_rejected, **_fact_overrides(args)
+        )
+        # Rendered completely before anything is written, so a failure leaves no file (E10).
+        output = render_facts(result, template=template, root=directory, templates_dir=settings.report_templates_dir)
+        if args.output is not None:
+            written = _write_report(args.output, output)
+            logger.info(
+                "report written to %s (%s, %d lines)", safe(written), safe(output_format), output.count("\n") + 1
+            )
+    except (ConfigError, ValueError, TemplateError, RuntimeError) as exc:
+        # No exc_info: a traceback could carry third-party text holding document tokens (E7).
+        print(f"Extraction failed: {neutralize_text(str(exc))}", file=sys.stderr)
+        logger.warning("extract-facts failed: %s", safe(exc), extra=FILE_ONLY)
+        return 2
+    except OSError as exc:
+        print(f"Extraction failed: {neutralize_text(str(exc))}", file=sys.stderr)
+        logger.exception("extract-facts failed: %s", safe(exc), extra=FILE_ONLY)
+        return 2
+    if args.output is None:
+        print(output)
+    logger.info(
+        "extract-facts finished in %.2fs: %d documents, %d unreadable, %d claims, %d selected, %d listed; "
+        "matches_ds302 %s; exit code 0",
+        time.perf_counter() - started,
+        len(result.documents),
+        result.documents_unreadable,
+        result.claims_extracted,
+        len(result.selected),
+        len(result.facts),
+        "true" if result.matches_ds302 else "false",
+    )
+    return 0
 
 
 def _write_report(output: Path, report: str) -> Path:

@@ -1,0 +1,8 @@
+{
+  "verdicts": {
+    "The Dunmere ferry company logged 260 crossings during 2027.": {"verdict": "true", "confidence": 0.95},
+    "The Dunmere ferry company logged 310 crossings during 2027.": {"verdict": "true", "confidence": 0.93},
+    "The Brackwell mill produced 4,800 sacks of barley in 2024.": {"verdict": "true", "confidence": 0.91}
+  },
+  "fail_on": []
+}

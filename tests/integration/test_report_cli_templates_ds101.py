@@ -15,7 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from docsentinel import cli, deep_support
+from docsentinel import cli
+from docsentinel.mining import nlp
 from docsentinel.telemetry.loader import packaged_template_names
 from tests.asset_helpers import AssetCase, load_asset_case
 from tests.log_helpers import problem_output
@@ -34,6 +35,14 @@ _PROFILE_ARGS: dict[str, tuple[str, ...]] = {
     "standard": ("--profile", "standard"),
     "deep": ("--profile", "deep", "--i-understand-deep-is-heuristic"),
 }
+
+
+#: The one stderr problem line of a deep scan: ``DS302`` is active but its gate is closed (no
+#: consent, no key), so it is skipped with this fixed WARNING (Milestone 0010 D5).
+_DS302_GATE_WARNING = (
+    "docsentinel: WARNING: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); "
+    "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY\n"
+)
 
 
 def _composed_root(asset_case: Callable[[str, str], AssetCase]) -> Path:
@@ -77,7 +86,7 @@ def test_scan_renders_every_packaged_template_on_each_profile(
     """
     if profile == "standard" and not _standard_installed():
         pytest.skip("standard extras are not installed")
-    if profile == "deep" and not deep_support.deep_ready():
+    if profile == "deep" and not nlp.deep_ready():
         pytest.skip("deep extras or model are not installed")
     root = _composed_root(asset_case)
 
@@ -85,7 +94,7 @@ def test_scan_renders_every_packaged_template_on_each_profile(
 
     captured = capsys.readouterr()
     assert exit_code == (1 if profile == "fast" else 0), captured.err
-    assert problem_output(captured.err) == ""
+    assert problem_output(captured.err) == (_DS302_GATE_WARNING if profile == "deep" else "")
     if name.startswith("json"):
         json.loads(captured.out)
     if profile == "fast" and name in ("text", "github"):
@@ -397,5 +406,9 @@ def test_doctor_lists_templates(
     broken = capsys.readouterr().out.split("\n")
 
     assert "report templates (packaged): github, json, json-documents, json-v1, text" in lines
-    assert "report templates (report_templates_dir): dup-key, json-mini, mini, typo-key, wrong-stem" in lines
-    assert any(line.startswith("report templates (report_templates_dir): unavailable: ") for line in broken)
+    assert "fact templates (packaged): facts-json, facts-text" in lines
+    assert (
+        "templates (report_templates_dir): dup-key, json-mini, mini, typo-key, wrong-stem (context checked at load)"
+        in lines
+    )
+    assert any(line.startswith("templates (report_templates_dir): unavailable: ") for line in broken)

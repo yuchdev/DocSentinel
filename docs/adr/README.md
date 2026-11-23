@@ -14,6 +14,7 @@ are in `assets/`.
 | [0004](0004-reference-scope-and-at-document-references.md) | Reference Scope and @-Document References | Accepted | 2026-11-14 |
 | [0005](0005-layered-configuration-user-settings-json.md) | Layered Configuration: User Settings JSON under Project TOML | Accepted | 2026-11-17 |
 | [0006](0006-invoker-include-exclude-and-directory-selectors.md) | Invoker Include/Exclude and Directory Selectors | Accepted | 2026-11-18 |
+| [0007](0007-fact-check-backend-protocol-and-dual-consent-gate.md) | Fact-Check Backend Protocol, Dual Consent Gate and API-Key Convention | Proposed | 2026-11-21 |
 
 ## Example ADR (delete before this project ships)
 

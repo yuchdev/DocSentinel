@@ -43,8 +43,32 @@ template.json --> loader/validator --> renderer(template, context) --> str
 | `template_version` | Integer; this spec is `1`. Unknown version -> `TemplateError`. |
 | `name` | Kebab-case; must equal the file stem for packaged templates. |
 | `type` | `"text"` or `"json"`. Unknown type -> `TemplateError`. |
+| `context` | Optional; `"report"` (default) or `"facts"`. Any other value -> `TemplateError` (`context must be "report" or "facts"`). Selects the context schema the template is validated against (Section 6 for `report`, Section 6a for `facts`) and the only model it may render. See the amendment below. |
 | `requires_extensions` | Extension names (`^[a-z][a-z0-9_]{0,63}$`) that must be loaded (Section 9); missing -> `TemplateError`. A template that references `ext.<n>...` or a filter `ext.<n>.<f>` must list `<n>` here, otherwise it is a load-time `TemplateError`. Listing a name never loads anything. |
 | unknown keys | Rejected (fail closed), so a typo never silently drops content. |
+
+> **Amended 2026-11-24 (Milestone 0010 Story 05.0 Task 02, owner ruling O4).** The optional
+> `context` key is an additive amendment of this format and of
+> [ADR 0003](/docs/adr/0003-template-driven-reporting-on-telemetry.md). Its default is `report`, so
+> every existing template is a `report` template with no edit and renders byte-identically.
+> - One function, `loader.schema_for(context)`, gives the schema for both root scopes (text and
+>   json), the loop-alias check and `ext` resolution. A variable of the other context is an
+>   unknown variable at every scope.
+> - The `facts` schema has no `ext`: a `facts` template with a non-empty `requires_extensions`,
+>   or with any `ext.*` variable or filter, is a `TemplateError`.
+> - Every other rule applies to both contexts unchanged: sinks, the trust rule, T2-R1, literal
+>   hygiene, caps and the file gate.
+> - `reporting.render()` refuses a `facts` template
+>   (`template <name> renders fact extraction output; use docsentinel extract-facts`).
+>   `reporting.render_facts()` refuses a `report` template
+>   (`template <name> is a report template; use it with docsentinel scan`). The renderer
+>   refuses a mismatch too: `render_template(..., model_kind=)`, default `report`.
+> - For a `facts` json template the renderer writes the `[` of every `##[` as `\u005b`. This is
+>   lossless, because `json.loads` returns the same string. `report` json is unchanged.
+> - Listing stays name-only. The packaged partition is the static
+>   `loader.PACKAGED_TEMPLATE_CONTEXTS` table (`packaged_template_names(context=)`, default
+>   `report`). `report_templates_dir` names are not split by context, and no directory file is
+>   opened to list them. A context mismatch is detected when the selected template loads.
 
 ## 3. Variable syntax
 
@@ -291,6 +315,33 @@ and `$for`/`over` on a non-list `any` is a `TemplateError`.
 | `message` | full detector message | **untrusted** |
 | `value` | offending token (target path, name); null if not extracted | **untrusted** |
 | `document_path` | repeated for flat `findings` | **untrusted** |
+
+## 6a. Facts context schema (`"context": "facts"`)
+
+Built by `telemetry/facts_model.py` (`FactsModel.build(FactExtractionResult)`) for
+`docsentinel extract-facts`. It has no `ext` entry. Packaged templates: `facts-text`, `facts-json`.
+
+| Variable | Type | Trust |
+|---|---|---|
+| `run.notice` | str (engine constant; a value the `neutralize` table would change is refused) | trusted |
+| `run.matches_ds302`, `run.include_rejected` | bool | trusted |
+| `run.settings.{min_salience, max_per_document, max_total, dedup_threshold}` | number | trusted |
+| `run.settings.weights.{numeric, entity, distinctiveness}` | float | trusted |
+| `run.summary.{documents, unreadable, claims_extracted, facts_selected, facts_listed}` | int | trusted |
+| `facts` (listed order), `documents[].facts` (documents with a listed fact, by path; facts by rank) | list[fact] | -- |
+| fact `rank`, `paragraph_index`, `score`, `signals.{numeric, entity, distinctiveness}`, `cluster.{id, size}` | number | trusted |
+| fact `disposition` | str, one of `selected`, `duplicate`, `below_floor`, `document_cap`, `total_cap` (any other value: `ValueError` in `build`) | trusted |
+| fact `hidden_characters` | bool: the text holds a code point of category Cf, Co or Cn, or of the 0007 R4 list, that `neutralize` keeps | trusted |
+| fact `path`, `documents[].path`, fact `text`, `numbers[]`, `entities[]` | str | **untrusted** |
+
+### `facts-json` schema 1
+
+The packaged `facts-json` template writes `{"schema": "docsentinel-facts", "schema_version": 1, ...}`
+with, in order, `notice`, `matches_ds302`, `include_rejected`, `settings` (`min_salience`,
+`max_per_document`, `max_total`, `weights.{numeric, entity, distinctiveness}`, `dedup_threshold`),
+`summary` (`documents`, `unreadable`, `claims_extracted`, `facts_selected`, `facts_listed`) and `facts`,
+each fact carrying `rank`, `path`, `paragraph_index`, `text`, `score`, `signals`, `cluster`, `numbers`,
+`entities`, `disposition` and `hidden_characters`. Output is ASCII-only with a 2-space indent.
 
 ## 7. Filters
 

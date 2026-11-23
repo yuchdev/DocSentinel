@@ -27,7 +27,7 @@ The skill rotates across the doc-source pairs over successive weekly cycles:
 ### 1. Readiness gate
 Check whether deep profile dependencies and models are installed:
 ```bash
-python -c "from docsentinel.deep_support import deep_ready; import sys; sys.exit(0 if deep_ready() else 1)"
+python -c "from docsentinel.mining.nlp import deep_ready; import sys; sys.exit(0 if deep_ready() else 1)"
 ```
 If exit code is non-zero (dependencies or model missing), print setup guidance and **stop immediately without writing a report**.
 

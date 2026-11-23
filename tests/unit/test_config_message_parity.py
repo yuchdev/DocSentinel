@@ -81,6 +81,12 @@ _INVALID: list[tuple[str, object]] = [
     ("at_reference_extensions", []),
     ("at_reference_extensions", ["md", "MD"]),
     ("at_reference_extensions", ["m.d"]),
+    ("fact_check_min_salience", 1.5),
+    ("fact_check_min_salience", True),
+    ("fact_check_min_confidence", -0.1),
+    ("fact_check_max_claims_per_document", 51),
+    ("fact_check_max_claims_total", 0),
+    ("fact_check_time_budget_seconds", 300.0),
 ]
 
 

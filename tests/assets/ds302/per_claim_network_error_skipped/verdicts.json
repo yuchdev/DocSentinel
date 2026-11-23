@@ -1,0 +1,7 @@
+{
+  "verdicts": {
+    "The Thornbury depot produced 2,150 spare rails in 2021.": {"verdict": "false", "confidence": 0.87},
+    "The Iskra relay station logged 9 outages during March 2022.": {"verdict": "false", "confidence": 0.87}
+  },
+  "fail_on": ["The Corvane weather station logged 73 storms during 2025."]
+}

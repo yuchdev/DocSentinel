@@ -1,0 +1,59 @@
+{
+  "template_version": 1,
+  "name": "facts-json",
+  "type": "json",
+  "context": "facts",
+  "description": "Fact extraction output for docsentinel extract-facts (schema docsentinel-facts 1): the run notice, settings and summary, then every listed fact in rank order with its signals, cluster, numbers, entities and disposition. ASCII-only; the authoritative form for reviewing what DS302 would send.",
+  "requires_extensions": [],
+  "schema_version": 1,
+  "output": { "indent": 2, "ensure_ascii": true, "sort_keys": false },
+  "body": {
+    "schema": "docsentinel-facts",
+    "schema_version": 1,
+    "notice": { "$var": "run.notice" },
+    "matches_ds302": { "$var": "run.matches_ds302" },
+    "include_rejected": { "$var": "run.include_rejected" },
+    "settings": {
+      "min_salience": { "$var": "run.settings.min_salience" },
+      "max_per_document": { "$var": "run.settings.max_per_document" },
+      "max_total": { "$var": "run.settings.max_total" },
+      "weights": {
+        "numeric": { "$var": "run.settings.weights.numeric" },
+        "entity": { "$var": "run.settings.weights.entity" },
+        "distinctiveness": { "$var": "run.settings.weights.distinctiveness" }
+      },
+      "dedup_threshold": { "$var": "run.settings.dedup_threshold" }
+    },
+    "summary": {
+      "documents": { "$var": "run.summary.documents" },
+      "unreadable": { "$var": "run.summary.unreadable" },
+      "claims_extracted": { "$var": "run.summary.claims_extracted" },
+      "facts_selected": { "$var": "run.summary.facts_selected" },
+      "facts_listed": { "$var": "run.summary.facts_listed" }
+    },
+    "facts": {
+      "$for": "facts",
+      "as": "f",
+      "each": {
+        "rank": { "$var": "f.rank" },
+        "path": { "$var": "f.path" },
+        "paragraph_index": { "$var": "f.paragraph_index" },
+        "text": { "$var": "f.text" },
+        "score": { "$var": "f.score" },
+        "signals": {
+          "numeric": { "$var": "f.signals.numeric" },
+          "entity": { "$var": "f.signals.entity" },
+          "distinctiveness": { "$var": "f.signals.distinctiveness" }
+        },
+        "cluster": {
+          "id": { "$var": "f.cluster.id" },
+          "size": { "$var": "f.cluster.size" }
+        },
+        "numbers": { "$var": "f.numbers" },
+        "entities": { "$var": "f.entities" },
+        "disposition": { "$var": "f.disposition" },
+        "hidden_characters": { "$var": "f.hidden_characters" }
+      }
+    }
+  }
+}

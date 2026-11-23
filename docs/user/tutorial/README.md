@@ -79,7 +79,7 @@ docsentinel doctor
 `pyproject.toml` lists `spacy>=3.8.16` as a **core** runtime dependency, so every
 `pip install docsentinel` also installs spaCy. However, as of Story 15.0,
 `import docsentinel` no longer imports spaCy at a module load: DS301's `contradictions`
-module imports its spaCy-dependent `_triples` module lazily on the first deep scan
+module imports its spaCy-dependent `mining.claims` module lazily on the first deep scan
 via `importlib.import_module`. Fast and standard scans never import or call any spaCy
 API. Whether to remove spaCy from the core dependencies in `pyproject.toml` is an
 open product decision; it does not affect fast or standard scan correctness or the
