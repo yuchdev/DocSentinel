@@ -65,7 +65,7 @@ Coverage is opt-in because `pytest-cov` is not a project dependency:
 uv run --with pytest-cov pytest --cov=docsentinel
 ```
 
-Do not add `-p docsentinel.pytest_plugin` to a coverage run: the plugin imports the package before coverage starts, which makes module-level lines look uncovered. Measured at Milestone 0005 (ten of fifteen stories closed): **96%** of 3,162 statements. The lowest modules are the deep-profile files (`detectors/_triples.py`, `detectors/contradictions.py`, `deep_support.py`) and `code_discovery.py`. `[tool.coverage.report] fail_under = 90` applies when coverage is run; it is not part of the default test command.
+Do not add `-p docsentinel.pytest_plugin` to a coverage run: the plugin imports the package before coverage starts, which makes module-level lines look uncovered. Measured at Milestone 0005 (ten of fifteen stories closed): **96%** of 3,162 statements. The lowest modules are the deep-profile files (`mining/claims.py`, `detectors/contradictions.py`, `mining/nlp.py`) and `code_discovery.py`. `[tool.coverage.report] fail_under = 90` applies when coverage is run; it is not part of the default test command.
 
 ## Lint gates
 
@@ -79,4 +79,4 @@ Do not add `-p docsentinel.pytest_plugin` to a coverage run: the plugin imports 
 4. Update every test that hardcodes the registered fast-rule list or counts (search for the neighbouring rule codes), and the rule lists in `CLAUDE.md`, `README.md` and `docs/architecture/README.md`.
 5. For security-sensitive rules, add a filesystem-recorder test and at least four mutation checks.
 
-For the hand-run checks of the user settings file and JSON configuration, see [the user settings checklist](user-settings.md).
+For the hand-run checks of the user settings file and JSON configuration, see [the user settings checklist](user-settings.md). For the hand-run checks of the deep-profile contradiction and fact-check rules, see [the DS301/DS302 checklist](deep-profile-ds301-ds302.md).
