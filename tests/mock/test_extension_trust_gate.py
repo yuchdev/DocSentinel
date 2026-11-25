@@ -263,7 +263,7 @@ def test_env_values_other_than_exactly_one_are_refused(
         Then it exits 2 and nothing is located or imported.
 
     Boundaries:
-        - Focus: no DOCSENTINEL_DEEP_CONFIRM-style truthiness widening
+        - Focus: no lenient (1/true/yes) truthiness widening
         - Fixtures/params: one value per case
         - Scope: CLI scan
 

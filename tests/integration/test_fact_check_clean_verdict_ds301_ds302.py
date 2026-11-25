@@ -90,7 +90,7 @@ def test_cli_clean_verdict_exits_zero_with_only_the_ds301_problem(
 
     Scenario:
         Given the both_gates_on_clean_verdict corpus and the case fake registered as the default lenz backend
-        When "docsentinel scan ROOT --profile deep --i-understand-deep-is-heuristic --use-external-api
+        When "docsentinel scan ROOT --profile deep --use-external-api
             --format json" runs with the sentinel lenz key
         Then the exit code is 0, the report has exactly one problem (DS301 on ledger.md) and the fake
             received the three claims
@@ -113,7 +113,6 @@ def test_cli_clean_verdict_exits_zero_with_only_the_ds301_problem(
             str(case.root),
             "--profile",
             "deep",
-            "--i-understand-deep-is-heuristic",
             "--use-external-api",
             "--format",
             "json",

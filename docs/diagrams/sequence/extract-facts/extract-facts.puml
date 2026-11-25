@@ -26,7 +26,7 @@ rep -> tel : FactsModel.build, render_template
 tel --> rep : text
 rep --> cli : report
 note over engine, ds302
-  No deep_confirm, no API key, no environment gate,
+  No API key, no environment gate,
   no fact_check/ backend import, no socket.
 end note
 @enduml

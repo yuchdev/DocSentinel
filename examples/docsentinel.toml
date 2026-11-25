@@ -37,9 +37,6 @@ min_document_words = 50         # DS201: skip documents with fewer prose words
 min_paragraph_words = 5         # DS202/DS203: skip paragraphs with fewer words
 min_paragraph_chars = 30        # DS202/DS203: skip paragraphs shorter than this
 
-# Deep profile only: acknowledge that DS301 is heuristic and advisory.
-deep_confirm = false
-
 # Deep profile only: DS302 external fact-check (sends claim sentences to a third party; advisory).
 # These keys only tune it. It also needs the invoker's --use-external-api and an API key in the
 # environment; neither is a configuration key, so nothing here can switch it on. Defaults shown.

@@ -188,7 +188,7 @@ _CLOSED_GATE_PROBE = f"""
     engine.deep_ready = lambda: True  # the spaCy model is an external resource
     root = pathlib.Path(tempfile.mkdtemp())
     (root / "a.md").write_text("# A\\n\\nAcme shipped 3 releases in 2024.\\n", encoding="utf-8")
-    result = engine.scan(root, config=Config(profile="deep", deep_confirm=True, select=("DS302",)))
+    result = engine.scan(root, config=Config(profile="deep", select=("DS302",)))
     loaded = [name for name in {_CLOSED_GATE_MODULES!r} if name in sys.modules]
     print(json.dumps({{"enabled": list(result.enabled_rules), "pending": list(result.pending), "loaded": loaded}}))
 """
@@ -255,7 +255,7 @@ _FULL_DEEP_CLOSED_GATE_PROBE = (
     root = pathlib.Path(tempfile.mkdtemp())
     (root / "a.md").write_text("# A\\n\\nAcme shipped 3 releases in 2024.\\n", encoding="utf-8")
     (root / "b.md").write_text("# B\\n\\nAcme shipped 5 releases in 2024.\\n", encoding="utf-8")
-    result = engine.scan(root, config=Config(profile="deep", deep_confirm=True))
+    result = engine.scan(root, config=Config(profile="deep"))
     print(json.dumps({"ready": True, "enabled": list(result.enabled_rules), "pending": list(result.pending),
         "lenz": "docsentinel.fact_check.lenz" in sys.modules, "opened": opened}))
 """

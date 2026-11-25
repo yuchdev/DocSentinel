@@ -1,10 +1,15 @@
 # Manual test checklist: deep-profile contradiction and fact-check rules (DS301, DS302)
 
-This checklist exercises the two deep-profile rules by hand: `DS301` (fact-contradiction
-candidate), which is fully implemented, and `DS302` (external fact-check disagreement), which is
-mid-implementation under Milestone 0010 (see the status callout in [Use case 2](#use-case-2--ds302-external-fact-check-disagreement)
-before running those steps). Both rules are advisory-only: they never fail a scan, regardless of
-`--strict` (deep findings always exit `0`).
+This checklist exercises the deep profile by hand in three passes. `DS301` finds two documents
+that disagree with each other. `docsentinel extract-facts` shows, offline, which claims `DS302`
+considers worth checking. `DS302` then sends exactly those claims to the Lenz API. Milestone 0010
+is complete, so all three are real. Both rules are advisory-only: they never fail a scan,
+regardless of `--strict` (deep findings always exit `0`).
+
+The deep profile no longer has a confirmation gate. `deep_confirm`, the
+`--i-understand-deep-is-heuristic` flag and `DOCSENTINEL_DEEP_CONFIRM` were all removed in
+Milestone 0010, so `--profile deep` is now enough and passing the old flag is an argparse error
+(exit `2`). `DS302` keeps its own, separate consent gate, which is the subject of use case 3.
 
 Every command below runs with `DOCSENTINEL_SETTINGS=off` so a real `~/.local/share/docsentinel/settings.json`
 on the machine running the checklist cannot change rule selection or the active profile out from
@@ -21,64 +26,75 @@ uv run python -m spacy download en_core_web_sm
 
 The deep profile needs `docsentinel[deep]` (spaCy + textacy) and the pinned `en_core_web_sm`
 model; `uv run docsentinel doctor` reports `deep profile: not ready` with install guidance until
-both are present.
+both are present, and `deep profile: ready` with two `✓` lines once they are. Note that `uv sync`
+removes the spaCy model package, because it is not in the lock file, so re-run the `spacy
+download` line after any sync.
 
 ## Use case 1 — DS301: fact-contradiction candidate (coverage discrepancy)
 
 ### Fixtures
 
-[`examples/docs/ds301-demo-coverage-report-v1.md`](/examples/docs/ds301-demo-coverage-report-v1.md) and
-[`examples/docs/ds301-demo-coverage-report-v2.md`](/examples/docs/ds301-demo-coverage-report-v2.md) each
-make one checkable claim about the same subject with a different number:
+[`examples/docs/ds301-demo-coverage-report-v1.md`](/examples/docs/ds301-demo-coverage-report-v1.md)
+is a contributor guide to the test suite;
+[`examples/docs/ds301-demo-coverage-report-v2.md`](/examples/docs/ds301-demo-coverage-report-v2.md)
+is a quarterly report written for a review meeting. They are deliberately different kinds of
+document in different voices, both about testing, and each states the quarter's coverage figure in
+the middle of ordinary prose:
 
 ```md
-# Coverage report — Q1 2026
-
-DocSentinel scored 85 on the test coverage benchmark this quarter.
+Coverage is measured on demand rather than on every run, because the coverage plugin is not a
+project dependency. DocSentinel scored 85 on the test coverage benchmark this quarter, which sits
+above the configured floor but below where the deep-profile modules ought to be.
 ```
 
 ```md
-# Coverage report — Q2 2026
-
-DocSentinel scored 90 on the test coverage benchmark this quarter.
+The suite ended the quarter green on every supported interpreter, with two deliberate skips and no
+flakes recorded in the nightly runs. This quarter DocSentinel scored 90 on the test coverage, and
+the reviewers accepted that figure as the baseline for the next period.
 ```
 
 `DS301` works by extracting a subject-verb-object (SVO) triple per paragraph (`mining/claims.py`,
 via textacy over the pinned spaCy model) and normalizing the subject and predicate to a
-`(subject_key, predicate_key)` grouping key — here `("docsentinel", "scored")` for both documents.
-Two claims in the same group "disagree" when their extracted object numbers are both non-empty
-and disjoint (`{85}` vs. `{90}`); the same rule applies to named entities when numbers are absent.
-This is why the wording matters: a copula sentence like "DocSentinel's test coverage is 85
-percent" does **not** reliably produce a usable claim here — textacy's SVO extractor only
+`(subject_key, predicate_key)` grouping key — here `("docsentinel", "scored")` for both documents,
+even though the sentences are worded differently and put "this quarter" in different places. Two
+claims in the same group "disagree" when their extracted object numbers are both non-empty and
+disjoint (`{85}` vs. `{90}`); the same rule applies to named entities when numbers are absent.
+
+Because the claims sit inside real paragraphs, this fixture pair also shows the rule's
+selectivity: the two documents yield **24** claims between them, and only the coverage pair is
+reported. Everything else — release counts, interpreter names, skip counts — either fails to group
+or has no competing number.
+
+The wording of the claim itself still matters, though. A copula sentence like "DocSentinel's test
+coverage is 85 percent" does **not** reliably produce a usable claim: textacy's SVO extractor only
 populates `object_numbers` when the number is the head of the object span, not when it modifies a
 following noun phrase (`"85 percent test coverage"` parses with the object span starting after the
-`85`). The two fixtures above were verified against the live extractor before being committed.
+`85`). Both fixtures were verified against the live extractor.
 
 ### Checklist
 
 | # | Step | Expected |
 |---|------|----------|
-| 1 | `DOCSENTINEL_SETTINGS=off uv run docsentinel scan examples/docs --include ds301-demo-coverage-report-v1.md --include ds301-demo-coverage-report-v2.md --profile deep --i-understand-deep-is-heuristic` | Exit `0`; one `DS301 fact-contradiction candidate` finding on `ds301-demo-coverage-report-v2.md`: `candidate contradiction: subject 'DocSentinel' claimed as '85' in ds301-demo-coverage-report-v1.md but '90' in ds301-demo-coverage-report-v2.md - review to confirm` |
+| 1 | `DOCSENTINEL_SETTINGS=off uv run docsentinel scan examples/docs --include ds301-demo-coverage-report-v1.md --include ds301-demo-coverage-report-v2.md --profile deep` | Exit `0`; exactly one `DS301 fact-contradiction candidate` finding on `ds301-demo-coverage-report-v2.md`: `candidate contradiction: subject 'DocSentinel' claimed as '85' in ds301-demo-coverage-report-v1.md but '90' in ds301-demo-coverage-report-v2.md - review to confirm` |
 | 2 | Same command, but scan only `--include ds301-demo-coverage-report-v1.md` | Exit `0`; `0 findings`: a lone claim has nothing to disagree with |
-| 3 | Run step 1 without `--i-understand-deep-is-heuristic` and without `DOCSENTINEL_DEEP_CONFIRM=1` | Exit `0` (not `2` — the gate is a graceful skip, not a failure): `WARNING: deep profile skipped: not confirmed (...)`, `Enabled rules: []`, `0 findings`, and a `Pending:` line naming the three ways to confirm |
-| 4 | Run step 1 with `-v` | stderr DEBUG line `DS301: 2 claims compared, 1 candidates` (from `contradictions.py`) |
-| 5 | Record a baseline: `DOCSENTINEL_SETTINGS=off DOCSENTINEL_DEEP_CONFIRM=1 uv run docsentinel baseline <scratch copy of the two files> --profile deep --output baseline.json`, then re-scan with `--baseline baseline.json` | The baseline file holds one `DS301:...` fingerprint; the re-scan reports `0 findings` and logs `1 fingerprints, 1 findings suppressed` — the standard "reviewed, now a non-issue" workflow |
+| 3 | Run step 1 with no confirmation flag and no confirmation environment variable | Exit `0`; `DS301` runs and reports. The deep-confirm gate (`deep_confirm` / `--i-understand-deep-is-heuristic` / `DOCSENTINEL_DEEP_CONFIRM`) was **removed** in Milestone 0010, so passing the old flag now fails with `unrecognized arguments` (exit `2`). The advisory notice `1 deep rule(s) evaluated (heuristic, advisory-only).` is still printed |
+| 4 | Run step 1 with `-v` | stderr DEBUG lines `DS301: 24 claims compared, 1 candidates` (from `contradictions.py`) and `DS301: 1 findings in <n>s`. The claim count is the selectivity check: many claims, one candidate |
+| 5 | Record a baseline: `DOCSENTINEL_SETTINGS=off uv run docsentinel baseline <scratch copy of the two files> --profile deep --output baseline.json`, then re-scan with `--baseline baseline.json` | The baseline file holds one `DS301:ds301-demo-coverage-report-v2.md:<hash>` fingerprint; the re-scan reports `0 findings` and logs `1 fingerprints, 1 findings suppressed` — the standard "reviewed, now a non-issue" workflow. The fingerprint is rule + path + message, so editing the surrounding prose does not invalidate it |
 | 6 | Add `ignore = ["DS301"]` to a `[tool.doc_sentinel]` config at the scan root, re-run step 1 | `Enabled rules` drops `DS301`; `profile=deep: 1 rules selected, 0 evaluated`; `0 findings` |
-| 7 | `uv run docsentinel scan --format json examples/docs --include ds301-demo-coverage-report-v1.md --include ds301-demo-coverage-report-v2.md --profile deep --i-understand-deep-is-heuristic` | Schema-2 JSON (`"schema_version": 2`); the finding appears under `documents[1]` (`path: "ds301-demo-coverage-report-v2.md"`) with `"severity": "warning"`, `"fault_class": "contradiction_candidate"`, `"tier": "heuristic"`, `"outcome": "advisory"`; `documents[0]` (`v1.md`) has an empty `problems` array |
+| 7 | `uv run docsentinel scan --format json examples/docs --include ds301-demo-coverage-report-v1.md --include ds301-demo-coverage-report-v2.md --profile deep` | Schema-2 JSON (`"schema_version": 2`); the finding appears under the `ds301-demo-coverage-report-v2.md` document entry with `"severity": "warning"`, `"fault_class": "contradiction_candidate"`, `"tier": "heuristic"`, `"outcome": "advisory"`; the `v1.md` entry has an empty `problems` array |
 
 ### Adjusting DS301's weights and parameters
 
-`DS301` is the odd one out in `docsentinel.toml`: unlike `DS201`–`DS204`, it exposes **no**
-`Config` field at all — `detect(root, documents)` does not even take a `config` argument (confirm
-with `grep -n "contradiction\|DS301" src/docsentinel/config.py`, which matches nothing). There is
-no numeric "contradiction threshold" to raise or lower from the command line or
-`docsentinel.toml`. The real levers are:
+`DS301` is the odd one out in `docsentinel.toml`: unlike `DS201`–`DS204` and `DS302`, it exposes
+**no** `Config` field at all — `detect(root, documents)` does not even take a `config` argument
+(confirm with `grep -n "contradiction\|DS301" src/docsentinel/config.py`, which matches nothing,
+and with the `—` in the options column of its row in `docs/user/reference/rules.md`). There is no
+numeric "contradiction threshold" to raise or lower from the command line or `docsentinel.toml`.
+The real levers are:
 
 - **Rule selection**, not rule tuning: `select = ["DS3"]` to run only deep rules, or
   `ignore = ["DS301"]` to turn it off entirely (checklist step 6). This changes *whether* it runs,
   not *how sensitively* it matches.
-- **The consent gate**: `deep_confirm = true` / `--i-understand-deep-is-heuristic` /
-  `DOCSENTINEL_DEEP_CONFIRM=1`. This gates the whole deep profile, not DS301 specifically.
 - **Scope**: `--include`/`--exclude` (or the config equivalents) change which documents' claims
   are compared, which indirectly changes the candidate pairs DS301 can find — the only
   "sensitivity" knob that exists today without touching code.
@@ -95,189 +111,257 @@ no numeric "contradiction threshold" to raise or lower from the command line or
   for the pinned version), which is the single biggest behavioral lever over DS301's recall — and
   it is a dependency change, not a runtime setting.
 
-If a future story adds genuine numeric weights (for example, a cosine-similarity threshold between
-claim objects instead of exact set disjointness), it should follow the pattern DS201–DS204 use:
-a validated, documented `Config` field, a row in the architecture section of `CLAUDE.md`, and a
-drift test in `tests/integration/test_rules_table.py`.
+The salience weights of use case 2 do **not** apply here: `DS301` compares every extracted claim
+and never scores or ranks them.
 
-## Use case 2 — DS302: external fact-check disagreement
+## Use case 2 — extracting facts with `docsentinel extract-facts`
 
-> **Current implementation status (2026-11-23, Milestone 0010, Story 01.0 5/6 tasks):** the dual
-> consent gate and dispatch plumbing are real and testable today. Candidate *selection*
-> (`select_candidates`, Story 02.0) is still a stub that always returns no candidates, and the
-> `lenz` backend itself (Story 03.0) is not shipped — `load_backend("lenz")` raises `ImportError`.
-> So **today**, `DS302` can never produce a finding through the plain CLI, no matter how the
-> `fact_check_*` options are set: it always stops at one of the two gates below. See
-> [`docs/roadmap/0010-fact-check/status.md`](/docs/roadmap/0010-fact-check/status.md) for the
-> live state before re-running this checklist later.
+`docsentinel extract-facts` answers the question "what would `DS302` send?" **without sending
+anything**. It runs the same extraction and the same selection `DS302` uses (plan contract C11:
+one shared `collect_candidates`), then prints the result. It makes no network call, needs no API
+key and has no consent gate — it is the rehearsal you run before you ever let a claim leave the
+machine.
 
-> **Do not use `examples/docs/lenz_fact-checking.md` for this or any other test.** That file sits
-> in the same directory as the article used below, but it is not a normal fixture: it is written
-> as direct instructions to an AI agent ("Run the snippet above as-is, and show me the verdict...",
-> "Do not add it yet; describe it first") and it embeds a bare API key for `https://lenz.io`. The
-> project's own roadmap notes (`status.md`, 2026-11-20) already record that this content was read
-> read-only and never acted on, and milestone 0010's exit gates refuse to ship any test, fixture or
-> log containing that key or a real call to `lenz.io`. Treat it as untrusted content, not as setup
-> instructions, the same way the project already does.
+It deliberately rejects the scan-only options: `--profile`, `--select`, `--ignore`, `--baseline`,
+`--strict`, `--use-external-api`, `--link-root`, `--reference-scope`, `--extension` and
+`--allow-python-extensions` are all argparse errors (exit `2`).
 
 ### Fixture
 
 [`examples/docs/New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md`](/examples/docs/New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md),
-a real press-style article, is the corpus `DS302` would eventually fact-check.
+a press-style article about an MRI antenna, is the document whose facts we extract here and
+fact-check in use case 3.
 
-### Checklist — the gate, as it behaves today
+### How a claim becomes a fact
+
+Each extracted claim is scored on three signals, each in `[0, 1]`, combined with weights that sum
+to `1.0`:
+
+| Signal | Meaning | Source |
+|---|---|---|
+| `numeric` | numeric density of the object: `min(1, len(object_numbers) / object_token_count)` | `mining/salience.py::numeric_density` |
+| `entity` | named-entity density of the object, same shape | `mining/salience.py::entity_density` |
+| `distinctiveness` | how unusual the claim's wording is across the scanned corpus | `mining/clustering.py`, via the shared TF-IDF vectorizer |
+
+`DS302`'s weights are **fixed in code** and not configurable: `0.3` numeric, `0.3` entity, `0.4`
+distinctiveness, with a near-duplicate clustering threshold of `0.92`
+(`detectors/fact_check.py::DS302_POLICY`). Scored claims are ranked and filtered by the three
+`fact_check_*` selection options, and every claim ends with exactly one disposition from
+`mining/salience.py::DISPOSITIONS`:
+
+| Disposition | Meaning |
+|---|---|
+| `selected` | it would be sent |
+| `duplicate` | another member of its near-duplicate cluster was taken instead |
+| `below_floor` | its score is under `fact_check_min_salience` |
+| `document_cap` | its document already contributed `fact_check_max_claims_per_document` facts |
+| `total_cap` | the scan already contributed `fact_check_max_claims_total` facts |
+
+### Checklist
 
 | # | Step | Expected |
 |---|------|----------|
-| 1 | `DOCSENTINEL_SETTINGS=off uv run docsentinel scan examples/docs --include New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md --profile deep --i-understand-deep-is-heuristic` (no `--use-external-api`, no key) | Exit `0`; stderr `WARNING: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY`; the text report's `Pending:` line repeats it; zero `DS302` findings |
-| 2 | Same, with `--use-external-api` but no key set | A shorter message, not the identical one: `WARNING: DS302 skipped: set DOCSENTINEL_FACTCHECK_LENZ_API_KEY` — the "pass --use-external-api" clause drops out because that half of the gate is now satisfied; only the still-missing key is named |
-| 3 | Same, with `DOCSENTINEL_FACTCHECK_LENZ_API_KEY=test-only-not-real DOCSENTINEL_USE_EXTERNAL_API=1` (both halves of the gate now open) | `WARNING: DS302 skipped: backend lenz not available` — the gate opened, but Story 03.0 has not shipped the backend yet |
-| 4 | `DOCSENTINEL_SETTINGS=off uv run docsentinel doctor` with nothing set | A line `fact-check gate: off (pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY)` |
-| 5 | `doctor` with only `DOCSENTINEL_FACTCHECK_LENZ_API_KEY` set | `fact-check gate: off (pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1))` — `doctor` always resolves as if the flag were absent, per its own docstring |
-| 6 | `doctor` with both the key and `DOCSENTINEL_USE_EXTERNAL_API=1` set | `fact-check gate: off (backend lenz not available)` |
-| 7 | Confirm no network call is attempted in any of the above: run step 1 under a sandbox with outbound network disabled | Identical output; `DS302` returns before importing a backend module or reading any document for fact-checking (`fact_check.py` docstring: "a closed gate logs one WARNING and returns before any document is read") |
+| 1 | `DOCSENTINEL_SETTINGS=off uv run docsentinel extract-facts examples/docs --include New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md` | Exit `0`, no network. INFO `extract-facts: 1 documents read, 37 claims, 1 selected, 1 listed (policy ds302)`; exactly one fact is printed: `#1 score 0.610052 (numeric 0.0, entity 1.0, distinct 0.775131) cluster 11/1 paragraph 8: The project brought together experts in MRI physics, ...`; the footer reads `Matches the DS302 selection for this configuration: yes` |
+| 2 | Read the trailing notice | `Heuristic, offline claim extraction; no network call was made and nothing was verified.` followed by the statement that the selected facts are what `DS302` would send *if* it ran with both gates open on the same configuration, and that `fact_check_time_budget_seconds` can stop it earlier |
+| 3 | Re-run with `--all` | All `37` claims are listed, each with its disposition appended: `1 selected`, `8 duplicate`, the rest `below_floor`. Footer: `Facts: 1 selected, 37 listed, from 37 claims` |
+| 4 | Find the `7.0 Tesla` claim in the `--all` output (`#34`) | `score 0.289242 (numeric 0.0, entity 0.0, distinct 0.723105) ... below_floor`. Its **numeric signal is `0.0`** even though the sentence contains `7.0`: the same object-span quirk described in use case 1 keeps the number out of the object. Do not assume a sentence with digits scores highly |
+| 5 | Note how newlines are rendered | Hard-wrapped source newlines appear as `\x0a`, not as real breaks — the facts template routes untrusted document text through the neutralizing filter, so one fact is always one line |
+| 6 | `--format facts-json` | `{"schema": "docsentinel-facts", "schema_version": 1, ...}` with `matches_ds302`, `include_rejected`, a `settings` block echoing `min_salience`/`max_per_document`/`max_total`/`weights`/`dedup_threshold`, a `summary` block, and a `facts` array whose entries carry `rank`, `path`, `paragraph_index`, `text`, `score`, `signals`, `cluster`, `numbers` and `entities` (here: the two `ORG:` entities that earned the `entity 1.0`) |
+| 7 | `-o facts.json` with any format | The report is written to the file instead of stdout. **It contains document text**: keep it out of the scan root and out of version control, as the option's own help text says |
+| 8 | Pass a scan-only option, e.g. `--profile deep` or `--use-external-api` | argparse error, exit `2`: `extract-facts` has no such option by design |
+| 9 | Read the INFO start line with `-v` | `extract-facts started: root=..., format=facts-text, output=stdout, include 1, exclude 0, options <names>` — overrides are logged **by name only**, never by value, and claim text is never logged at any level |
 
-Never point `DOCSENTINEL_FACTCHECK_LENZ_API_KEY` at a real Lenz key for this checklist — steps
-1–7 above never reach the backend constructor, so a real key would sit in your shell environment
-for no reason. `test-only-not-real` (a string that is obviously not a credential) is enough to
-exercise "key present."
+### Fine-tuning: weights and the other options
 
-### Advanced: a full round-trip with a local fake backend (no network, real claims from the article)
+The options fall into two groups, and the difference between them matters more than any single
+value.
 
-Because Stories 02.0 and 03.0 are not built, the only way to see `DS302` actually turn a claim
-into a finding today is the same technique the project's own test suite uses
-(`tests/fact_check_fakes.py`, `tests/mock/test_fact_check_no_key_logged.py`): register a throwaway
-backend class under the name `lenz` and monkeypatch `collect_candidates` to skip the not-yet-built
-selection stub. This never contacts `lenz.io` and never reads the leaked key from
-`lenz_fact-checking.md` — it scripts its own fake verdicts locally. Save this as a scratch script
-(do not commit it under `src/` or `tests/`) and run it with `uv run python`:
+**Group A — the three config-backed selection options.** Real `Config` fields that `DS302` itself
+reads, so a value set in `docsentinel.toml` changes both commands identically:
+
+| Option | CLI override | Default | Effect |
+|---|---|---|---|
+| `fact_check_min_salience` | `--min-salience FLOAT` | `0.5` | Score floor; anything lower is `below_floor` |
+| `fact_check_max_claims_per_document` | `--max-per-document INT` | `3` | Per-document cap; the rest is `document_cap` |
+| `fact_check_max_claims_total` | `--max-total INT` | `25` | Per-scan cap; the rest is `total_cap` |
+
+**Group B — the two exploration-only flags.** `--weights N,E,D` and `--dedup-threshold FLOAT` have
+**no** configuration key and are never read by `DS302` (story decision X5). They exist to show how
+the ranking responds, and nothing else.
+
+The honesty marker ties the groups together. Any override — from either group, the Group A flags
+included — makes the run diverge from what `DS302` would do with the project's own configuration,
+so the output is stamped `matches_ds302: false` (`Matches the DS302 selection for this
+configuration: no`). Setting the *same* value in the config file instead keeps it `true`. That is
+the first thing to check when deciding whether a preview is trustworthy as a prediction:
+
+| # | Experiment | Verified result |
+|---|---|---|
+| 10 | `--min-salience 0.32` on the article | `3 selected`, and `matches_ds302 false` — the preview no longer predicts `DS302` |
+| 11 | The same floor as `fact_check_min_salience = 0.32` in a `[tool.doc_sentinel]` config, with no CLI flag | The **same** `3 selected`, but `matches_ds302 true`. Identical selection, different trustworthiness: configure the floor rather than flagging it when you want the preview to mean something |
+| 12 | `--weights 0,0,1` (pure distinctiveness) | A different ranking: `#1` becomes the `0.929364`-distinctiveness sentence about larger clinical studies, and the entity-rich sentence the defaults put first drops away. `3 selected` — here the **document cap** binds, not the floor |
+| 13 | `--weights 1,0,0 --min-salience 0.0` (pure numeric) | **Every** score collapses to `0.0`, because no claim in this article has a number inside its object span. With all scores tied, order falls back to the deterministic `(path, paragraph_index, raw_sentence)` tie-break, giving paragraphs `0`, `1`, `4` — document order, capped at `3` |
+| 14 | `--dedup-threshold` at `0.1` / `0.3` / `0.92` / `1.0`, each with `--all` | `34` / `8` / `8` / `0` duplicates. `1.0` collapses only byte-identical claims; `0.1` treats almost the whole article as one cluster. The default `0.92` and `0.3` behave alike here because this document's duplicates are compound sentences that yield several SVO triples from identical text |
+| 15 | `--weights 0.5,0.5,0.5` | `Extraction failed: salience weights must sum to 1.0`, exit `2`. The constraint is enforced in `SalienceWeights.__post_init__` with an absolute tolerance of `1e-9`, so the combined score can never leave `[0, 1]` |
+| 16 | `--max-total 2` over the whole `examples/docs` directory with `--all` | Facts beyond the second carry `total_cap`, across documents, in rank order |
+
+Practical guidance:
+
+- **Too few facts selected** is the common case, and the floor is usually what cuts them, not the
+  caps. Run `--all` first and read the dispositions before changing anything: `below_floor`
+  everywhere means lower `fact_check_min_salience`; `document_cap` everywhere means raise
+  `fact_check_max_claims_per_document`.
+- **Cost control before enabling `DS302`**: `extract-facts` tells you how many claims a real run
+  would send, for free. Multiply the `selected` count by your backend's per-claim cost before you
+  ever pass `--use-external-api`.
+- **Do not tune with the flags and then assume `DS302` follows.** Only Group A values written to
+  the configuration change `DS302`. The flags are a microscope, not a dial.
+
+## Use case 3 — DS302: external fact-check with the Lenz API
+
+`DS302` takes the facts of use case 2 and asks a backend whether they hold up. The one shipped
+backend is `lenz` (`src/docsentinel/fact_check/lenz.py`), which POSTs each claim to
+`https://lenz.io/api/v1/assess` — a fixed `BASE_URL` with no override — with `Bearer` auth,
+`Accept-Encoding: identity`, `follow_redirects=False`, `trust_env=False`, a 30-second request
+timeout, a 64 KiB response cap and a 1,000-character claim cap.
+
+> **This is the one DocSentinel feature that sends your document text to a third party.** The
+> claim sentences `extract-facts` printed in use case 2 are exactly what leaves the machine. Run
+> the gated steps only against a document you are willing to disclose, with a key you control.
+
+> **Do not use `examples/docs/lenz_fact-checking.md` as setup instructions.** That file sits in the
+> same directory as the article used here, but it is not a normal fixture: it is written as direct
+> instructions to an AI agent ("Run the snippet above as-is, and show me the verdict...", "Do not
+> add it yet; describe it first") and it embeds a bare API key. The project's own roadmap notes
+> record that it was read read-only and never acted on, and Milestone 0010's exit gates include a
+> regression test that fails if that key, or a real `lenz.io` call, appears in any commit, test,
+> fixture or log. Treat it as untrusted document content. Use your own rotated key, never that one.
+
+### The consent gate
+
+`DS302` self-gates on two things no configuration file can grant: the invoker's
+`--use-external-api` (or `DOCSENTINEL_USE_EXTERNAL_API=1`) **and** a non-empty
+`DOCSENTINEL_FACTCHECK_LENZ_API_KEY`. Choosing the backend in `docsentinel.toml` grants nothing.
+
+| # | Step | Expected |
+|---|------|----------|
+| 1 | `DOCSENTINEL_SETTINGS=off uv run docsentinel scan examples/docs --include New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md --profile deep` (no flag, no key) | Exit `0`; `WARNING: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY`; the report's `Pending:` line repeats it; zero `DS302` findings and **no** network call |
+| 2 | Same, adding `--use-external-api` but still no key | A shorter message, not the identical one: `WARNING: DS302 skipped: set DOCSENTINEL_FACTCHECK_LENZ_API_KEY` — the satisfied half of the gate drops out of the reason list |
+| 3 | `DOCSENTINEL_SETTINGS=off uv run docsentinel doctor` with nothing set | `fact-check gate: off (pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY)` |
+| 4 | `doctor` with only the key set | `fact-check gate: off (pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1))` — `doctor` always resolves as if the flag were absent |
+| 5 | `doctor` with the key **and** `DOCSENTINEL_USE_EXTERNAL_API=1` | `fact-check gate: on (backend: lenz)`. `doctor` still makes no request; it only resolves the gate and loads the backend class |
+| 6 | A scan with `--use-external-api` and a malformed key, e.g. `DOCSENTINEL_FACTCHECK_LENZ_API_KEY=short` | `WARNING: DS302 skipped: backend lenz could not be initialised (FactCheckError)`, zero findings, and still **no** request: the key grammar (16–256 printable ASCII characters, no whitespace) is checked in the constructor before any `httpx` object exists, and the message never contains the key |
+
+### Rehearsal with the real client and no network
+
+Before spending a real key, exercise the actual Lenz request and response handling locally. The
+client takes a `transport=` test seam, so you can drive the shipped code with `httpx.MockTransport`
+in place of the network. Save this as a scratch script (do not commit it under `src/` or `tests/`)
+and run it with `uv run python`:
 
 ```python
+import json
 import os
-from pathlib import Path
+
+import httpx
 
 from docsentinel import scan
 from docsentinel.config import Config
-from docsentinel.detectors import fact_check
-from docsentinel.fact_check.protocol import FACT_CHECK_BACKENDS, FactCheckResult
-from docsentinel.mining import claims, nlp
+from docsentinel.fact_check.lenz import LenzFactCheckClient
+from docsentinel.fact_check.protocol import FACT_CHECK_BACKENDS
 
-ROOT = Path("examples/docs")
 ARTICLE = "New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md"
+KEY_ENV = "DOCSENTINEL_FACTCHECK_LENZ_API_KEY"
+sent = []
 
 
-class LocalFakeLenz:
-    name = "lenz"
-    API_KEY_ENV_VAR = "DOCSENTINEL_FACTCHECK_LENZ_API_KEY"
+class _Stream(httpx.SyncByteStream):
+    """A streamed body: the client refuses an already-read content= response."""
 
-    def __init__(self, *, api_key: str):
-        self._api_key = api_key  # never logged, never returned
+    def __init__(self, data):
+        self._data = data
 
-    def check_claim(self, claim: str) -> FactCheckResult:
-        if "7.0 Tesla" in claim:
-            return FactCheckResult(verdict="mixed", confidence=0.72, backend="lenz", citations=())
-        return FactCheckResult(verdict="true", confidence=0.95, backend="lenz", citations=())
+    def __iter__(self):
+        yield self._data
 
     def close(self):
         pass
 
 
-def main() -> None:
-    pipeline = nlp.load_pipeline()
-    text = (ROOT / ARTICLE).read_text(encoding="utf-8")
-    extracted = claims.extract_claims(pipeline, text, ARTICLE)
-    picked = [
-        c for c in extracted
-        if "7.0 Tesla" in c.raw_sentence or "has developed a new MRI antenna" in c.raw_sentence
-    ]
-    candidates = tuple(
-        fact_check.CandidateClaim(claim=c, text=c.raw_sentence.strip()[:1000], score=0.9) for c in picked
-    )
-
-    FACT_CHECK_BACKENDS["lenz"] = LocalFakeLenz
-    os.environ["DOCSENTINEL_FACTCHECK_LENZ_API_KEY"] = "local-fake-key-not-real"
-    original = fact_check.collect_candidates
-    fact_check.collect_candidates = lambda root, documents, config: candidates
-    try:
-        config = Config(profile="deep", deep_confirm=True, fact_check_backend="lenz")
-        result = scan(ROOT, config=config, use_external_api=True)
-    finally:
-        fact_check.collect_candidates = original
-        del FACT_CHECK_BACKENDS["lenz"]
-        os.environ.pop("DOCSENTINEL_FACTCHECK_LENZ_API_KEY", None)
-
-    for finding in result.findings:
-        print(finding.rule, finding.path, "|", finding.message)
+def handler(request):
+    claim = json.loads(request.content)["claim"]
+    sent.append(claim)
+    print(f"  [mock] POST {request.url}  auth sent: {'authorization' in request.headers}")
+    print(f"  [mock] claim ({len(claim)} chars): {claim[:70]!r}...")
+    body = json.dumps({"claims": [{"claim": claim, "verdict": "false", "confidence": 0.78}]}).encode()
+    return httpx.Response(200, headers={"content-type": "application/json"}, stream=_Stream(body))
 
 
-if __name__ == "__main__":
-    main()
+class RehearsalLenz(LenzFactCheckClient):
+    def __init__(self, api_key):
+        super().__init__(api_key, transport=httpx.MockTransport(handler))
+
+
+FACT_CHECK_BACKENDS["lenz"] = RehearsalLenz
+os.environ[KEY_ENV] = "rehearsal-key-not-a-real-credential"
+try:
+    result = scan("examples/docs", config=Config(profile="deep"), use_external_api=True, include=[ARTICLE])
+finally:
+    del FACT_CHECK_BACKENDS["lenz"]
+    os.environ.pop(KEY_ENV, None)
+
+print(f"--- claims sent: {len(sent)} ---")
+for finding in result.findings:
+    print(f"  {finding.rule} | {finding.message}")
+    print(f"       value: {finding.value}")
 ```
 
 | # | Step | Expected |
 |---|------|----------|
-| 8 | Run the script as written | One `DS302 external fact-check disagreement` finding on the article: `external fact-check: '...7.0 Tesla MRI scanner.' rated mixed by lenz - review to confirm`. The "team ... has developed a new MRI antenna" claim is rated `true` at confidence `0.95` and produces **no** finding: `true` is not in `REPORTABLE_VERDICTS` (`{"false", "mixed"}`) |
-| 9 | Add `fact_check_min_confidence=0.72` to the `Config(...)` call (exactly the scripted confidence), re-run | Still one finding: the comparison in `_check_candidates` is `result.confidence >= min_confidence`, inclusive |
-| 10 | Change it to `0.73` (one hundredth above the scripted confidence), re-run | Zero findings: the floor is now strictly above `0.72` |
-| 11 | Set `fact_check_min_salience=0.99` (the least permissive value the field allows) and, separately, `fact_check_max_claims_per_document=1`, re-run each | **Identical** one-finding result both times — in this interim build `collect_candidates` is monkeypatched directly, so `select_candidates` (the only place that reads these two fields) is never called at all. A verified no-op, not a guess: confirmed by also calling `validate_fact_check_option("fact_check_min_salience", 1.5)` directly, which still raises `ConfigError: fact_check_min_salience must be a number between 0 and 1` — the validator works, nothing in this interim path calls it with the live value |
-| 12 | Give the fake backend a 0.6s delay per call, set `fact_check_time_budget_seconds=1`, and send 3 candidates ordered so the one scripted `mixed` verdict is **third** | Zero `DS302` findings, and `result.pending` stays `()` — the skip is **not** surfaced there. Attach a logger instead: it shows `DS302: time budget of 1 s exhausted; 1 of 3 claim(s) not checked` and `... 2 sent ... 1 not sent (time budget)`. A QA pass that only reads the rendered report's `Pending:` line, rather than the log, will not notice a time-budget cutoff happened |
-| 13 | Register a second fake backend (a well-formed name — `BACKEND_NAME_PATTERN` is `^[a-z][a-z0-9]{0,31}$`, no hyphen or underscore) that rates everything `false` at confidence `0.99`, set `fact_check_backend` to its name, re-run | Both candidates become findings: the "true" antenna claim now also reports, because the *backend*, not DS302's own logic, produced the verdict. Confirms `fact_check_backend` genuinely switches which service's opinion is trusted |
-| 14 | Set `fact_check_backend` to a well-formed but unregistered name, e.g. `"unknownbackend"` | `ConfigError: fact_check_backend must be one of: lenz` — a typo in the backend name fails closed before any candidate is touched, exactly like an unknown value for any other enum-validated option |
+| 7 | Run the script as written | `claims sent: 1`, and the claim is **the exact fact use case 2 selected** — the 170-character "The project brought together experts in MRI physics, ..." sentence. This is the contract between the two commands: `extract-facts` predicts the send list, `DS302` sends it |
+| 8 | Read the finding | One `DS302` finding: `external fact-check: '<claim>' rated false by lenz - review to confirm`, with the confidence only in the report-only `value` field: `false (confidence 0.78): <claim>`. Keeping the confidence out of `message` is what makes baseline fingerprints stable when a verdict's confidence wobbles between runs |
+| 9 | Change the scripted verdict to `"mixed"` and re-run | **Zero findings**, plus `WARNING: DS302: fact-check failed for a claim in <path> (FactCheckError)`. The Lenz backend's `_normalize_verdict` recognises **only** `true` and `false`; anything else is an unrecognised verdict and the claim is skipped rather than guessed (owner ruling Q4). So although the protocol lists `mixed` as reportable, **the shipped Lenz backend can only ever produce a `false` finding** |
+| 10 | Script `{"error_code": "no_claim"}`, or `{"claims": []}` | `unverifiable` at confidence `0.0`, which is not reportable: zero findings, no warning. This is the "nothing checkable in that sentence" answer |
+| 11 | Add `fact_check_min_confidence=0.79` to the `Config(...)` call, keeping the `false`/`0.78` verdict | Zero findings: the floor is an inclusive `>=`, so `0.78` no longer clears `0.79`. At exactly `0.78` the finding returns |
+| 12 | Script a non-200 status, or a response larger than 64 KiB | A per-claim `FactCheckError` with a fixed message, logged as one WARNING naming the document only. Backend messages never carry request or response data — a header error can contain the `Bearer` value, which is why only the exception *type* name survives |
+
+### The real run, with your own key
+
+| # | Step | Expected |
+|---|------|----------|
+| 13 | Export a key **you** rotated (never the one in `lenz_fact-checking.md`), then run step 1's scan with `--use-external-api` | Up to `fact_check_max_claims_total` claims are POSTed to `lenz.io`; INFO logs `DS302: sent N claim(s) from M document(s) to backend lenz; <f> failed, <r> reported, <n> not sent (time budget)` — counts only, never claim text |
+| 14 | Compare the sent count against the use case 2 preview | They match for the same configuration and selection, unless the time budget cut the run short |
+| 15 | Set `fact_check_time_budget_seconds=1` against a slow or distant endpoint | Remaining claims are skipped with `DS302: time budget of 1 s exhausted; N of M claim(s) not checked`. This skip is logged **only**: it never reaches `ScanResult.pending` or the report's `Pending:` line, so a budget cutoff is invisible to anyone reading just the rendered report |
+| 16 | Confirm nothing leaked | The key must not appear in stdout, stderr, the per-run log file, any finding field, any rendered report, or the client `repr` (the fixed `LenzFactCheckClient(base_url='https://lenz.io/api/v1')`). `tests/mock/test_fact_check_no_key_logged.py` asserts exactly this with a sentinel key |
 
 ### Adjusting DS302's weights and parameters
 
-Unlike `DS301`, `DS302` has real, validated `Config` fields (`config.py`, `validate_fact_check_option`).
-All of them are re-validated at every layer that reads them (even an injected `Config` cannot
-bypass validation), and none of them is accepted from the user settings file —
-`fact_check_backend` is not in `USER_SETTINGS_REFUSED_KEYS`, but `link_root`, `baseline`, etc. are,
-for comparison; check `docsentinel doctor`'s `project config:` count to confirm where a value came
-from:
+`DS302`'s own options are all validated `Config` fields (`config.py`,
+`validate_fact_check_option`), re-validated at every layer that reads them, so even an injected
+`Config` fails closed:
 
-| Option | Default | Effect | Where it is read |
+| Option | Default | Effect | Read by |
 |---|---|---|---|
-| `fact_check_backend` | `"lenz"` | Which registered backend receives claims; must be in `FACT_CHECK_BACKEND_NAMES` (or a test-registered fake) | `_validated_backend`, gate resolution |
-| `fact_check_min_salience` | `0.5` | Smallest salience score (`[0, 1]`) a claim needs *before* it may be selected to send | `select_candidates` (currently a no-op: it validates this but selects nothing until Story 02.0) |
-| `fact_check_min_confidence` | `0.6` | Smallest backend confidence (`[0, 1]`) for a `false`/`mixed` verdict to become a finding | `_check_candidates`; verified live in checklist steps 8–10 above |
-| `fact_check_max_claims_per_document` | `3` | Cap on claims sent per document | `select_candidates` (not yet enforced; validated only) |
-| `fact_check_max_claims_total` | `25` | Cap on claims sent per scan | `select_candidates` (not yet enforced; validated only) |
-| `fact_check_time_budget_seconds` | `300` | Wall-clock budget (`1`–`3600`) for the whole `DS302` network stage; claims left over when it expires are skipped with one WARNING, never sent | `_check_candidates`'s deadline loop |
+| `fact_check_backend` | `"lenz"` | Which registered backend receives claims | gate resolution, `_validated_backend` |
+| `fact_check_min_salience` | `0.5` | Salience floor for selection (use case 2) | `select_candidates` |
+| `fact_check_min_confidence` | `0.6` | Smallest backend confidence for a verdict to become a finding; inclusive `>=` | `_check_candidates` |
+| `fact_check_max_claims_per_document` | `3` | Per-document send cap | `select_candidates` |
+| `fact_check_max_claims_total` | `25` | Per-scan send cap | `select_candidates` |
+| `fact_check_time_budget_seconds` | `300` | Wall-clock budget for the network stage; `1`–`3600` | `_check_candidates` |
 
-Practical tuning guidance, once Stories 02.0/03.0 land and the options start doing their full job:
-
-- **False positives from borderline backend verdicts**: raise `fact_check_min_confidence` first
-  (verified above: `0.73` suppressed a `0.72`-confidence `mixed` verdict with no code change, and
-  `0.72` itself still reported — the floor is an inclusive `>=`, so set it to the smallest
-  confidence you want to *keep*, not the largest you want to drop). This is the cheapest lever
-  because it is applied locally, after the network round trip, so tuning it never changes what was
-  sent or logged.
-- **Too many/too few claims examined**: once Story 02.0 lands, `fact_check_min_salience` will be
-  the recall/precision knob on *selection* (fewer, higher-salience claims vs. broader coverage);
-  until then, changing it has no observable effect — confirmed above by setting it to its most
-  restrictive value and seeing the same finding anyway, and separately confirming its validator
-  still rejects an out-of-range value on its own. Do not conclude "it doesn't work" from a QA run
-  before Story 02.0 closes; re-check `status.md`'s story table first.
-- **Cost/latency**: `fact_check_max_claims_per_document`, `fact_check_max_claims_total` and
-  `fact_check_time_budget_seconds` bound how much a scan can send and how long it can take;
-  raising the budget trades latency for completeness, lowering it trades completeness for a
-  predictable scan time. All three are integer-bounded ranges enforced by
-  `validate_fact_check_option` — an out-of-range value is a `ConfigError`, not a clamp. Of the
-  three, only `fact_check_time_budget_seconds` is live today (checklist step 12): a claim dropped
-  by the budget is logged at WARNING but is **not** added to `ScanResult.pending` or the report's
-  `Pending:` line, so a time-budget cutoff is invisible to anyone reading only the rendered report
-  — check the log (or `-v`) when a scan feels like it checked fewer claims than expected.
-- **Switching backend**: `fact_check_backend` is the only field that changes *which* service's
-  verdicts and confidence calibration apply (checklist step 13 flips every verdict from mixed/true
-  to false by switching backend alone, with no other option touched); it has no effect on `DS301`,
-  which never calls out to any backend. An unrecognised name fails closed with `ConfigError`
-  before any candidate is touched (checklist step 14) — the same fail-closed shape as any other
-  enum-validated `Config` field, not a silent fallback to `lenz`.
-
-None of these six options unlock `DS302` on their own while either consent gate is closed — that
-is deliberate (ADR 0007 Contracts 3–4; threat model
-[`0010-fact-check-gating`](/docs/security/threat-model-0010-fact-check-gating-2026-11-23.md)):
-configuration is for *tuning* an already-consented scan, not for *granting* network egress. A test
-run that changes a `fact_check_*` value and sees no behavior change should first check `doctor`'s
-`fact-check gate:` line before suspecting the option itself.
+- **The salience weights and the dedup threshold are deliberately not on this list.** They are
+  fixed in `DS302_POLICY` (`0.3`/`0.3`/`0.4`, `0.92`) and reachable only through the
+  exploration-only `extract-facts` flags. There is no configuration key for them, so what `DS302`
+  sends cannot be re-weighted from a config file — only the floor and the caps move.
+- **To send less, tune selection, not confidence.** `fact_check_min_salience` and the two caps
+  change what leaves the machine, so they are the privacy and cost levers.
+  `fact_check_min_confidence` only filters verdicts after the round trip: it reduces report noise
+  but never reduces egress.
+- **An unrecognised backend name fails closed**: `fact_check_backend = "unknownbackend"` is a
+  `ConfigError` (`must be one of: lenz`) before any candidate is touched, never a silent fallback.
+- **No option opens the gate.** Configuration tunes an already-consented scan; it never grants
+  network egress (ADR 0007 Contracts 3–4). A run that changes a `fact_check_*` value and sees no
+  behaviour change should check `doctor`'s `fact-check gate:` line first.
 
 ## See also
 

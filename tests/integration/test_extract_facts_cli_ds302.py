@@ -416,12 +416,11 @@ def test_exploration_weights_exit_zero_and_say_they_do_not_match(root: Path, cap
     [
         ("--use-external-api",),
         ("--profile", "deep"),
-        ("--i-understand-deep-is-heuristic",),
         ("--select", "DS302"),
         ("--extension", "builtin:domain"),
         ("--weights", "1,2"),
     ],
-    ids=["use-external-api", "profile", "deep-confirm", "select", "extension", "weights-shape"],
+    ids=["use-external-api", "profile", "select", "extension", "weights-shape"],
 )
 def test_scan_only_flags_are_argparse_errors(root: Path, capsys: pytest.CaptureFixture[str], flag: tuple[str, ...]):
     """

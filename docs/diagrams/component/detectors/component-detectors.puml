@@ -128,7 +128,7 @@ ds302 ..> salience : mining.salience, importlib
 salience ..> clustering : importlib, lazy
 clustering --> corpus : create_vectorizer
 ds302 --> fcproto : FactCheckClient (Protocol boundary),\nload_backend, FactCheckError
-fcproto ..> lenz : importlib, lazy,\nafter both consent gates
+fcproto ..> lenz : importlib, lazy,\nafter the consent gate
 lenz --> fcproto : FactCheckResult
 lenz --> lenzsvc : HTTPS, opt-in
 ds302 ..> config : ConfigError, fact_check_* options
@@ -159,7 +159,7 @@ note right of pb
 end note
 
 note bottom of ds302
-  Gate 1: deep_confirm. Gate 2: ~-~-use-external-api (or
+  Consent gate: ~-~-use-external-api (or
   DOCSENTINEL_USE_EXTERNAL_API=1) AND the backend API key variable
   AND a loadable backend. Closed gate: one WARNING and a pending
   entry, nothing imported or sent. extract-facts calls the same
@@ -169,8 +169,8 @@ note bottom of ds302
 end note
 
 note bottom of ds301
-  Requires deep_confirm / ~-~-i-understand-deep-is-heuristic /
-  DOCSENTINEL_DEEP_CONFIRM=1, checked in engine.scan().
+  Runs whenever profile = deep and deep_ready() holds,
+  checked in engine.scan().
   Heuristic candidates only; exit code stays 0.
 end note
 @enduml

@@ -89,7 +89,7 @@ def test_valid_object_keeps_int_and_float_types(tmp_path: Path):
     """
     text = (
         '{"profile": "standard", "select": ["DS1"], "min_document_words": 5, '
-        '"max_grade_level": 16.0, "deep_confirm": true}'
+        '"max_grade_level": 16.0, "report_show_clean_documents": true}'
     )
 
     options = load_json_options(_write(tmp_path, text))
@@ -99,7 +99,7 @@ def test_valid_object_keeps_int_and_float_types(tmp_path: Path):
         "select": ["DS1"],
         "min_document_words": 5,
         "max_grade_level": 16.0,
-        "deep_confirm": True,
+        "report_show_clean_documents": True,
     }
     assert type(options["min_document_words"]) is int
     assert type(options["max_grade_level"]) is float

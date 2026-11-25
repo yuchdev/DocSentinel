@@ -1,8 +1,7 @@
 """DS302: send high-salience claims to an external fact-check backend (ADR 0007).
 
-``DS302`` is a deep-profile, advisory-only rule that self-gates. It needs both consent gates of
-plan contract C1: the profile-wide ``deep_confirm`` (checked by the engine before any deep analyzer
-runs) and the invoker-only gate 2 resolved here, which is ``use_external_api`` (the CLI flag
+``DS302`` is a deep-profile, advisory-only rule that self-gates. It runs only when the
+invoker-only consent gate resolved here is open, which is ``use_external_api`` (the CLI flag
 ``--use-external-api``, the ``scan(use_external_api=True)`` keyword, or
 ``DOCSENTINEL_USE_EXTERNAL_API`` set to exactly ``"1"``) plus a non-empty API-key environment
 variable of the configured backend. Consent is never read from ``Config`` (threat model 0010 M1).

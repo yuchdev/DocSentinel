@@ -105,7 +105,7 @@ def test_closed_gate_scan_reports_nothing_and_names_what_is_missing(
     expected_warning, _ = GATE_STATES[state]
     caplog.set_level(logging.DEBUG, logger="docsentinel")
 
-    result = scan(case.root, config=Config(profile="deep", deep_confirm=True), use_external_api=flag)
+    result = scan(case.root, config=Config(profile="deep"), use_external_api=flag)
 
     assert [d.path for d in result.documents] == ["harbor.md", "library.md"]
     assert [f for f in result.findings if f.rule == "DS302"] == []
@@ -127,7 +127,7 @@ def test_cli_deep_scan_without_consent_exits_zero(
 
     Scenario:
         Given the gate_off_no_flag corpus
-        When "docsentinel scan ROOT --profile deep --i-understand-deep-is-heuristic --format json" runs
+        When "docsentinel scan ROOT --profile deep --format json" runs
         Then the exit code is 0 and the report holds no DS302 problem.
 
     Boundaries:
@@ -141,7 +141,7 @@ def test_cli_deep_scan_without_consent_exits_zero(
     case = asset_case("ds302", "gate_off_no_flag")
 
     code = cli.main(
-        ["scan", str(case.root), "--profile", "deep", "--i-understand-deep-is-heuristic", "--format", "json"]
+        ["scan", str(case.root), "--profile", "deep", "--format", "json"]
     )
 
     report = json.loads(capsys.readouterr().out)

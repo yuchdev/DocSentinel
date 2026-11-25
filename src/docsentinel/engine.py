@@ -216,16 +216,6 @@ def _run_analyzer(
     return analyzer(directory, documents, **extra)
 
 
-def _env_confirms() -> bool:
-    """Return True if DOCSENTINEL_DEEP_CONFIRM is set to a truthy value."""
-    return os.environ.get("DOCSENTINEL_DEEP_CONFIRM", "").lower() in {"1", "true", "yes"}
-
-
-def _resolve_deep_confirm(settings: Config) -> bool:
-    """Return True if deep profile execution is confirmed via settings or env."""
-    return settings.deep_confirm or _env_confirms()
-
-
 def _hint_for(code: str, option: str) -> str:
     """Return the opt-in hint of ``code``, or ``option`` verbatim for an unregistered code.
 
@@ -576,7 +566,7 @@ def scan(
     A discovered document that cannot be read, is not a regular file or is not
     valid UTF-8 stays in the inventory but is withheld from every analyzer; unless
     ``select``/``ignore`` drop ``DS100``, it gets one ``DS100`` error finding, in
-    every profile (an unconfirmed or dependency-less deep scan runs no rule and
+    every profile (a dependency-less deep scan runs no rule and
     reports none).
 
     :param root: The directory or single file to scan.
@@ -617,36 +607,17 @@ def scan(
     directory, settings, documents = inventory.directory, inventory.settings, inventory.documents
     readable, unreadable = inventory.readable, inventory.unreadable
 
-    if settings.profile == "deep":
-        if not _resolve_deep_confirm(settings):
-            logger.warning(
-                "deep profile skipped: not confirmed (set deep_confirm = true, pass "
-                "--i-understand-deep-is-heuristic, or set DOCSENTINEL_DEEP_CONFIRM=1)"
-            )
-            pending = (
-                "deep profile requires explicit opt-in: set deep_confirm = true, "
-                "pass --i-understand-deep-is-heuristic, or set DOCSENTINEL_DEEP_CONFIRM=1 "
-                "(deep checks are heuristic and may report false positives)",
-            )
-            return ScanResult(
-                profile=settings.profile,
-                documents=documents,
-                findings=(),
-                enabled_rules=(),
-                pending=pending,
-                notice="Deep profile detection skipped until explicit opt-in is provided.",
-            )
-        if not deep_ready():
-            logger.warning("deep profile skipped: dependencies unavailable - %s", DEEP_EXTRA_HINT)
-            pending = (f"deep profile confirmed, but its dependencies are unavailable - {DEEP_EXTRA_HINT}",)
-            return ScanResult(
-                profile=settings.profile,
-                documents=documents,
-                findings=(),
-                enabled_rules=(),
-                pending=pending,
-                notice="Deep profile detection skipped because dependencies are unavailable.",
-            )
+    if settings.profile == "deep" and not deep_ready():
+        logger.warning("deep profile skipped: dependencies unavailable - %s", DEEP_EXTRA_HINT)
+        pending = (f"deep profile dependencies are unavailable - {DEEP_EXTRA_HINT}",)
+        return ScanResult(
+            profile=settings.profile,
+            documents=documents,
+            findings=(),
+            enabled_rules=(),
+            pending=pending,
+            notice="Deep profile detection skipped because dependencies are unavailable.",
+        )
 
     if settings.profile == "standard":
         ensure_standard_loaded()
@@ -724,7 +695,7 @@ def scan(
         notice = evaluated_notice(settings.profile, rules_evaluated, opt_in_off)
     elif not profile_codes:
         if settings.profile == "deep":
-            pending = ("deep profile confirmed, but no deep rules are registered",)
+            pending = ("deep profile requested, but no deep rules are registered",)
         else:
             pending = ("standard detectors are not implemented in M0",) if settings.profile == "standard" else ()
         notice = "Detection rules are not implemented in M0; this is an inventory only."
@@ -882,7 +853,7 @@ def extract_facts(
     error). Claims come from ``detectors.fact_check.trace_candidates``, the same
     function ``DS302`` selects its candidates with, so with no override the selected
     texts are the ones ``DS302`` would send for the same root, configuration and
-    selection. ``profile``, ``select``, ``ignore``, ``baseline`` and ``deep_confirm``
+    selection. ``profile``, ``select``, ``ignore`` and ``baseline``
     are not read, no environment variable is read here and no backend is imported.
     Claim text is never logged; the INFO line carries counts only.
 

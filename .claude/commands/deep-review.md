@@ -1,6 +1,6 @@
 ---
 name: deep-review
-description: Periodic (weekly / on-demand) deep-profile review: runs the confirmed deep scan, captures DS301 candidates, drives the docs-reviewer agent to triage them and review doc-vs-code behavioral drift, files a dated report to docs/reviews/. Explicitly not a per-commit hook.
+description: Periodic (weekly / on-demand) deep-profile review: runs the deep scan, captures DS301 candidates, drives the docs-reviewer agent to triage them and review doc-vs-code behavioral drift, files a dated report to docs/reviews/. Explicitly not a per-commit hook.
 invoke: /loop deep-review [--weekly]
 terminates-when: On-demand mode terminates after one report is written; periodic mode self-reschedules weekly (604800s) or stops if deep dependencies are unavailable.
 ---
@@ -34,10 +34,10 @@ python -c "from docsentinel.mining.nlp import deep_ready; import sys; sys.exit(0
 If exit code is non-zero (dependencies or model missing), print setup guidance and **stop immediately without rescheduling**.
 
 ### 2. Capture candidates
-Run the confirmed deep scan and save JSON output to `.claude/state/deep-review-candidates.json`:
+Run the deep scan and save JSON output to `.claude/state/deep-review-candidates.json`:
 ```bash
 mkdir -p .claude/state
-docsentinel scan --profile deep --i-understand-deep-is-heuristic --format json > .claude/state/deep-review-candidates.json
+docsentinel scan --profile deep --format json > .claude/state/deep-review-candidates.json
 ```
 
 ### 3. Select review slice

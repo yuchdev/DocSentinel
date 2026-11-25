@@ -113,8 +113,8 @@ deep ..> salience : importlib, lazy
 salience ..> clustering : importlib, lazy
 clustering --> miningcorpus : create_vectorizer
 deep --> fcproto : FactCheckClient,\nload_backend (only gate-open)
-fcproto ..> lenz : importlib, lazy,\nonly after both consent gates
-lenz --> lenzsvc : HTTPS, opt-in: deep_confirm +\n~-~-use-external-api + API key;\nadvisory
+fcproto ..> lenz : importlib, lazy,\nonly after the consent gate
+lenz --> lenzsvc : HTTPS, opt-in:\n~-~-use-external-api + API key;\nadvisory
 lenz ..> fcproto : result types
 miningcorpus --> models
 claims --> models
@@ -139,8 +139,7 @@ telemetry --> tpldir : read (containment-gated)
 note bottom of engine
   Single entry point. Analyzers are called as
   detect(root, documents) or detect(root, documents, config).
-  Deep: confirmation gate (deep_confirm, ~-~-i-understand-deep-is-heuristic,
-  DOCSENTINEL_DEEP_CONFIRM=1) then deep_ready(); advisory-only, exit 0.
+  Deep: runs when profile = deep and deep_ready() holds; advisory-only, exit 0.
   Reads every discovered document once up front (_partition_readable);
   unreadable or non-UTF-8 ones get a DS100 error finding from the engine
   and are withheld from analyzers.
@@ -164,7 +163,7 @@ end note
 
 note bottom of lenz
   The first outbound network edge. Imported only after both
-  consent gates are open (deep_confirm; ~-~-use-external-api or
+  consent gate is open (~-~-use-external-api or
   DOCSENTINEL_USE_EXTERNAL_API=1 AND the API key variable AND the
   backend loads). extract-facts never reaches it.
 end note

@@ -123,7 +123,7 @@ def test_cli_with_a_failing_claim_exits_zero(
 
     Scenario:
         Given the per_claim_network_error_skipped corpus and the case fake registered as lenz
-        When "docsentinel scan ROOT --profile deep --i-understand-deep-is-heuristic --use-external-api
+        When "docsentinel scan ROOT --profile deep --use-external-api
             --select DS302 --format json" runs with the sentinel lenz key
         Then the exit code is 0 and the report has DS302 problems on beta.md and gamma.md only
 
@@ -145,7 +145,6 @@ def test_cli_with_a_failing_claim_exits_zero(
             str(case.root),
             "--profile",
             "deep",
-            "--i-understand-deep-is-heuristic",
             "--use-external-api",
             "--select",
             "DS302",

@@ -43,62 +43,25 @@ def test_import_engine_registers_ds301_without_spacy():
     assert res.returncode == 0, res.stderr
 
 
-def test_unconfirmed_deep_does_not_load_model(
+def test_deep_deps_missing_does_not_load_model(
     asset_case: Callable[[str, str], AssetCase],
     monkeypatch: pytest.MonkeyPatch,
 ):
     """
-    [Integration] deep profile end to end ds301: verifies unconfirmed deep does not load model.
+    [Integration] deep profile end to end ds301: verifies deep deps missing does not load model.
 
     Scenario:
-        Given test inputs and fixtures for unconfirmed deep does not load model
-        When test_unconfirmed_deep_does_not_load_model executes the target flow
-        Then the expected outcome for unconfirmed deep does not load model is confirmed.
+        Given test inputs and fixtures for deep deps missing does not load model
+        When test_deep_deps_missing_does_not_load_model executes the target flow
+        Then the expected outcome for deep deps missing does not load model is confirmed.
 
     Boundaries:
-        - Focus: unconfirmed deep does not load model
+        - Focus: deep deps missing does not load model
         - Fixtures/params: asset_case, monkeypatch
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
-        - Assertion details tied to unconfirmed deep does not load model
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by deep profile end to end ds301
-    """
-
-    def fake_load_pipeline() -> Any:
-        """Fail immediately if model pipeline loading is attempted."""
-        raise AssertionError("Model load should not be called when deep is unconfirmed")
-
-    monkeypatch.setattr(nlp, "load_pipeline", fake_load_pipeline)
-    case = asset_case("ds301", "single_claim_document")
-
-    result = scan(case.root, config=Config(profile="deep", deep_confirm=False))
-
-    assert result.findings == ()
-    assert result.enabled_rules == ()
-    assert "deep profile requires explicit opt-in" in result.pending[0]
-
-
-def test_confirmed_deep_deps_missing_does_not_load_model(
-    asset_case: Callable[[str, str], AssetCase],
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """
-    [Integration] deep profile end to end ds301: verifies confirmed deep deps missing does not load model.
-
-    Scenario:
-        Given test inputs and fixtures for confirmed deep deps missing does not load model
-        When test_confirmed_deep_deps_missing_does_not_load_model executes the target flow
-        Then the expected outcome for confirmed deep deps missing does not load model is confirmed.
-
-    Boundaries:
-        - Focus: confirmed deep deps missing does not load model
-        - Fixtures/params: asset_case, monkeypatch
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to confirmed deep deps missing does not load model
+        - Assertion details tied to deep deps missing does not load model
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by deep profile end to end ds301
     """
@@ -114,37 +77,37 @@ def test_confirmed_deep_deps_missing_does_not_load_model(
     monkeypatch.setattr(nlp, "load_pipeline", fake_load_pipeline)
     case = asset_case("ds301", "single_claim_document")
 
-    result = scan(case.root, config=Config(profile="deep", deep_confirm=True))
+    result = scan(case.root, config=Config(profile="deep"))
 
     assert result.findings == ()
     assert result.enabled_rules == ()
-    assert "deep profile confirmed, but its dependencies are unavailable" in result.pending[0]
+    assert "deep profile dependencies are unavailable" in result.pending[0]
 
 
 @pytest.mark.skipif(not nlp.deep_ready(), reason="deep dependencies and model not installed")
-def test_confirmed_ready_deep_reports_candidates(asset_case: Callable[[str, str], AssetCase]):
+def test_ready_deep_reports_candidates(asset_case: Callable[[str, str], AssetCase]):
     """
-    [Integration] deep profile end to end ds301: verifies confirmed ready deep reports candidates.
+    [Integration] deep profile end to end ds301: verifies ready deep reports candidates.
 
     Scenario:
-        Given test inputs and fixtures for confirmed ready deep reports candidates
-        When test_confirmed_ready_deep_reports_candidates executes the target flow
-        Then the expected outcome for confirmed ready deep reports candidates is confirmed.
+        Given test inputs and fixtures for ready deep reports candidates
+        When test_ready_deep_reports_candidates executes the target flow
+        Then the expected outcome for ready deep reports candidates is confirmed.
 
     Boundaries:
-        - Focus: confirmed ready deep reports candidates
+        - Focus: ready deep reports candidates
         - Fixtures/params: asset_case
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
-        - Assertion details tied to confirmed ready deep reports candidates
+        - Assertion details tied to ready deep reports candidates
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by deep profile end to end ds301
     """
     case = asset_case("ds301", "number_contradiction")
 
     # DS301 only: DS302 is gate-closed here and would add a pending entry (covered below).
-    result = scan(case.root, config=Config(profile="deep", deep_confirm=True, select=("DS301",)))
+    result = scan(case.root, config=Config(profile="deep", select=("DS301",)))
 
     assert len(result.findings) == 1
     assert result.findings[0].rule == "DS301"
@@ -188,7 +151,7 @@ def test_model_loaded_once_for_multi_document_corpus(
     monkeypatch.setattr(nlp, "load_pipeline", spy_load)
     case = asset_case("ds301", "multi_document_corpus")
 
-    result = scan(case.root, config=Config(profile="deep", deep_confirm=True))
+    result = scan(case.root, config=Config(profile="deep"))
 
     assert len(result.documents) == 3
     assert load_count == 1
@@ -216,7 +179,7 @@ def test_consistent_corpus_zero_candidates_but_evaluated_notice(asset_case: Call
     """
     case = asset_case("ds301", "consistent_numbers")
 
-    result = scan(case.root, config=Config(profile="deep", deep_confirm=True))
+    result = scan(case.root, config=Config(profile="deep"))
 
     assert result.findings == ()
     # The whole deep profile: DS302 is active, but its gate is closed, so it is pending

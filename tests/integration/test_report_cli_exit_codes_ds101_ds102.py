@@ -131,7 +131,7 @@ def test_deep_findings_are_advisory_exit_0_for_every_template(
     Scenario:
         Given ``cli.scan`` returning a deep result with an error-severity DS301 candidate (the spaCy model is
             not needed)
-        When ``scan --profile deep --i-understand-deep-is-heuristic --format <name>`` runs, also with ``--strict``
+        When ``scan --profile deep --format <name>`` runs, also with ``--strict``
         Then both exit 0, the candidate is in the report, and the text report carries the advisory banner.
 
     Boundaries:
@@ -154,7 +154,7 @@ def test_deep_findings_are_advisory_exit_0_for_every_template(
         return dataclasses.replace(result, profile="deep", findings=(candidate,), enabled_rules=("DS301",))
 
     monkeypatch.setattr(cli, "scan", deep_result)
-    args = ["scan", str(root), "--profile", "deep", "--i-understand-deep-is-heuristic", "--format", name]
+    args = ["scan", str(root), "--profile", "deep", "--format", name]
 
     lenient = cli.main(args)
     lenient_out = capsys.readouterr()

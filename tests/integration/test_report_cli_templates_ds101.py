@@ -33,7 +33,7 @@ def _standard_installed() -> bool:
 _PROFILE_ARGS: dict[str, tuple[str, ...]] = {
     "fast": ("--profile", "fast"),
     "standard": ("--profile", "standard"),
-    "deep": ("--profile", "deep", "--i-understand-deep-is-heuristic"),
+    "deep": ("--profile", "deep"),
 }
 
 

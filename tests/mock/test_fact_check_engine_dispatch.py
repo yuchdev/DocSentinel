@@ -63,7 +63,7 @@ def _deep_config(**overrides: object) -> Config:
     :param overrides: Extra ``Config`` fields.
     :returns: The configuration.
     """
-    return Config(profile="deep", deep_confirm=True, fact_check_backend="fake", **overrides)
+    return Config(profile="deep", fact_check_backend="fake", **overrides)
 
 
 def _records(caplog: pytest.LogCaptureFixture, level: int) -> list[logging.LogRecord]:
@@ -154,7 +154,7 @@ def test_ds302_ignored_resolves_no_gate(
     caplog.set_level(logging.WARNING, logger="docsentinel")
 
     result = scan(
-        tmp_path, config=Config(profile="deep", deep_confirm=True, ignore=("DS302",), fact_check_backend="x\n")
+        tmp_path, config=Config(profile="deep", ignore=("DS302",), fact_check_backend="x\n")
     )
 
     assert result.enabled_rules == ("DS301",)
@@ -613,7 +613,7 @@ def test_unavailable_backend_closes_the_gate_in_scan_and_doctor(
     monkeypatch.setenv("DOCSENTINEL_FACTCHECK_LENZ_API_KEY", SENTINEL)
     caplog.set_level(logging.DEBUG, logger="docsentinel")
 
-    result = scan(tmp_path, config=Config(profile="deep", deep_confirm=True), use_external_api=True)
+    result = scan(tmp_path, config=Config(profile="deep"), use_external_api=True)
 
     assert result.pending == ("DS302 skipped: backend lenz not available",)
     assert result.rules_evaluated == 1
@@ -692,7 +692,7 @@ def test_engine_forwards_consent_only_to_analyzers_that_declare_it(
     monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: plain(root, docs))
     monkeypatch.setitem(ANALYZERS, "DS302", declaring)
 
-    scan(tmp_path, config=Config(profile="deep", deep_confirm=True), use_external_api=flag)
+    scan(tmp_path, config=Config(profile="deep"), use_external_api=flag)
 
     assert plain_calls == [(2, ())]
     assert declaring_calls == [expected]
@@ -749,8 +749,8 @@ def test_ds302_ignored_matches_a_scan_without_ds302(tmp_path: Path, monkeypatch:
     monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: True)
     monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: ())
 
-    ignored = scan(tmp_path, config=Config(profile="deep", deep_confirm=True, ignore=("DS302",)))
-    reference = scan(tmp_path, config=Config(profile="deep", deep_confirm=True, select=("DS301",)))
+    ignored = scan(tmp_path, config=Config(profile="deep", ignore=("DS302",)))
+    reference = scan(tmp_path, config=Config(profile="deep", select=("DS301",)))
 
     for result in (ignored, reference):
         assert result.notice == "1 deep rule(s) evaluated (heuristic, advisory-only)."

@@ -393,7 +393,7 @@ def test_allowed_key_from_each_family_applies(tmp_path: Path, monkeypatch: pytes
 
     Scenario:
         Given a user file with profile, reference_scope, select/ignore, the thresholds, the
-            size limits, fast-rule policy options, deep_confirm, report options, a builtin
+            size limits, fast-rule policy options, report options, a builtin
             extension and the @-reference extensions
         When load_config runs with no project file
         Then every value reaches Config and ConfigSources reports the file as loaded with the
@@ -420,7 +420,6 @@ def test_allowed_key_from_each_family_applies(tmp_path: Path, monkeypatch: pytes
         "require_fence_languages": True,
         "allowed_fence_languages": ["python"],
         "first_heading_level": 2,
-        "deep_confirm": True,
         "report_show_clean_documents": True,
         "report_include_run_meta": True,
         "telemetry_extensions": ["builtin:document_stats"],

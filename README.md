@@ -28,7 +28,7 @@ All three initial milestones are complete, providing a fully working command-lin
   * `DS202` paragraph duplication
   * `DS203` low-information content
   * `DS204` Python docstring-to-code signature mismatch
-* **`deep` profile:** Semantic NLP contradiction candidate analysis via `docsentinel[deep]`. Gated by explicit opt-in confirmation with advisory-only exit codes.
+* **`deep` profile:** Semantic NLP contradiction candidate analysis via `docsentinel[deep]`. Heuristic, with advisory-only exit codes.
   * `DS301` fact-contradiction candidates across documents 
   * `DS302` external fact-check disagreement: a high-salience claim sentence that a third-party fact-checking service rates false or mixed (warning severity, advisory only). **It sends claim sentences from your documents to a third party** and is off until you give both `--use-external-api` (or `DOCSENTINEL_USE_EXTERNAL_API=1`) and the backend's API key variable (`DOCSENTINEL_FACTCHECK_LENZ_API_KEY` for `lenz`); neither is a configuration key. Verdicts are third-party heuristic output, not ground truth. Preview what would be sent, offline, with `docsentinel extract-facts`. Never use the flag in pre-commit `args:` or a `pull_request_target` workflow, or export the key for a whole CI job
 
@@ -82,7 +82,7 @@ uv run docsentinel scan docs/README.md
 
 # Scan with standard or deep profile
 uv run docsentinel scan --profile standard
-uv run docsentinel scan --profile deep --i-understand-deep-is-heuristic
+uv run docsentinel scan --profile deep
 
 # Preview, offline, the claims DS302 would send to a fact-check service (no network, no key)
 uv run docsentinel extract-facts docs
@@ -160,9 +160,6 @@ docsig_paths = ["src"]          # DS204: Python source roots checked against doc
 min_document_words = 50         # DS201: skip documents with fewer prose words
 min_paragraph_words = 5         # DS202/DS203: skip paragraphs with fewer words
 min_paragraph_chars = 30        # DS202/DS203: skip paragraphs shorter than this
-
-# Deep profile opt-in confirmation (optional)
-deep_confirm = false
 
 # DS302 external fact-check (deep profile; sends claim sentences to a third party). Defaults shown.
 # These only tune it: it also needs --use-external-api and an API key in the environment,

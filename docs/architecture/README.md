@@ -588,11 +588,11 @@ differing numeric or named-entity claims are made about the same subject (`warni
 Semantic SVO extraction is heuristic and expected to report false positives, so the profile runs
 under strict safety and advisory boundaries:
 
-- **Explicit opt-in gate.** Deep checks require one of: `deep_confirm = true` in configuration,
-  `--i-understand-deep-is-heuristic` on the CLI, or `DOCSENTINEL_DEEP_CONFIRM=1` in the environment.
-  An unconfirmed scan runs zero deep analyzers and reports an explanatory pending notice.
+- **No confirmation step.** The deep profile runs whenever `profile = "deep"` is selected and its
+  dependencies are available; findings stay advisory-only. If the dependencies are missing, the scan
+  runs zero deep analyzers and reports an explanatory pending notice.
 - **Optional dependencies, loaded lazily.** `spacy`, `textacy` and the `en_core_web_sm` model live in
-  the `docsentinel[deep]` extra and load only when a confirmed deep scan runs.
+  the `docsentinel[deep]` extra and load only when a deep scan runs.
 - **One opt-in network edge (`DS302`, Milestone 0010).** The deep profile also registers `DS302`, which
   sends a few high-salience claim sentences to a third-party fact-check service. It is the only outbound
   network edge in DocSentinel and stays closed unless the invoker gives both `--use-external-api` (or

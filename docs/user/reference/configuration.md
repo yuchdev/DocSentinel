@@ -91,11 +91,6 @@ configuration error that lists every refused key: `baseline`, `include`, `exclud
 `report_templates_dir`, `link_root` and `telemetry_domains`. The same file may not enable a
 `python:` extension either. Set them in the project configuration or on the command line.
 
-**`deep_confirm` at user level.** `deep_confirm` is allowed in user settings, so one setting there
-confirms the heuristic deep profile on every repository you scan. The deep profile stays
-advisory-only (it never changes the exit code), but if you want each project to opt in on its own,
-leave `deep_confirm` out of the user file and use the flag or the project configuration.
-
 **Permission rule.** A user settings file that someone else could have changed would let that
 person weaken every scan of yours, so on POSIX systems (Linux, macOS, BSD, WSL) the file is checked
 before it is read:
@@ -1310,13 +1305,11 @@ third-party heuristic output, not ground truth.** Treat a finding as a prompt to
 
 **The dual gate.** Nothing is sent unless all of these hold:
 
-1. the deep profile is confirmed (`--i-understand-deep-is-heuristic`, `deep_confirm` or
-   `DOCSENTINEL_DEEP_CONFIRM=1`);
-2. the invoker passes `--use-external-api` (on `scan` and `baseline`), or sets
+1. the invoker passes `--use-external-api` (on `scan` and `baseline`), or sets
    `DOCSENTINEL_USE_EXTERNAL_API=1` (exactly `1`), or calls `scan(..., use_external_api=True)`;
-3. the backend's API-key variable is set and not empty: `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`, for
+2. the backend's API-key variable is set and not empty: `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`, for
    the `lenz` backend `DOCSENTINEL_FACTCHECK_LENZ_API_KEY`;
-4. the backend loads.
+3. the backend loads.
 
 While the gate is closed the scan logs one WARNING (`DS302 skipped: ...` with what is missing), adds the
 same text to `ScanResult.pending`, and does not count `DS302` as evaluated in the scan notice.

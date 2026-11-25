@@ -56,7 +56,7 @@ def captured_cli_configs(monkeypatch: pytest.MonkeyPatch) -> list[Config]:
     return configs
 
 
-def test_empty_scan_is_inventory_not_detection(tmp_path: Path):
+def test_empty_scan_is_inventory_not_detection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """
     [Integration] scan: verifies empty scan is inventory not detection.
 
@@ -75,11 +75,12 @@ def test_empty_scan_is_inventory_not_detection(tmp_path: Path):
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by scan
     """
+    monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: False)
     result = scan(tmp_path, config=Config(profile="deep"))
     assert result.documents == ()
     assert result.findings == ()
     assert result.enabled_rules == ()
-    assert "explicit opt-in" in result.notice
+    assert "dependencies are unavailable" in result.notice
     assert json.loads(render(result, "json-v1"))["enabled_rules"] == []
 
 
@@ -238,6 +239,7 @@ def test_scan_notice_reflects_rules_evaluated(
 def test_scan_notice_distinguishes_unimplemented_profile_from_filtered_out(
     tmp_path: Path,
     fake_fast_analyzer: list[tuple[Path, tuple[Document, ...]]],
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """
     [Integration] scan: verifies scan notice distinguishes unimplemented profile from filtered out.
@@ -257,11 +259,12 @@ def test_scan_notice_distinguishes_unimplemented_profile_from_filtered_out(
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by scan
     """
+    monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: False)
     unimplemented = scan(tmp_path, config=Config(profile="deep"))
     filtered = scan(tmp_path, config=Config(profile="fast", ignore=("DS1",)))
 
     assert fake_fast_analyzer == []
-    assert "deep profile requires explicit opt-in" in unimplemented.pending[0]
+    assert "deep profile dependencies are unavailable" in unimplemented.pending[0]
     assert filtered.pending == ("all fast rules were excluded by select/ignore",)
     assert "not implemented" not in filtered.notice
     assert "evaluated" not in filtered.notice
@@ -368,7 +371,7 @@ def test_discovery_propagates_directory_listing_errors(tmp_path: Path, monkeypat
         scan(tmp_path)
 
 
-def test_config_and_pending_profile(tmp_path: Path):
+def test_config_and_pending_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """
     [Integration] scan: verifies config and pending profile.
 
@@ -393,9 +396,10 @@ def test_config_and_pending_profile(tmp_path: Path):
         'profile = "deep"\ninclude = ["*.markdown"]\n',
         encoding="utf-8",
     )
+    monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: False)
     result = scan(tmp_path)
     assert [doc.path for doc in result.documents] == ["b.markdown"]
-    assert "deep profile requires explicit opt-in" in result.pending[0]
+    assert "deep profile dependencies are unavailable" in result.pending[0]
     assert result.enabled_rules == ()
 
 
@@ -1628,80 +1632,25 @@ def test_cli_scan_fast_profile_never_loads_standard(
     assert calls == []
 
 
-def test_deep_unconfirmed_reports_opt_in_pending(tmp_path: Path):
+def test_deep_runs_without_confirmation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """
-    [Integration] scan: verifies deep unconfirmed reports opt in pending.
+    [Integration] scan: verifies deep runs without confirmation.
 
     Scenario:
-        Given test inputs and fixtures for deep unconfirmed reports opt in pending
-        When test_deep_unconfirmed_reports_opt_in_pending executes the target flow
-        Then the expected outcome for deep unconfirmed reports opt in pending is confirmed.
+        Given test inputs and fixtures for deep runs without confirmation
+        When test_deep_runs_without_confirmation executes the target flow
+        Then the expected outcome for deep runs without confirmation is confirmed.
 
     Boundaries:
-        - Focus: deep unconfirmed reports opt in pending
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to deep unconfirmed reports opt in pending
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by scan
-    """
-    result = scan(tmp_path, config=Config(profile="deep"))
-    assert result.findings == ()
-    assert result.enabled_rules == ()
-    assert "deep profile requires explicit opt-in" in result.pending[0]
-    assert "explicit opt-in" in result.notice
-
-
-def test_deep_confirmed_via_config_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """
-    [Integration] scan: verifies deep confirmed via config flag.
-
-    Scenario:
-        Given test inputs and fixtures for deep confirmed via config flag
-        When test_deep_confirmed_via_config_flag executes the target flow
-        Then the expected outcome for deep confirmed via config flag is confirmed.
-
-    Boundaries:
-        - Focus: deep confirmed via config flag
+        - Focus: deep runs without confirmation
         - Fixtures/params: tmp_path, monkeypatch
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
-        - Assertion details tied to deep confirmed via config flag
+        - Assertion details tied to deep runs without confirmation
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by scan
     """
-    monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: True)
-    monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: ())
-    result = scan(tmp_path, config=Config(profile="deep", deep_confirm=True))
-    assert result.findings == ()
-    # DS302 is selected too; with its consent gate closed it is not counted as evaluated.
-    assert result.enabled_rules == ("DS301", "DS302")
-    assert result.notice == "1 deep rule(s) evaluated (heuristic, advisory-only)."
-
-
-def test_deep_confirmed_via_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """
-    [Integration] scan: verifies deep confirmed via env var.
-
-    Scenario:
-        Given test inputs and fixtures for deep confirmed via env var
-        When test_deep_confirmed_via_env_var executes the target flow
-        Then the expected outcome for deep confirmed via env var is confirmed.
-
-    Boundaries:
-        - Focus: deep confirmed via env var
-        - Fixtures/params: tmp_path, monkeypatch
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to deep confirmed via env var
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by scan
-    """
-    monkeypatch.setenv("DOCSENTINEL_DEEP_CONFIRM", "1")
     monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: True)
     monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: ())
     result = scan(tmp_path, config=Config(profile="deep"))
@@ -1711,59 +1660,82 @@ def test_deep_confirmed_via_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert result.notice == "1 deep rule(s) evaluated (heuristic, advisory-only)."
 
 
-def test_deep_confirmed_via_cli_flag(
+def test_deep_runs_from_cli_without_confirmation_flag(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ):
     """
-    [Integration] scan: verifies deep confirmed via cli flag.
+    [Integration] scan: verifies deep runs from cli without confirmation flag.
 
     Scenario:
-        Given test inputs and fixtures for deep confirmed via cli flag
-        When test_deep_confirmed_via_cli_flag executes the target flow
-        Then the expected outcome for deep confirmed via cli flag is confirmed.
+        Given test inputs and fixtures for deep runs from cli without confirmation flag
+        When test_deep_runs_from_cli_without_confirmation_flag executes the target flow
+        Then the expected outcome for deep runs from cli without confirmation flag is confirmed.
 
     Boundaries:
-        - Focus: deep confirmed via cli flag
+        - Focus: deep runs from cli without confirmation flag
         - Fixtures/params: tmp_path, monkeypatch, capsys
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
-        - Assertion details tied to deep confirmed via cli flag
+        - Assertion details tied to deep runs from cli without confirmation flag
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by scan
     """
     monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: True)
     monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: ())
-    code = main(["scan", str(tmp_path), "--profile", "deep", "--i-understand-deep-is-heuristic"])
+    code = main(["scan", str(tmp_path), "--profile", "deep"])
     assert code == 0
     out = capsys.readouterr().out
     assert "1 deep rule(s) evaluated" in out
 
 
-def test_deep_confirmed_but_deps_missing_reports_pending(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_removed_deep_confirmation_flag_is_rejected(capsys: pytest.CaptureFixture[str]):
     """
-    [Integration] scan: verifies deep confirmed but deps missing reports pending.
+    [Integration] scan: verifies the removed --i-understand-deep-is-heuristic flag is an argparse error.
 
     Scenario:
-        Given test inputs and fixtures for deep confirmed but deps missing reports pending
-        When test_deep_confirmed_but_deps_missing_reports_pending executes the target flow
-        Then the expected outcome for deep confirmed but deps missing reports pending is confirmed.
+        Given the deep profile no longer needs an opt-in confirmation
+        When "docsentinel scan --profile deep --i-understand-deep-is-heuristic" is parsed
+        Then argparse rejects the unknown option with exit code 2.
 
     Boundaries:
-        - Focus: deep confirmed but deps missing reports pending
+        - Focus: the confirmation flag stays removed from the scan parser
+        - Fixtures/params: capsys
+        - Scope: argument parsing only (SystemExit before any scan)
+
+    On failure, first check:
+        - Whether the flag (or an alias) was re-added to the scan parser in cli.py
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        main(["scan", ".", "--profile", "deep", "--i-understand-deep-is-heuristic"])
+    assert excinfo.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_deep_deps_missing_reports_pending(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """
+    [Integration] scan: verifies deep deps missing reports pending.
+
+    Scenario:
+        Given test inputs and fixtures for deep deps missing reports pending
+        When test_deep_deps_missing_reports_pending executes the target flow
+        Then the expected outcome for deep deps missing reports pending is confirmed.
+
+    Boundaries:
+        - Focus: deep deps missing reports pending
         - Fixtures/params: tmp_path, monkeypatch
         - Scope: assertions and setup in this test case only
 
     On failure, first check:
-        - Assertion details tied to deep confirmed but deps missing reports pending
+        - Assertion details tied to deep deps missing reports pending
         - Fixture or parameter values used by this test
         - Recent changes in code paths exercised by scan
     """
     monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: False)
-    result = scan(tmp_path, config=Config(profile="deep", deep_confirm=True))
+    result = scan(tmp_path, config=Config(profile="deep"))
     assert result.findings == ()
     assert result.enabled_rules == ()
-    assert "deep profile confirmed, but its dependencies are unavailable" in result.pending[0]
+    assert "deep profile dependencies are unavailable" in result.pending[0]
     assert "pip install docsentinel[deep]" in result.pending[0]
 
 
@@ -1915,7 +1887,7 @@ def test_deep_evaluated_notice_is_advisory(tmp_path: Path, monkeypatch: pytest.M
     """
     monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: True)
     monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: ())
-    result = scan(tmp_path, config=Config(profile="deep", deep_confirm=True))
+    result = scan(tmp_path, config=Config(profile="deep"))
     assert "evaluated" in result.notice
     assert "advisory" in result.notice
     assert "not implemented" not in result.notice

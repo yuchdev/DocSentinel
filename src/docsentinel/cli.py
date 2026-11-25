@@ -823,8 +823,7 @@ def _add_extract_facts_parser(commands: argparse._SubParsersAction, verbosity: a
     """Add the ``extract-facts`` subcommand (Milestone 0010 Story 05.0 Task 03).
 
     Deliberately has no ``--profile``, ``--select``, ``--ignore``, ``--baseline``,
-    ``--strict``, ``--use-external-api``, ``--i-understand-deep-is-heuristic``,
-    ``--link-root``, ``--reference-scope``, ``--extension`` or
+    ``--strict``, ``--use-external-api``, ``--link-root``, ``--reference-scope``, ``--extension`` or
     ``--allow-python-extensions``: passing one is an argparse error (exit ``2``).
 
     :param commands: The subparsers action of the top-level parser.
@@ -991,12 +990,6 @@ def _build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("--no-user-settings", action="store_true", help=NO_USER_SETTINGS_HELP)
     scan_parser.add_argument("--strict", action="store_true")
     scan_parser.add_argument("--use-external-api", action="store_true", help=USE_EXTERNAL_API_HELP)
-    scan_parser.add_argument(
-        "--i-understand-deep-is-heuristic",
-        action="store_true",
-        dest="deep_confirm",
-        help="Explicitly confirm execution of heuristic deep profile detectors",
-    )
     baseline_parser = commands.add_parser(
         "baseline", help="Record current findings into a baseline file", parents=[verbosity]
     )
@@ -1051,7 +1044,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_extract_facts_parser(commands, verbosity)
     commands.add_parser("rules", help="List active detection rules", parents=[verbosity])
-    doctor_parser = commands.add_parser("doctor", help="Show M0 capabilities", parents=[verbosity])
+    doctor_help = "Check environment, dependencies, configuration and registered rules (no scan)"
+    doctor_parser = commands.add_parser(
+        "doctor",
+        help=doctor_help,
+        description=(
+            f"{doctor_help}. Reports which optional extras (standard, deep) are installed, "
+            "how many rules are registered per profile (opt-in rules counted separately), "
+            "the user settings and project config in effect, the report templates available "
+            "and whether the DS302 external fact-check gate is open. Read-only: it scans no "
+            "documents and sends nothing over the network."
+        ),
+        parents=[verbosity],
+    )
     doctor_parser.add_argument("--no-user-settings", action="store_true", help=NO_USER_SETTINGS_HELP)
     return parser
 
@@ -1347,8 +1352,6 @@ def _run_scan(args: argparse.Namespace) -> int:
             changes["baseline"] = str(args.baseline)
         if args.reference_scope is not None:
             changes["reference_scope"] = args.reference_scope
-        if getattr(args, "deep_confirm", False):
-            changes["deep_confirm"] = True
         if args.show_clean_documents:
             changes["report_show_clean_documents"] = True
         if changes:

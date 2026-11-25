@@ -337,6 +337,32 @@ def test_pyproject_doc_sentinel_table_rejects_unknown_options(tmp_path: Path) :
         load_config(tmp_path)
 
 
+@pytest.mark.parametrize("filename,text", [
+    ("docsentinel.toml", "deep_confirm = true\n"),
+    ("pyproject.toml", "[tool.doc_sentinel]\ndeep_confirm = true\n"),
+])
+def test_removed_deep_confirm_option_is_unknown(tmp_path: Path, filename: str, text: str):
+    """
+    [Unit] config: verifies the removed deep_confirm key is rejected as an unknown option.
+
+    Scenario:
+        Given a docsentinel.toml or [tool.doc_sentinel] table naming deep_confirm
+        When load_config runs
+        Then it raises ConfigError "Unknown config options: deep_confirm".
+
+    Boundaries:
+        - Focus: the deep profile has no opt-in confirmation key any more
+        - Fixtures/params: tmp_path, filename/text (parametrized, 2 cases)
+        - Scope: one config load
+
+    On failure, first check:
+        - Whether deep_confirm was re-added to the known option names or the Config dataclass
+    """
+    (tmp_path / filename).write_text(text, encoding="utf-8")
+    with pytest.raises(ConfigError, match="Unknown config options: deep_confirm"):
+        load_config(tmp_path)
+
+
 def test_standalone_doc_sentinel_toml_baseline_setting(tmp_path: Path) :
     """
     [Unit] config: verifies standalone doc sentinel toml baseline setting.
@@ -943,103 +969,3 @@ def test_docsig_paths_non_string_entry_raises(tmp_path: Path, non_string_entry: 
         load_config(tmp_path)
 
 
-def test_deep_confirm_default_is_false() :
-    """
-    [Unit] config: verifies deep confirm default is false.
-
-    Scenario:
-        Given test inputs and fixtures for deep confirm default is false
-        When test_deep_confirm_default_is_false executes the target flow
-        Then the expected outcome for deep confirm default is false is confirmed.
-
-    Boundaries:
-        - Focus: deep confirm default is false
-        - Fixtures/params: none
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to deep confirm default is false
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by config
-    """
-    assert Config().deep_confirm is False
-
-
-def test_standalone_doc_sentinel_toml_deep_confirm_setting(tmp_path: Path) :
-    """
-    [Unit] config: verifies standalone doc sentinel toml deep confirm setting.
-
-    Scenario:
-        Given test inputs and fixtures for standalone doc sentinel toml deep confirm setting
-        When test_standalone_doc_sentinel_toml_deep_confirm_setting executes the target flow
-        Then the expected outcome for standalone doc sentinel toml deep confirm setting is confirmed.
-
-    Boundaries:
-        - Focus: standalone doc sentinel toml deep confirm setting
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to standalone doc sentinel toml deep confirm setting
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by config
-    """
-    (tmp_path / "docsentinel.toml").write_text("deep_confirm = true\n", encoding="utf-8")
-    assert load_config(tmp_path).deep_confirm is True
-
-
-def test_pyproject_tool_doc_sentinel_deep_confirm_setting(tmp_path: Path) :
-    """
-    [Unit] config: verifies pyproject tool doc sentinel deep confirm setting.
-
-    Scenario:
-        Given test inputs and fixtures for pyproject tool doc sentinel deep confirm setting
-        When test_pyproject_tool_doc_sentinel_deep_confirm_setting executes the target flow
-        Then the expected outcome for pyproject tool doc sentinel deep confirm setting is confirmed.
-
-    Boundaries:
-        - Focus: pyproject tool doc sentinel deep confirm setting
-        - Fixtures/params: tmp_path
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to pyproject tool doc sentinel deep confirm setting
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by config
-    """
-    (tmp_path / "pyproject.toml").write_text(
-        "[tool.doc_sentinel]\ndeep_confirm = true\n",
-        encoding="utf-8",
-    )
-    assert load_config(tmp_path).deep_confirm is True
-
-
-@pytest.mark.parametrize(
-    "invalid_confirm",
-    ['"true"', '"yes"', "1", "0", "1.0", '["true"]', "{}"],
-)
-def test_deep_confirm_non_bool_raises(tmp_path: Path, invalid_confirm: str) :
-    """
-    [Unit] config: verifies deep confirm non bool raises.
-
-    Scenario:
-        Given test inputs and fixtures for deep confirm non bool raises
-        When test_deep_confirm_non_bool_raises executes the target flow
-        Then the expected outcome for deep confirm non bool raises is confirmed.
-
-    Boundaries:
-        - Focus: deep confirm non bool raises
-        - Fixtures/params: tmp_path, invalid_confirm (parametrized, 7 cases)
-        - Scope: assertions and setup in this test case only
-
-    On failure, first check:
-        - Assertion details tied to deep confirm non bool raises
-        - Fixture or parameter values used by this test
-        - Recent changes in code paths exercised by config
-    """
-    (tmp_path / "docsentinel.toml").write_text(
-        f"deep_confirm = {invalid_confirm}\n",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="deep_confirm must be true or false"):
-        load_config(tmp_path)

@@ -86,12 +86,10 @@ docsentinel scan --profile standard
 ```
 
 #### 3. Deep Profile (`--profile deep`)
-Runs deep heuristic NLP analysis (`DS301` fact-contradiction candidate detector). Deep checks are heuristic, compute-intensive, and require explicit confirmation:
+Runs deep heuristic NLP analysis (`DS301` fact-contradiction candidate detector). Deep checks are heuristic, and compute-intensive. They are advisory-only and never change the exit code:
 
 ```bash
-docsentinel scan --profile deep --i-understand-deep-is-heuristic
-# or via environment variable
-DOCSENTINEL_DEEP_CONFIRM=1 docsentinel scan --profile deep
+docsentinel scan --profile deep
 ```
 
 ##### External fact-checking (`DS302`)
@@ -101,7 +99,7 @@ DOCSENTINEL_DEEP_CONFIRM=1 docsentinel scan --profile deep
 > heuristic third-party output, not ground truth: a finding is a prompt to review a sentence, and it
 > never fails a scan.
 
-`DS302` runs only when you give **two independent opt-ins** on top of the deep confirmation:
+`DS302` runs only when you give **two independent opt-ins** with the deep profile selected:
 
 1. `--use-external-api` on `scan` or `baseline`, or `DOCSENTINEL_USE_EXTERNAL_API=1` (exactly `1`).
 2. The backend's API key in `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`, for the `lenz` backend
@@ -114,14 +112,14 @@ rejected. Preview what would be sent first with
 ```bash
 # <your key here> is a placeholder: use your own key, from your own shell, for this one command
 DOCSENTINEL_FACTCHECK_LENZ_API_KEY=<your key here> \
-  docsentinel scan docs --profile deep --i-understand-deep-is-heuristic --use-external-api
+  docsentinel scan docs --profile deep --use-external-api
 ```
 
 Tune it with the `fact_check_*` options in the
 [configuration reference](../reference/configuration.md#external-fact-checking-ds302). Each finding has
 type `unverified claim` and a `value` such as `false (confidence 0.87): <claim>`.
 
-While either opt-in is missing, a confirmed deep scan logs one WARNING, lists the reason under
+While either opt-in is missing, a deep scan logs one WARNING, lists the reason under
 `Pending:` (and in `pending` in JSON), and does not count `DS302` as evaluated:
 
 ```text
@@ -410,8 +408,8 @@ directory, where the source is the project file name or `default` (never the use
 
 Notes:
 
-- The new flags make the argparse abbreviations `--i` and `--ex` ambiguous (they also fit
-  `--i-understand-deep-is-heuristic` and `--extension`), so argparse rejects them with exit `2`.
+- The new flags make the argparse abbreviations `--i` and `--ex` ambiguous (`--i` also fits
+  `--extension`), so argparse rejects them with exit `2`.
   Write the full flag names.
 - Corpus-level rules (`DS114`, `DS118`, `DS202`, `DS203`, `DS301`) see only the selected documents,
   and a baseline recorded with one selection looks stale under another; pass the same flags to
@@ -528,8 +526,7 @@ All existing issues recorded in `.docsentinel-baseline.json` are suppressed. The
 `extract-facts` lists the verifiable claims that `DS302` would send to a fact-check service. It is
 offline: it makes no network call, loads no backend, reads no API key and needs no `--use-external-api`.
 It is not an LLM and verifies nothing. Use it as the preview to review before you pass
-`--use-external-api`. It needs the deep extras (`docsentinel[deep]`) and the spaCy model, but not
-`deep_confirm`.
+`--use-external-api`. It needs the deep extras (`docsentinel[deep]`) and the spaCy model.
 
 ```bash
 docsentinel extract-facts docs

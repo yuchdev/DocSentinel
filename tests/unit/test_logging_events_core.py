@@ -276,35 +276,6 @@ def test_missing_baseline_file_warns_and_suppresses_nothing(tmp_path: Path, capl
     assert _problems(caplog) == [f"baseline {missing} does not exist; no findings are suppressed"]
 
 
-def test_unconfirmed_deep_profile_warns(tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch):
-    """
-    [Unit] engine logging: verifies an unconfirmed deep profile logs one WARNING and still skips.
-
-    Scenario:
-        Given profile = "deep" without deep_confirm and without DOCSENTINEL_DEEP_CONFIRM
-        When scan runs
-        Then it returns the skipped result and logs one WARNING telling how to confirm.
-
-    Boundaries:
-        - Focus: the deep opt-in gate of engine.scan
-        - Fixtures/params: tmp_path, caplog, monkeypatch
-        - Scope: one scan
-
-    On failure, first check:
-        - Whether DOCSENTINEL_DEEP_CONFIRM leaked in from the environment
-    """
-    monkeypatch.delenv("DOCSENTINEL_DEEP_CONFIRM", raising=False)
-    caplog.set_level(logging.INFO, logger="docsentinel")
-    (tmp_path / "a.md").write_text("# A\n", encoding="utf-8")
-
-    result = scan(tmp_path, config=Config(profile="deep"))
-
-    assert result.enabled_rules == ()
-    problems = _problems(caplog)
-    assert len(problems) == 1
-    assert problems[0].startswith("deep profile skipped: not confirmed")
-
-
 def test_deep_profile_without_dependencies_logs_warning(tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch):
     """
     [Unit] engine logging: verifies a confirmed deep profile without its dependencies logs one WARNING.
@@ -326,7 +297,7 @@ def test_deep_profile_without_dependencies_logs_warning(tmp_path: Path, caplog: 
     caplog.set_level(logging.INFO, logger="docsentinel")
     (tmp_path / "a.md").write_text("# A\n", encoding="utf-8")
 
-    scan(tmp_path, config=Config(profile="deep", deep_confirm=True))
+    scan(tmp_path, config=Config(profile="deep"))
 
     assert _problems(caplog) == [f"deep profile skipped: dependencies unavailable - {nlp.DEEP_EXTRA_HINT}"]
     assert _messages(caplog, logging.WARNING) == _problems(caplog)

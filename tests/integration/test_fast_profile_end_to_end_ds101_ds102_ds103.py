@@ -200,6 +200,7 @@ def test_ignore_narrows_the_active_set(fast_profile_tree: tuple[Path, Path]):
 
 def test_deep_profile_still_reports_pending(
     fast_profile_tree: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """
     [Integration] fast profile end to end ds101 ds102 ds103: verifies deep profile still reports pending.
@@ -221,12 +222,13 @@ def test_deep_profile_still_reports_pending(
     """
     root, _ = fast_profile_tree
 
+    monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: False)
     result = scan(root, config=Config(profile="deep"))
 
     assert result.findings == ()
     assert result.enabled_rules == ()
-    assert "deep profile requires explicit opt-in" in result.pending[0]
-    assert "explicit opt-in" in result.notice
+    assert "deep profile dependencies are unavailable" in result.pending[0]
+    assert "dependencies are unavailable" in result.notice
 
 
 def test_cli_scan_exit_code_reflects_real_findings(

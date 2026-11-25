@@ -1,9 +1,6 @@
 """DS302 consent gate helper (Milestone 0010 Story 01.0 Task 05, threat model 0010 M1-M3, M6, M7)."""
 
-import ast
-import inspect
 import os
-import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
@@ -184,31 +181,6 @@ def test_config_never_grants_consent():
         use_external_api: bool = True
 
     assert resolve_external_api_gate(Smuggling(), use_external_api=False).requested is False
-
-
-def test_requested_helper_does_not_reuse_the_deep_confirm_parser():
-    """
-    [Unit] fact-check gate: verifies external_api_requested never references _env_confirms.
-
-    Scenario:
-        Given the source of external_api_requested
-        When it is parsed
-        Then no Name or Attribute in it is _env_confirms (the lenient DOCSENTINEL_DEEP_CONFIRM parser).
-
-    Boundaries:
-        - Focus: threat model M2
-        - Fixtures/params: none
-        - Scope: AST of one function
-
-    On failure, first check:
-        - Whether the helper was rewritten on top of the deep_confirm env parser
-    """
-    tree = ast.parse(textwrap.dedent(inspect.getsource(external_api_requested)))
-    names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
-    names |= {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-
-    assert "_env_confirms" not in names
-    assert "environ" in names
 
 
 @pytest.mark.parametrize(

@@ -105,7 +105,7 @@ def test_extract_facts_equals_what_a_gate_open_ds302_scan_sends(
         - Whether DS302 detect() and extract_facts() still read trace_candidates with DS302_POLICY
     """
     root = _case_root(asset_case, CONFIGS[name])
-    scan_config = dataclasses.replace(load_config(root), profile="deep", deep_confirm=True, select=("DS302",))
+    scan_config = dataclasses.replace(load_config(root), profile="deep", select=("DS302",))
 
     scanned = scan(root, config=scan_config, use_external_api=True)
     facts = extract_facts(root)
@@ -149,7 +149,7 @@ def test_default_selection_collapses_the_near_duplicate_pair(
 
     scan(
         root,
-        config=dataclasses.replace(load_config(root), profile="deep", deep_confirm=True, select=("DS302",)),
+        config=dataclasses.replace(load_config(root), profile="deep", select=("DS302",)),
         use_external_api=True,
     )
 
@@ -170,7 +170,7 @@ def test_cli_extract_facts_json_equals_what_cli_scan_sends(
 
     Scenario:
         Given the extract_facts_basic corpus
-        When docsentinel scan --profile deep --i-understand-deep-is-heuristic --use-external-api --select DS302
+        When docsentinel scan --profile deep --use-external-api --select DS302
             runs, then docsentinel extract-facts --format facts-json
         Then both exit 0 and the facts' texts equal the backend's recorded calls, in order, with
             matches_ds302 true; no backend module was imported
@@ -191,7 +191,6 @@ def test_cli_extract_facts_json_equals_what_cli_scan_sends(
             str(root),
             "--profile",
             "deep",
-            "--i-understand-deep-is-heuristic",
             "--use-external-api",
             "--select",
             "DS302",

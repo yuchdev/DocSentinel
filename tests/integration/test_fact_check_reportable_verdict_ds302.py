@@ -276,7 +276,7 @@ def test_cli_reports_the_finding_and_exits_zero(
 
     Scenario:
         Given the mixed corpus and the case fake registered as the default lenz backend
-        When "docsentinel scan ROOT --profile deep --i-understand-deep-is-heuristic --use-external-api
+        When "docsentinel scan ROOT --profile deep --use-external-api
             --select DS302 --format <json|text>" runs with the sentinel lenz key
         Then the exit code is 0 (advisory); json holds one DS302 problem on orchard.md with type
             "unverified claim", the value and outcome advisory; text names the document and a
@@ -301,7 +301,6 @@ def test_cli_reports_the_finding_and_exits_zero(
             str(case.root),
             "--profile",
             "deep",
-            "--i-understand-deep-is-heuristic",
             "--use-external-api",
             "--select",
             "DS302",
@@ -367,7 +366,7 @@ def test_project_config_confidence_floor_reaches_ds302(
 
     result = scan(
         case.root,
-        config=dataclasses.replace(loaded, profile="deep", deep_confirm=True, select=("DS302",)),
+        config=dataclasses.replace(loaded, profile="deep", select=("DS302",)),
         use_external_api=True,
     )
 

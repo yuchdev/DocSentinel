@@ -51,7 +51,6 @@ _INVALID: list[tuple[str, object]] = [
     ("duplicate_similarity", 1.5),
     ("min_information_score", -0.1),
     ("docsig_paths", [""]),
-    ("deep_confirm", "yes"),
     *((name, "yes") for name in _BOOL_OPTIONS),
     *((name, "bogus") for name in _ENUM_OPTIONS),
     *((name, 5) for name in _STR_LIST_OPTIONS),

@@ -187,7 +187,7 @@ docs/setup.md (15 bytes)
 ### Pending lines
 
 ```text
-Pending: deep profile confirmed, but its dependencies are unavailable - install the deep extra (pip install docsentinel[deep]) and the model (python -m spacy download en_core_web_sm)
+Pending: deep profile dependencies are unavailable - install the deep extra (pip install docsentinel[deep]) and the model (python -m spacy download en_core_web_sm)
 ```
 
 A `Pending:` line means a part of the scan did not run. Treat it as "unchecked", not "clean".
@@ -527,7 +527,7 @@ If the deep extra is not installed, the scan does not fail. It reports no enable
 
 ```text
 Deep profile detection skipped because dependencies are unavailable.
-Pending: deep profile confirmed, but its dependencies are unavailable - install the deep extra (pip install docsentinel[deep]) and the model (python -m spacy download en_core_web_sm)
+Pending: deep profile dependencies are unavailable - install the deep extra (pip install docsentinel[deep]) and the model (python -m spacy download en_core_web_sm)
 ```
 
 ---

@@ -29,7 +29,7 @@ from tests.asset_helpers import load_asset_case
 _PROFILE_ARGS: dict[str, tuple[str, ...]] = {
     "fast": ("--profile", "fast", "--reference-scope", "strict"),  # DS103 is opt-in (Milestone 0009)
     "standard": ("--profile", "standard"),
-    "deep": ("--profile", "deep", "--i-understand-deep-is-heuristic"),
+    "deep": ("--profile", "deep"),
 }
 
 #: The one stderr problem line of a deep scan: ``DS302`` is active but its gate is closed (no

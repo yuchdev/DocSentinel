@@ -128,8 +128,8 @@ docsentinel scan docs/README.md
 # Standard profile
 docsentinel scan --profile standard
 
-# Deep profile (requires explicit opt-in acknowledgment)
-docsentinel scan --profile deep --i-understand-deep-is-heuristic
+# Deep profile (heuristic, advisory-only)
+docsentinel scan --profile deep
 ```
 
 ### 4. Filter and Select Specific Rules
@@ -252,9 +252,6 @@ max_grade_level = 16.0
 duplicate_similarity = 0.85
 min_information_score = 0.15
 docsig_paths = ["src"]
-
-# Deep profile opt-in
-deep_confirm = false
 ```
 
 For the full reference for the standard-profile statistical keys (valid ranges,

@@ -163,13 +163,13 @@ def register_fake_backend(monkeypatch: pytest.MonkeyPatch, cls: type) -> type:
 
 
 def fake_deep_config(**overrides: object) -> Config:
-    """Return a confirmed deep configuration that names the ``fake`` backend.
+    """Return a deep configuration that names the ``fake`` backend.
 
     :param overrides: Further ``Config`` fields, applied last.
-    :returns: ``Config()`` with ``profile="deep"``, ``deep_confirm=True``,
-        ``fact_check_backend="fake"`` and ``overrides``.
+    :returns: ``Config()`` with ``profile="deep"``, ``fact_check_backend="fake"`` and
+        ``overrides``.
     """
-    fields: dict[str, object] = {"profile": "deep", "deep_confirm": True, "fact_check_backend": FAKE_NAME}
+    fields: dict[str, object] = {"profile": "deep", "fact_check_backend": FAKE_NAME}
     fields.update(overrides)
     return dataclasses.replace(Config(), **fields)
 

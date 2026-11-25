@@ -48,7 +48,7 @@ PACKAGED_TEMPLATES = packaged_template_names()
 CLAIMS = ("Acme shipped 3 releases in 2024.", "Rotterdam handled 14 ships.")
 
 #: The deep scan command line with consent.
-SCAN_ARGS = ("--profile", "deep", "--i-understand-deep-is-heuristic", "--format", "json")
+SCAN_ARGS = ("--profile", "deep", "--format", "json")
 
 
 def leaked(text: str) -> list[str]:

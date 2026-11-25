@@ -97,7 +97,7 @@ def _ds302_scan(root: Path, config_overrides: Optional[dict[str, object]] = None
     :returns: The result.
     """
     config = dataclasses.replace(
-        load_config(root), profile="deep", deep_confirm=True, select=("DS302",), **(config_overrides or {})
+        load_config(root), profile="deep", select=("DS302",), **(config_overrides or {})
     )
     return scan(root, config=config, use_external_api=True)
 

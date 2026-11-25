@@ -33,7 +33,6 @@ _CONFIG_OPTIONS = {
     "min_document_words",
     "min_paragraph_words",
     "min_paragraph_chars",
-    "deep_confirm",
     # Story 02 — anchor identity and collisions (DS104).
     "anchor_collision_policy",
     "anchor_renderer",
@@ -340,7 +339,6 @@ class Config:
         analysed. A paragraph must clear **both** this and ``min_paragraph_words``.
         Integer ``>= 0``; the default ``30`` reproduces the historical built-in
         floor.
-    :ivar deep_confirm: Whether the deep profile is explicitly confirmed.
     :ivar anchor_collision_policy: ``DS104`` collision policy.
     :ivar anchor_renderer: Renderer whose slugging ``DS104`` emulates.
     :ivar heading_level_policy: ``DS105`` heading-level policy.
@@ -470,7 +468,6 @@ class Config:
     min_document_words: int = 50
     min_paragraph_words: int = 5
     min_paragraph_chars: int = 30
-    deep_confirm: bool = False
     anchor_collision_policy: str = "explicit"
     anchor_renderer: str = "github"
     heading_level_policy: str = "no-skips"
@@ -1600,7 +1597,6 @@ def _build_config(options: dict[str, object]) -> Config:
     duplicate_similarity = _finite_number(options.get("duplicate_similarity", defaults.duplicate_similarity))
     min_information_score = _finite_number(options.get("min_information_score", defaults.min_information_score))
     docsig_paths = options.get("docsig_paths", list(defaults.docsig_paths))
-    deep_confirm = options.get("deep_confirm", defaults.deep_confirm)
     for name, value in (("include", include), ("exclude", exclude)):
         if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
             raise ConfigError(f"{name} must be a list of nonempty patterns")
@@ -1621,8 +1617,6 @@ def _build_config(options: dict[str, object]) -> Config:
         raise ConfigError("duplicate_similarity must be a number between 0 and 1")
     if min_information_score is None or not (0.0 <= min_information_score <= 1.0):
         raise ConfigError("min_information_score must be a number between 0 and 1")
-    if not isinstance(deep_confirm, bool):
-        raise ConfigError("deep_confirm must be true or false")
 
     extra = _load_extra_options(options, defaults)
 
@@ -1637,7 +1631,6 @@ def _build_config(options: dict[str, object]) -> Config:
         duplicate_similarity=duplicate_similarity,
         min_information_score=min_information_score,
         docsig_paths=tuple(docsig_paths),
-        deep_confirm=deep_confirm,
         **extra,
     )
 

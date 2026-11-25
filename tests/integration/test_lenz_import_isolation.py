@@ -80,7 +80,7 @@ _PROBE = """
     closed_gate = [line for line in doctor_out.splitlines() if line.startswith("fact-check gate:")]
 
     engine.deep_ready = lambda: True
-    deep = engine.scan(root, config=Config(profile="deep", deep_confirm=True, select=("DS302",)))
+    deep = engine.scan(root, config=Config(profile="deep", select=("DS302",)))
     steps["deep scan"] = state()
 
     os.environ["DOCSENTINEL_USE_EXTERNAL_API"] = "1"

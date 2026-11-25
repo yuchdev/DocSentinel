@@ -674,15 +674,15 @@ def test_unreadable_document_is_counted_and_never_passed_on(tmp_path: Path, stub
 
 def test_scan_only_settings_do_not_change_the_result(tmp_path: Path, patched_extraction: list[str]):
     """
-    [Unit] extract_facts: verifies profile, deep_confirm and select in the config do not change the facts.
+    [Unit] extract_facts: verifies profile and select in the config do not change the facts.
 
     Scenario:
-        Given the default config and one with profile "deep", deep_confirm false and select ["DS1"]
+        Given the default config and one with profile "deep" and select ["DS1"]
         When extract_facts runs with each
         Then the facts, settings, matches_ds302 and notice are equal
 
     Boundaries:
-        - Focus: decision X3 (profile/select/ignore/deep_confirm are not read)
+        - Focus: decision X3 (profile/select/ignore are not read)
         - Fixtures/params: patched extraction
         - Scope: extract_facts
 
@@ -690,7 +690,7 @@ def test_scan_only_settings_do_not_change_the_result(tmp_path: Path, patched_ext
         - Whether extract_facts started gating on the profile or the rule selection
     """
     root = _corpus(tmp_path)
-    scan_only = dataclasses.replace(Config(), profile="deep", deep_confirm=False, select=("DS1",), ignore=("DS302",))
+    scan_only = dataclasses.replace(Config(), profile="deep", select=("DS1",), ignore=("DS302",))
 
     plain = extract_facts(root, config=Config())
     other = extract_facts(root, config=scan_only)
