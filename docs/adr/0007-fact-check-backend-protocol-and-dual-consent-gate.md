@@ -434,6 +434,11 @@ normative in
 [Story 01.0's config reference](/docs/roadmap/0010-fact-check/01.0-backend-protocol-and-rule-contract/README.md#config-reference).
 None names a path, URL or secret; `USER_SETTINGS_REFUSED_KEYS` is unchanged.
 
+Addendum (2026-11-26): a seventh key, `fact_check_combination` (`"each"`, `"all"` or claim ranges such
+as `1-6,7-8,9-16`), and the `--fact-combination` flag on `scan` and `baseline` group selected claims
+into combined facts. The 1000-character send bound still applies to the combined text: an over-long
+fact is not sent and is never truncated. The key is allowed in user settings.
+
 ### Module placement (C9)
 
 | Layer | Modules | May import | Never imports |

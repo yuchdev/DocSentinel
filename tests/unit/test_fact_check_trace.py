@@ -182,12 +182,12 @@ def test_ds302_policy_is_built_from_the_constants():
 
 def test_trace_candidates_is_the_only_extraction_loop():
     """
-    [Unit] fact_check: verifies exactly one extract_claims call, inside trace_candidates, and detect uses collect_candidates.
+    [Unit] fact_check: verifies exactly one extract_statements call, inside trace_candidates, and detect uses collect_candidates.
 
     Scenario:
         Given the parsed source of detectors/fact_check.py
         When every call is inspected
-        Then one call names extract_claims, in trace_candidates, and detect calls collect_candidates
+        Then one call names extract_statements, in trace_candidates, and detect calls collect_candidates
 
     Boundaries:
         - Focus: plan contract C11, Task 01 acceptance
@@ -203,7 +203,7 @@ def test_trace_candidates_is_the_only_extraction_loop():
     for function in (node for node in tree.body if isinstance(node, ast.FunctionDef)):
         for call in (node for node in ast.walk(function) if isinstance(node, ast.Call)):
             name = call.func.id if isinstance(call.func, ast.Name) else getattr(call.func, "attr", "")
-            if name == "extract_claims":
+            if name == "extract_statements":
                 owners.append(function.name)
             if function.name == "detect":
                 detect_calls.add(name)

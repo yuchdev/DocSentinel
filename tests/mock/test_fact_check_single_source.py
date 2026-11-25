@@ -214,7 +214,7 @@ def test_exploration_run_leaves_the_ds302_policy_and_candidates_unchanged(
         offset = 0 if path == "a.md" else 10
         return tuple(_claim(offset + k, path) for k in range(4))
 
-    monkeypatch.setattr("docsentinel.mining.claims.extract_claims", _extract)
+    monkeypatch.setattr("docsentinel.mining.claims.extract_statements", _extract)
     (tmp_path / "a.md").write_text("# A\n\nAlpha.\n", encoding="utf-8")
     (tmp_path / "b.md").write_text("# B\n\nBravo.\n", encoding="utf-8")
     documents = (Document("a.md", 1), Document("b.md", 1))

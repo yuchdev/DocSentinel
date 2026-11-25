@@ -38,7 +38,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, Optional
 
 from docsentinel import models, rules
-from docsentinel.config import FACT_CHECK_BACKEND_NAMES, Config, ConfigError, validate_fact_check_option
+from docsentinel.config import (
+    FACT_CHECK_BACKEND_NAMES,
+    FACT_COMBINATION_ALL,
+    FACT_COMBINATION_EACH,
+    Config,
+    ConfigError,
+    parse_fact_combination,
+    validate_fact_check_option,
+)
 from docsentinel.fact_check.protocol import (
     FACT_CHECK_BACKENDS,
     REPORTABLE_VERDICTS,
@@ -420,10 +428,12 @@ def trace_candidates(
 ) -> CandidateTrace:
     """Extract the claims of every Markdown document and trace their selection (plan contract C11).
 
-    This is the only extraction loop shared by ``DS302`` and ``extract_facts``. Extraction is the
-    one ``DS301`` uses (plan contract C7): the lazily imported ``docsentinel.mining.claims``, the
-    shared ``mining.nlp`` pipeline, the ``.md`` filter and a strict UTF-8 read. It reads no
-    environment, resolves no consent gate and imports no backend.
+    This is the only extraction loop shared by ``DS302`` and ``extract_facts``. It uses the module
+    and pipeline ``DS301`` uses (plan contract C7): the lazily imported ``docsentinel.mining.claims``,
+    the shared ``mining.nlp`` pipeline, the ``.md`` filter and a strict UTF-8 read, but calls
+    ``extract_statements`` rather than ``extract_claims``: one self-contained, declarative,
+    non-quoted, non-hedged statement per candidate instead of one subject-verb-object triple. It
+    reads no environment, resolves no consent gate and imports no backend.
 
     :param root: The scan root.
     :param documents: The readable documents, in scan order.
@@ -433,7 +443,7 @@ def trace_candidates(
     :raises ConfigError: When a selection value of ``config`` is invalid.
     :raises ValueError: When ``policy`` holds an invalid weight or threshold.
     """
-    extract_claims = importlib.import_module("docsentinel.mining.claims").extract_claims
+    extract_statements = importlib.import_module("docsentinel.mining.claims").extract_statements
     pipeline = nlp.load_pipeline()
     all_claims: list[Claim] = []
     documents_read = 0
@@ -443,7 +453,7 @@ def trace_candidates(
         with (root / doc.path).open("r", encoding="utf-8") as stream:
             text = stream.read()
         documents_read += 1
-        all_claims.extend(extract_claims(pipeline, text, doc.path))
+        all_claims.extend(extract_statements(pipeline, text, doc.path))
     claims = tuple(all_claims)
     return CandidateTrace(
         entries=_trace_selection(claims, config, policy),
@@ -469,25 +479,95 @@ def collect_candidates(
     return trace_candidates(root, documents, config).selected
 
 
-def _finding(candidate: CandidateClaim, result: FactCheckResult) -> models.Finding:
+@dataclass(frozen=True)
+class FactGroup:
+    """One fact sent to the backend: one or more candidates joined in send order.
+
+    :ivar members: The candidates, in send order; at least one.
+    :ivar label: The 1-based send-order positions it covers, ``"3"`` or ``"1-6"``.
+    """
+
+    members: tuple[CandidateClaim, ...]
+    label: str
+
+    @property
+    def text(self) -> str:
+        """The exact text sent: the member texts joined by one space."""
+        return " ".join(member.text for member in self.members)
+
+    @property
+    def paths(self) -> tuple[str, ...]:
+        """The distinct documents of the members, in first-seen order."""
+        return tuple(dict.fromkeys(member.claim.path for member in self.members))
+
+
+def combine_candidates(candidates: tuple[CandidateClaim, ...], combination: str) -> tuple[FactGroup, ...]:
+    """Group the selected candidates into the facts ``DS302`` sends (``fact_check_combination``).
+
+    Positions are 1-based in send order. A range is clipped to the candidates there are; a range
+    starting past the last candidate is dropped; a candidate no range names is its own fact. Groups
+    keep send order (by their first position).
+
+    :param candidates: The selected candidates, in send order.
+    :param combination: The ``fact_check_combination`` value.
+    :returns: The facts to send, in send order.
+    :raises ConfigError: When ``combination`` is invalid.
+    """
+    parsed = parse_fact_combination(combination)
+    count = len(candidates)
+    if parsed == FACT_COMBINATION_EACH:
+        ranges: tuple[tuple[int, int], ...] = ()
+    elif parsed == FACT_COMBINATION_ALL:
+        ranges = ((1, count),) if count else ()
+    else:
+        ranges = tuple((start, min(end, count)) for start, end in parsed if start <= count)
+    groups: list[FactGroup] = []
+    position = 1
+    for start, end in (*ranges, (count + 1, count)):
+        while position < start:
+            groups.append(FactGroup((candidates[position - 1],), str(position)))
+            position += 1
+        if start <= end:
+            label = str(start) if start == end else f"{start}-{end}"
+            groups.append(FactGroup(candidates[start - 1 : end], label))
+            position = end + 1
+    return tuple(groups)
+
+
+def _finding(candidate: CandidateClaim, result: FactCheckResult, *, path: Optional[str] = None) -> models.Finding:
     """Build the finding for one reportable verdict (ADR 0007 Contract 9).
 
     Only the validated verdict, the ``.2f`` confidence, the validated backend name and the
     candidate text are used; ``result.citations`` never reaches a finding (threat model M11).
 
-    :param candidate: The candidate that was sent.
+    :param candidate: The candidate that was sent (for a combined fact, one whose ``text`` is the
+        combined text).
     :param result: The backend's validated result.
+    :param path: The document to report on; ``candidate.claim.path`` when ``None``.
     :returns: The finding; the confidence is only in the report-only ``value``.
     """
     snippet = candidate.text[:_SNIPPET_CHARS]
     return models.Finding(
         rule=DS302.code,
-        path=candidate.claim.path,
+        path=candidate.claim.path if path is None else path,
         message=f"external fact-check: '{snippet}' rated {result.verdict} by {result.backend} - review to confirm",
         severity=DS302.severity,
         value=f"{result.verdict} (confidence {result.confidence:.2f}): {candidate.text}",
         type=FINDING_TYPE,
     )
+
+
+def _group_findings(group: FactGroup, result: FactCheckResult) -> list[models.Finding]:
+    """Build the findings of one reportable fact: one per document the fact drew claims from.
+
+    :param group: The fact that was sent.
+    :param result: The backend's validated result.
+    :returns: The findings, in the order of :attr:`FactGroup.paths`.
+    """
+    if len(group.members) == 1:
+        return [_finding(group.members[0], result)]
+    combined = replace(group.members[0], text=group.text)
+    return [_finding(combined, result, path=path) for path in group.paths]
 
 
 def _check_candidates(
@@ -497,9 +577,13 @@ def _check_candidates(
     *,
     clock: Callable[[], float] = time.monotonic,
 ) -> tuple[models.Finding, ...]:
-    """Send each candidate to the backend, in order, within the time budget.
+    """Send each fact to the backend, in order, within the time budget.
 
-    A ``FactCheckError`` skips that claim with one WARNING naming the document only. Any other
+    The candidates are first grouped by ``config.fact_check_combination``
+    (:func:`combine_candidates`; ``each``, the default, makes one fact per candidate). A combined
+    fact longer than :data:`MAX_CANDIDATE_CHARS` is not sent (one WARNING; it is never truncated),
+    and a reportable combined fact gives one finding per document it drew claims from. The counts
+    in the INFO line are facts. A ``FactCheckError`` skips that fact with one WARNING naming the document only. Any other
     exception from ``check_claim`` stops the loop and is replaced by a type-name-only
     ``RuntimeError`` with no exception chain (threat model M5). One INFO line with counts only is
     logged from a ``finally`` block (threat model M10).
@@ -516,27 +600,46 @@ def _check_candidates(
     budget = int(validate_fact_check_option("fact_check_time_budget_seconds", config.fact_check_time_budget_seconds))
     min_confidence = validate_fact_check_option("fact_check_min_confidence", config.fact_check_min_confidence)
     backend = _validated_backend(config)
-    total = len(candidates)
+    groups = combine_candidates(candidates, config.fact_check_combination)
+    total = len(groups)
     findings: list[models.Finding] = []
-    sent = failed = not_sent = 0
+    sent = failed = not_sent = too_long = 0
     sent_paths: set[str] = set()
     per_document: dict[str, int] = {}
     escaped: Optional[str] = None
+    if config.fact_check_combination != FACT_COMBINATION_EACH:
+        logger.info(
+            "DS302: fact combination %s: %d claim(s) grouped into %d fact(s)",
+            safe(config.fact_check_combination, limit=80),
+            len(candidates),
+            total,
+        )
     try:
-        deadline = clock() + budget if candidates else 0.0
-        for index, candidate in enumerate(candidates):
+        deadline = clock() + budget if groups else 0.0
+        for index, group in enumerate(groups):
             if clock() >= deadline:
                 not_sent = total - index
                 logger.warning(
                     "DS302: time budget of %d s exhausted; %d of %d claim(s) not checked", budget, not_sent, total
                 )
                 break
-            path = candidate.claim.path
+            text = group.text
+            if len(text) > MAX_CANDIDATE_CHARS:
+                too_long += 1
+                logger.warning(
+                    "DS302: combined fact %s is %d characters, over the %d-character limit; not sent",
+                    group.label,
+                    len(text),
+                    MAX_CANDIDATE_CHARS,
+                )
+                continue
+            path = group.members[0].claim.path
             sent += 1
-            sent_paths.add(path)
-            per_document[path] = per_document.get(path, 0) + 1
+            sent_paths.update(group.paths)
+            for member_path in group.paths:
+                per_document[member_path] = per_document.get(member_path, 0) + 1
             try:
-                result = client.check_claim(candidate.text)
+                result = client.check_claim(text)
             except FactCheckError as exc:
                 failed += 1
                 # Type name only: a backend message may echo request headers (M5, FC-5).
@@ -548,7 +651,7 @@ def _check_candidates(
                 escaped = type(exc).__name__
                 break
             if result.verdict in REPORTABLE_VERDICTS and result.confidence >= min_confidence:
-                findings.append(_finding(candidate, result))
+                findings.extend(_group_findings(group, result))
         if escaped is not None:
             # Raised outside the handler, so there is no __cause__ and no __context__.
             raise RuntimeError(f"DS302: backend {backend} raised {escaped}")
@@ -562,6 +665,8 @@ def _check_candidates(
             len(findings),
             not_sent,
         )
+        if too_long:
+            logger.info("DS302: %d combined fact(s) not sent: over %d characters", too_long, MAX_CANDIDATE_CHARS)
     findings.sort(key=lambda finding: (finding.path, finding.message))
     logger.debug("DS302: %d candidate(s), %d sent, %d failed, %d reported", total, sent, failed, len(findings))
     for path in sorted(per_document):
@@ -629,6 +734,7 @@ def detect(
         return ()
     for name in ("fact_check_time_budget_seconds", "fact_check_min_confidence"):
         validate_fact_check_option(name, getattr(config, name))
+    parse_fact_combination(config.fact_check_combination)
     backend = gate.backend
     try:
         client_cls = load_backend(backend)

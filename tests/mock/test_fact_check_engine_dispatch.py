@@ -843,9 +843,9 @@ def test_open_gate_runs_extraction_through_patched_pipeline_and_selection(
     [Unit] DS302 dispatch: verifies the open path reads each Markdown document and sends the selected text.
 
     Scenario:
-        Given an open gate, a patched spaCy pipeline, a patched extract_claims and an injected select_candidates
+        Given an open gate, a patched spaCy pipeline, a patched extract_statements and an injected select_candidates
         When a confirmed deep scan runs
-        Then extract_claims sees every .md document's text, the fake receives the selected text,
+        Then extract_statements sees every .md document's text, the fake receives the selected text,
         its "false" verdict becomes a finding and close() is called once.
 
     Boundaries:
@@ -866,7 +866,7 @@ def test_open_gate_runs_extraction_through_patched_pipeline_and_selection(
         seen.append((pipeline, text, path))
         return (SimpleNamespace(path=path, raw_sentence=text.strip()),)
 
-    monkeypatch.setattr("docsentinel.mining.claims.extract_claims", extract)
+    monkeypatch.setattr("docsentinel.mining.claims.extract_statements", extract)
     # Story 05.0: trace_candidates pools the claims into the private trace helper (plan contract C11).
     monkeypatch.setattr(
         fact_check,

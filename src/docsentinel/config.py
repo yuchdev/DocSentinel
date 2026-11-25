@@ -11,7 +11,7 @@ import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Optional
+from typing import Final, Optional, Union
 
 from docsentinel.log import safe
 from docsentinel.telemetry.filters import neutralize
@@ -112,6 +112,7 @@ _CONFIG_OPTIONS = {
     "fact_check_max_claims_per_document",
     "fact_check_max_claims_total",
     "fact_check_time_budget_seconds",
+    "fact_check_combination",
 }
 # Standalone config file names accepted at the scan root: the preferred name first, then the alias.
 STANDALONE_CONFIG_NAMES = ("docsentinel.toml", "doc_sentinel.toml")
@@ -128,6 +129,16 @@ _FACT_CHECK_INT_BOUNDS: Final[dict[str, tuple[int, int]]] = {
     "fact_check_max_claims_total": (1, 500),
     "fact_check_time_budget_seconds": (1, 3600),
 }
+
+#: The ``fact_check_combination`` keywords: every claim alone (default), or all claims as one fact.
+FACT_COMBINATION_EACH: Final = "each"
+FACT_COMBINATION_ALL: Final = "all"
+
+#: Longest accepted ``fact_check_combination`` value, in characters.
+MAX_FACT_COMBINATION_CHARS: Final = 2048
+
+#: One ``fact_check_combination`` range: ``N`` or ``N-M`` with no sign, space or leading zero.
+_FACT_RANGE_RE: Final = re.compile(r"([1-9][0-9]{0,2})(?:-([1-9][0-9]{0,2}))?")
 
 #: ``fact_check_*`` options holding a finite number in the closed range ``[0, 1]``.
 _FACT_CHECK_UNIT_OPTIONS: Final = ("fact_check_min_salience", "fact_check_min_confidence")
@@ -453,6 +464,9 @@ class Config:
     :ivar fact_check_time_budget_seconds: Wall-clock budget, in whole seconds, of
         the ``DS302`` network stage of one scan; an integer from 1 to 3600 (default
         ``300``; ADR 0007 Contract 7).
+    :ivar fact_check_combination: How ``DS302`` groups the selected claims into the facts it
+        sends (default ``"each"``: one request per claim; ``"all"``: one request for all of
+        them; or ranges such as ``"1-6,7-8"``). See :func:`parse_fact_combination`.
     """
 
     include: tuple[str, ...] = ("*.md", "**/*.md")
@@ -538,6 +552,7 @@ class Config:
     fact_check_max_claims_per_document: int = 3
     fact_check_max_claims_total: int = 25
     fact_check_time_budget_seconds: int = 300
+    fact_check_combination: str = "each"
 
 
 def domain_glob_segments(glob: object, where: str) -> tuple[str, ...]:
@@ -750,6 +765,42 @@ def validate_fact_check_option(name: str, value: object) -> float:
     if number is None or not (0.0 <= number <= 1.0):
         raise ConfigError(f"{name} must be a number between 0 and 1")
     return number
+
+
+def parse_fact_combination(value: object) -> Union[str, tuple[tuple[int, int], ...]]:
+    """Validate a ``fact_check_combination`` value and return its parsed form.
+
+    ``each`` checks every selected claim on its own (the default), ``all`` joins every selected
+    claim into one fact, and a comma-separated list of 1-based ranges (``1-6,7-8,9-16``) joins the
+    claims of each range, numbered in send order (the ``extract-facts`` order). A range is ``N`` or
+    ``N-M`` with ``1 <= N <= M <= fact_check_max_claims_total``'s upper bound (500); ranges may not
+    overlap; a claim no range names is still checked on its own. The loader, the CLI flag and
+    ``DS302`` (for an injected ``Config``) all use this function, so they give the same messages.
+
+    :param value: The candidate value.
+    :returns: ``"each"``, ``"all"`` or the ranges as ``(start, end)`` pairs in ascending order.
+    :raises ConfigError: When the value is not one of those forms.
+    """
+    message = (
+        "fact_check_combination must be 'each', 'all' or comma-separated claim ranges such as "
+        "'1-6,7-8,9-16' (1-based, ascending, not overlapping, at most 500)"
+    )
+    if not isinstance(value, str) or not value or len(value) > MAX_FACT_COMBINATION_CHARS:
+        raise ConfigError(message)
+    if value in (FACT_COMBINATION_EACH, FACT_COMBINATION_ALL):
+        return value
+    limit = _FACT_CHECK_INT_BOUNDS["fact_check_max_claims_total"][1]
+    ranges: list[tuple[int, int]] = []
+    for part in value.split(","):
+        match = _FACT_RANGE_RE.fullmatch(part)
+        if match is None:
+            raise ConfigError(message)
+        start = int(match.group(1))
+        end = int(match.group(2)) if match.group(2) is not None else start
+        if start > end or end > limit or (ranges and start <= ranges[-1][1]):
+            raise ConfigError(message)
+        ranges.append((start, end))
+    return tuple(ranges)
 
 
 def _require_bool(name: str, value: object) -> bool:
@@ -1678,6 +1729,9 @@ def _load_extra_options(options: dict[str, object], defaults: Config) -> dict[st
 
     for name in (*_FACT_CHECK_INT_BOUNDS, *_FACT_CHECK_UNIT_OPTIONS):
         extra[name] = validate_fact_check_option(name, options.get(name, getattr(defaults, name)))
+    combination = options.get("fact_check_combination", defaults.fact_check_combination)
+    parse_fact_combination(combination)
+    extra["fact_check_combination"] = combination
 
     document_id_field = options.get("document_id_field", defaults.document_id_field)
     if not isinstance(document_id_field, str) or not document_id_field:

@@ -115,6 +115,17 @@ DOCSENTINEL_FACTCHECK_LENZ_API_KEY=<your key here> \
   docsentinel scan docs --profile deep --use-external-api
 ```
 
+By default each selected claim is one request. `--fact-combination SPEC` (on `scan` and `baseline`;
+overrides the `fact_check_combination` option) joins claims into fewer facts: `each`, `all`, or 1-based
+ranges in the `extract-facts` listing order such as `1-6,7-8,9-16`. A bad value exits `2`. A combined
+fact over 1000 characters is not sent (one WARNING). `extract-facts` does not take the flag yet, so its
+preview still lists individual claims.
+
+```bash
+DOCSENTINEL_FACTCHECK_LENZ_API_KEY=<your key here> \
+  docsentinel scan docs --profile deep --use-external-api --fact-combination 1-3,4-6
+```
+
 Tune it with the `fact_check_*` options in the
 [configuration reference](../reference/configuration.md#external-fact-checking-ds302). Each finding has
 type `unverified claim` and a `value` such as `false (confidence 0.87): <claim>`.
@@ -525,7 +536,7 @@ All existing issues recorded in `.docsentinel-baseline.json` are suppressed. The
 
 `extract-facts` lists the verifiable claims that `DS302` would send to a fact-check service. It is
 offline: it makes no network call, loads no backend, reads no API key and needs no `--use-external-api`.
-It is not an LLM and verifies nothing. Use it as the preview to review before you pass
+A claim is one self-contained, single-sentence statement from the Markdown prose: headings, code, tables, quotations and hedged sentences ("could", "may", "might") are not listed. A sentence that coordinates several predicates ("... and can be integrated ...") becomes one statement per predicate. A statement that refers back is rewritten by fixed rules so it can be read alone: a pronoun, a possessive or a bare definite noun phrase is replaced by the earlier mention it stands for. For example, "Their findings were published in Advanced Materials" becomes "The findings of the team led by Nandita Saha were published in Advanced Materials", and "the researchers" becomes "the team led by Nandita Saha". A sentence that opens with a consequence connective ("As a result", "Therefore") or that still has an unresolved pronoun is not listed. The rules are heuristic and can pick the wrong antecedent, and nothing is verified: it is not an LLM. Use the preview to review each statement before you pass
 `--use-external-api`. It needs the deep extras (`docsentinel[deep]`) and the spaCy model.
 
 ```bash

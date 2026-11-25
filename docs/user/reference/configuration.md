@@ -1425,6 +1425,42 @@ overrun the budget by up to one backend timeout.
 fact_check_time_budget_seconds = 120
 ```
 
+### `fact_check_combination`
+
+| Field | Value |
+|-------|-------|
+| Type | string |
+| Default | `"each"` |
+| Valid values | `"each"`, `"all"`, or comma-separated 1-based claim ranges such as `"1-6,7-8,9-16"` |
+| Consumed by | DS302 |
+
+How the selected claims are grouped into facts before they are sent. Each fact is one backend request.
+
+- `each` (default): one request per selected claim, as before.
+- `all`: every selected claim is joined into one fact and sent in one request.
+- Ranges: each range is `N` or `N-M` and becomes one fact. Numbers count the selected claims in send
+  order, which is the listing order of `docsentinel extract-facts`. `1-6,7-8,9-16` gives three facts.
+
+A range has no spaces or leading zeros, with `1 <= N <= M <= 500`; ranges must ascend and must not
+overlap. Anything else is a `ConfigError` (exit `2`). A range is clipped to the number of selected
+claims, a range that starts past the last claim is dropped, and a claim named by no range is still
+sent alone. The value is at most 2048 characters.
+
+The members of a fact are joined by one space. A combined fact over 1000 characters is **not sent and
+not truncated**: DS302 logs one WARNING per such fact and one INFO count. A reportable combined fact
+(false or mixed at or above `fact_check_min_confidence`) gives one finding per document it drew claims
+from, and each finding's `value` holds the whole combined text. The selection caps
+(`fact_check_max_claims_per_document`, `fact_check_max_claims_total`) apply before grouping, so
+combining many claims usually needs higher caps. The key is allowed in user settings. The CLI flag
+`--fact-combination SPEC` on `scan` and `baseline` overrides it for one run.
+
+`extract-facts` has no `--fact-combination` yet: it still lists individual claims, so with a
+combination other than `each` its preview shows the members, not the joined facts.
+
+```toml
+fact_check_combination = "1-6,7-8,9-16"
+```
+
 ---
 
 ## Summary table
@@ -1477,6 +1513,7 @@ the rule that consumes it. All defaults were verified against
 | `fact_check_max_claims_per_document` | `3` | DS302 |
 | `fact_check_max_claims_total` | `25` | DS302 |
 | `fact_check_time_budget_seconds` | `300` | DS302 |
+| `fact_check_combination` | `"each"` | DS302 |
 | `document_id_field` | `"id"` | DS114 |
 | `document_id_scope` | `"corpus"` | DS114 |
 | `document_id_case_sensitive` | `true` | DS114 |

@@ -1,6 +1,6 @@
 """``docsentinel extract-facts`` with the spaCy pipeline and claim extraction replaced (Story 05.0 Task 03).
 
-The deep-readiness probes, the pipeline loader and ``mining.claims.extract_claims`` are patched, so no
+The deep-readiness probes, the pipeline loader and ``mining.claims.extract_statements`` are patched, so no
 spaCy model is needed; salience, clustering, the template and the CLI run for real. Covers the
 deep-not-ready stop before any read, the E7 type-name-only error, the E10 no-file-on-render-failure
 rule, the E13 no-claim-text-in-logs rule (also with ``-v``), the cross-context template messages, the
@@ -119,7 +119,7 @@ def ready(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(engine, "deep_ready", lambda: True)
     monkeypatch.setattr(fact_check.nlp, "load_pipeline", lambda: "pipeline")
     monkeypatch.setattr(
-        "docsentinel.mining.claims.extract_claims", lambda pipeline, text, path: _claims_for(text, path)
+        "docsentinel.mining.claims.extract_statements", lambda pipeline, text, path: _claims_for(text, path)
     )
 
 
@@ -177,13 +177,13 @@ def test_extraction_error_prints_type_name_only(
     [Unit] extract-facts CLI: verifies a third-party extraction error prints the fixed type-name text (E7).
 
     Scenario:
-        Given extract_claims raising ValueError carrying a claim sentence
+        Given extract_statements raising ValueError carrying a claim sentence
         When extract-facts runs with -v
         Then the exit code is 2, stderr holds the fixed message, and no output, log or record holds the sentence.
 
     Boundaries:
         - Focus: threat model 0010-extract-facts E7, E13
-        - Fixtures/params: extract_claims patched to raise
+        - Fixtures/params: extract_statements patched to raise
         - Scope: cli.main end to end
 
     On failure, first check:
@@ -194,7 +194,7 @@ def test_extraction_error_prints_type_name_only(
         """Raise an error whose text is document-derived."""
         raise ValueError(SENTINEL_SENTENCE)
 
-    monkeypatch.setattr("docsentinel.mining.claims.extract_claims", _boom)
+    monkeypatch.setattr("docsentinel.mining.claims.extract_statements", _boom)
     root = _corpus(tmp_path)
 
     code = cli.main(["extract-facts", str(root), "-v"])

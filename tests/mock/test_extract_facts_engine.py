@@ -1,6 +1,6 @@
 """``engine.extract_facts`` with the spaCy pipeline and claim extraction replaced (Story 05.0 Task 01).
 
-The pipeline loader and ``mining.claims.extract_claims`` are patched to return hand-built ``Claim``
+The pipeline loader and ``mining.claims.extract_statements`` are patched to return hand-built ``Claim``
 literals, so no spaCy model is needed; salience and clustering run for real. Covers plan contract
 C11 (same texts as ``collect_candidates``), the overrides and ``matches_ds302``, and threat model
 0010 extract-facts mitigations E6 (validate before extraction), E7 (type-name-only error), E8
@@ -56,7 +56,7 @@ def patched_extraction(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """Patch deep readiness, the pipeline and claim extraction; record each loader call.
 
     :param monkeypatch: Pytest monkeypatch.
-    :returns: The list ``load_pipeline`` and ``extract_claims`` append to.
+    :returns: The list ``load_pipeline`` and ``extract_statements`` append to.
     """
     calls: list[str] = []
     monkeypatch.setattr(engine, "deep_ready", lambda: True)
@@ -67,7 +67,7 @@ def patched_extraction(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         calls.append(path)
         return _claims_for(text, path)
 
-    monkeypatch.setattr("docsentinel.mining.claims.extract_claims", _extract)
+    monkeypatch.setattr("docsentinel.mining.claims.extract_statements", _extract)
     return calls
 
 
@@ -98,7 +98,7 @@ def test_default_facts_equal_ds302_candidates(tmp_path: Path, patched_extraction
 
     Boundaries:
         - Focus: plan contract C11, Task 01 steps 4.4-4.6
-        - Fixtures/params: patched pipeline and extract_claims
+        - Fixtures/params: patched pipeline and extract_statements
         - Scope: extract_facts and collect_candidates
 
     On failure, first check:
@@ -134,7 +134,7 @@ def test_overrides_and_exploration_name_the_settings(tmp_path: Path, patched_ext
 
     Boundaries:
         - Focus: decisions X5 and X6
-        - Fixtures/params: patched pipeline and extract_claims
+        - Fixtures/params: patched pipeline and extract_statements
         - Scope: extract_facts
 
     On failure, first check:
@@ -223,7 +223,7 @@ def test_invalid_settings_fail_before_extraction(
     Scenario:
         Given one invalid value (NaN, infinity, out of range, bool, wrong arity, bad weight sum)
         When extract_facts runs
-        Then ConfigError or ValueError is raised and load_pipeline/extract_claims were never called
+        Then ConfigError or ValueError is raised and load_pipeline/extract_statements were never called
 
     Boundaries:
         - Focus: threat model E6
@@ -270,13 +270,13 @@ def test_extraction_failure_is_type_name_only(
     [Unit] extract_facts: verifies an extraction exception becomes a chainless, type-name-only RuntimeError.
 
     Scenario:
-        Given extract_claims raising ValueError carrying a sentinel sentence
+        Given extract_statements raising ValueError carrying a sentinel sentence
         When extract_facts runs
         Then RuntimeError names ValueError only, has no cause or context, and no record holds the sentence
 
     Boundaries:
         - Focus: threat model E7
-        - Fixtures/params: patched extract_claims
+        - Fixtures/params: patched extract_statements
         - Scope: extract_facts error path
 
     On failure, first check:
@@ -289,7 +289,7 @@ def test_extraction_failure_is_type_name_only(
         """Raise with document text in the message."""
         raise ValueError(SENTINEL_SENTENCE)
 
-    monkeypatch.setattr("docsentinel.mining.claims.extract_claims", _boom)
+    monkeypatch.setattr("docsentinel.mining.claims.extract_statements", _boom)
     caplog.set_level(logging.DEBUG, logger="docsentinel")
     with pytest.raises(RuntimeError) as info:
         extract_facts(_corpus(tmp_path), config=Config())
@@ -352,7 +352,7 @@ def test_numbers_and_entities_are_capped(tmp_path: Path, monkeypatch: pytest.Mon
         claim = _claims_for(text, path)[0]
         return (dataclasses.replace(claim, object_entities=big),)
 
-    monkeypatch.setattr("docsentinel.mining.claims.extract_claims", _extract)
+    monkeypatch.setattr("docsentinel.mining.claims.extract_statements", _extract)
     (tmp_path / "a.md").write_text("Node one holds 3 shards in Q1.\n", encoding="utf-8")
     result = extract_facts(tmp_path, config=dataclasses.replace(Config(), fact_check_min_salience=0.0))
     (fact,) = result.facts
@@ -780,7 +780,7 @@ def test_one_huge_entity_and_many_numbers_are_capped(tmp_path: Path, monkeypatch
         claim = _claims_for(text, path)[0]
         return (dataclasses.replace(claim, object_entities=(entity,), object_numbers=numbers),)
 
-    monkeypatch.setattr("docsentinel.mining.claims.extract_claims", _extract)
+    monkeypatch.setattr("docsentinel.mining.claims.extract_statements", _extract)
     (tmp_path / "a.md").write_text("Node one holds 3 shards in Q1.\n", encoding="utf-8")
 
     (fact,) = extract_facts(tmp_path, config=dataclasses.replace(Config(), fact_check_min_salience=0.0)).facts

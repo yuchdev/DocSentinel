@@ -45,7 +45,7 @@ are explained in the [Configuration Reference](configuration.md) and the
 | DS203 | standard | warning | always | Low-information content | A paragraph is both lexically thin and non-distinctive. | `low_information` | `min_information_score`, `min_paragraph_words`, `min_paragraph_chars` |
 | DS204 | standard | error | always | Docstring/signature mismatch | A function docstring's documented parameters or returns do not match its signature. | `contract_mismatch` | `docsig_paths` |
 | DS301 | deep | warning | always | Fact-contradiction candidate | Two documents make differing numeric or named-entity claims about the same subject. | `contradiction_candidate` | — |
-| DS302 | deep | warning | always | External fact-check disagreement | A high-salience claim is rated false or mixed by an external fact-checking backend. | `unverified_claim` | `fact_check_backend`, `fact_check_min_salience`, `fact_check_min_confidence`, `fact_check_max_claims_per_document`, `fact_check_max_claims_total`, `fact_check_time_budget_seconds`; advisory; also needs --use-external-api (or DOCSENTINEL_USE_EXTERNAL_API=1) and the backend API-key variable, gate state in docsentinel doctor |
+| DS302 | deep | warning | always | External fact-check disagreement | A high-salience claim is rated false or mixed by an external fact-checking backend. | `unverified_claim` | `fact_check_backend`, `fact_check_min_salience`, `fact_check_min_confidence`, `fact_check_max_claims_per_document`, `fact_check_max_claims_total`, `fact_check_time_budget_seconds`, `fact_check_combination`; advisory; also needs --use-external-api (or DOCSENTINEL_USE_EXTERNAL_API=1) and the backend API-key variable, gate state in docsentinel doctor |
 
 ## Profiles at a glance
 

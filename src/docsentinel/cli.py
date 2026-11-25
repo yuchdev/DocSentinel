@@ -21,6 +21,7 @@ from docsentinel.config import (
     _check_user_settings_directories,
     _tilde_path,
     load_config_with_sources,
+    parse_fact_combination,
     user_settings_path,
 )
 from docsentinel.detectors.fact_check import ExternalApiGate, resolve_external_api_gate
@@ -105,6 +106,28 @@ USE_EXTERNAL_API_HELP = (
     "fact-check service (DS302, deep profile); the backend's API key environment variable "
     "must also be set (see docsentinel doctor). Never put it in pre-commit args"
 )
+
+#: The ``--fact-combination`` help text shared by ``scan`` and ``baseline``.
+FACT_COMBINATION_HELP = (
+    "How DS302 groups the selected claims into the facts it sends: 'each' (default, one "
+    "request per claim), 'all' (one request for every claim) or 1-based ranges in send order "
+    "such as '1-6,7-8,9-16' (unnamed claims are sent alone); overrides fact_check_combination"
+)
+
+
+def _fact_combination_argument(value: str) -> str:
+    """Validate a ``--fact-combination`` value for argparse.
+
+    :param value: The raw command-line value.
+    :returns: The value unchanged.
+    :raises argparse.ArgumentTypeError: When :func:`parse_fact_combination` refuses it.
+    """
+    try:
+        parse_fact_combination(value)
+    except ConfigError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+    return value
+
 
 #: The ``rules`` listing suffix of every rule in :data:`~docsentinel.rules.EXTERNAL_API_RULES`.
 EXTERNAL_API_SUFFIX = " [requires --use-external-api and a backend API key; see docsentinel doctor]"
@@ -990,6 +1013,9 @@ def _build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("--no-user-settings", action="store_true", help=NO_USER_SETTINGS_HELP)
     scan_parser.add_argument("--strict", action="store_true")
     scan_parser.add_argument("--use-external-api", action="store_true", help=USE_EXTERNAL_API_HELP)
+    scan_parser.add_argument(
+        "--fact-combination", type=_fact_combination_argument, default=None, metavar="SPEC", help=FACT_COMBINATION_HELP
+    )
     baseline_parser = commands.add_parser(
         "baseline", help="Record current findings into a baseline file", parents=[verbosity]
     )
@@ -1020,6 +1046,9 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_selector_options(baseline_parser)
     baseline_parser.add_argument("--no-user-settings", action="store_true", help=NO_USER_SETTINGS_HELP)
     baseline_parser.add_argument("--use-external-api", action="store_true", help=USE_EXTERNAL_API_HELP)
+    baseline_parser.add_argument(
+        "--fact-combination", type=_fact_combination_argument, default=None, metavar="SPEC", help=FACT_COMBINATION_HELP
+    )
     init_parser = commands.add_parser("init", help="Create a starter config", parents=[verbosity])
     init_parser.add_argument(
         "root", nargs="?", default=".", help="Directory for docsentinel.toml (default: current directory)"
@@ -1280,6 +1309,8 @@ def _run_baseline(args: argparse.Namespace) -> int:
             settings = replace(settings, profile=args.profile)
         if args.reference_scope is not None:
             settings = replace(settings, reference_scope=args.reference_scope)
+        if args.fact_combination is not None:
+            settings = replace(settings, fact_check_combination=args.fact_combination)
         if args.output is not None:
             output_path = Path(args.output) if Path(args.output).is_absolute() else Path.cwd() / args.output
         elif settings.baseline is not None:
@@ -1352,6 +1383,8 @@ def _run_scan(args: argparse.Namespace) -> int:
             changes["baseline"] = str(args.baseline)
         if args.reference_scope is not None:
             changes["reference_scope"] = args.reference_scope
+        if args.fact_combination is not None:
+            changes["fact_check_combination"] = args.fact_combination
         if args.show_clean_documents:
             changes["report_show_clean_documents"] = True
         if changes:

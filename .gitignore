@@ -186,12 +186,145 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# PyCharm
-#   JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#   be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#   and can be added to the global gitignore or merged into this file.  For a more nuclear
-#   option (not recommended) you can uncomment the following to ignore the entire idea folder.
-# .idea/
+# JetBrains IDEs (PyCharm, CLion, IntelliJ, ...)
+#   Merged from https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
+#   (reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839).
+#   Git applies the LAST matching line, so the three parts below must keep their order:
+#     1. the JetBrains per-component rules: user-specific, generated and sensitive files that stay
+#        ignored even when .idea/ is shared; each rule can be commented out on its own;
+#     2. the catch-all `.idea/*`: this repository ignores the whole project folder by default;
+#     3. the opt-in `!` lines: uncomment ONE line to share that component with the team (it wins
+#        over parts 1 and 2 because it comes last); nothing else needs to change.
+
+# 1. JetBrains per-component rules
+
+# User-specific stuff
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**/usage.statistics.xml
+.idea/**/dictionaries
+.idea/**/shelf
+
+# AWS User-specific
+.idea/**/aws.xml
+
+# Generated files
+.idea/**/contentModel.xml
+
+# Sensitive or high-churn files
+.idea/**/dataSources/
+.idea/**/dataSources.ids
+.idea/**/dataSources.local.xml
+.idea/**/sqlDataSources.xml
+.idea/**/dynamic.xml
+.idea/**/uiDesigner.xml
+.idea/**/dbnavigator.xml
+
+# Gradle
+.idea/**/gradle.xml
+.idea/**/libraries
+
+# Gradle and Maven with auto-import
+# When using Gradle or Maven with auto-import, you should exclude module files,
+# since they will be recreated, and may cause churn.  Uncomment if using
+# auto-import.
+# .idea/artifacts
+# .idea/compiler.xml
+# .idea/jarRepositories.xml
+# .idea/modules.xml
+# .idea/*.iml
+# .idea/modules
+# *.iml
+# *.ipr
+
+# CMake (CLion build directories)
+cmake-build-*/
+
+# Mongo Explorer plugin
+.idea/**/mongoSettings.xml
+
+# File-based project format
+*.iws
+
+# IntelliJ
+out/
+
+# mpeltonen/sbt-idea plugin
+.idea_modules/
+
+# JIRA plugin
+atlassian-ide-plugin.xml
+
+# Cursive Clojure plugin
+.idea/replstate.xml
+
+# SonarLint plugin
+.idea/sonarlint/
+# see https://community.sonarsource.com/t/is-the-file-idea-idea-idea-sonarlint-xml-intended-to-be-under-source-control/121119
+.idea/sonarlint.xml
+
+# Crashlytics plugin (for Android Studio and IntelliJ)
+com_crashlytics_export_strings.xml
+crashlytics.properties
+crashlytics-build.properties
+fabric.properties
+
+# Editor-based HTTP Client
+.idea/httpRequests
+http-client.private.env.json
+
+# Android studio 3.1+ serialized cache file
+.idea/caches/build_file_checksums.ser
+
+# Apifox Helper cache
+.idea/.cache/.Apifox_Helper
+.idea/ApifoxUploaderProjectSetting.xml
+
+# Github Copilot persisted session migrations, see: https://github.com/microsoft/copilot-intellij-feedback/issues/712#issuecomment-3322062215
+.idea/**/copilot.data.migration.*.xml
+
+# Kubernetes Plugin
+.idea/kubernetes/configs/kubeconfig_*
+
+# 2. Catch-all: the whole .idea/ folder stays out of this repository.
+#    Comment it out to fall back to the JetBrains default of sharing .idea/ minus part 1.
+.idea/*
+
+# 3. Opt-in shared components: uncomment a line to track that component.
+#    A `#` is a comment only at the start of a line, so each note sits above its rule.
+
+# custom spelling dictionaries (project words; a `.xml` per user name)
+# !.idea/dictionaries/
+
+# data source definitions (connection names, drivers, schemas); never the credentials file
+# `dataSources.local.xml`, which part 1 keeps ignored
+# !.idea/dataSources.xml
+
+# code style scheme shared by the project
+# !.idea/codeStyles/
+
+# inspection profiles (which inspections are on, and their severity)
+# !.idea/inspectionProfiles/
+
+# shared run and debug configurations
+# !.idea/runConfigurations/
+
+# named scopes (file sets used by inspections and search)
+# !.idea/scopes/
+
+# file and code templates
+# !.idea/fileTemplates/
+
+# project encodings
+# !.idea/encodings.xml
+
+# version control mapping (which folders are git roots)
+# !.idea/vcs.xml
+
+# interpreter and SDK name, and the module list; both churn across machines
+# !.idea/misc.xml
+# !.idea/modules.xml
+# !.idea/*.iml
 
 # Abstra
 #   Abstra is an AI-powered process automation framework.

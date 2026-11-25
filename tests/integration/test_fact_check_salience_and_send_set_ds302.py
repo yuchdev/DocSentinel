@@ -62,7 +62,8 @@ SENDING_CASES = {
     "both_gates_on_mixed_verdict_reports": 1,
     "corpus_dedup_collapses_repeated_claim": 2,
     "deep_confirm_off_skips_everything_including_ds302": 1,
-    "gate_off_no_flag": 1,
+    # Both sentences carry a number or date: "in 2019" counts since statements are scored whole.
+    "gate_off_no_flag": 2,
     "gate_off_no_key": 1,
     "per_claim_network_error_skipped": 3,
     "salience_filter_drops_trivial_claim": 1,

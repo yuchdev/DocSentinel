@@ -86,6 +86,7 @@ _INVALID: list[tuple[str, object]] = [
     ("fact_check_max_claims_per_document", 51),
     ("fact_check_max_claims_total", 0),
     ("fact_check_time_budget_seconds", 300.0),
+    ("fact_check_combination", "1-3,2-4"),
 ]
 
 

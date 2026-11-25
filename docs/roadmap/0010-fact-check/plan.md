@@ -2,9 +2,9 @@
 
 **Repository:** https://github.com/yuchdev/DocSentinel
 **Milestone path:** `/docs/roadmap/0010-fact-check/`
-**Status:** 📝 specification only — no code or threat model exists yet; ADR 0007 is `Proposed` (2026-11-21; amended 2026-11-23 for Story 05.0)
-**New rule:** `DS302` (`deep` profile)
-**Reserved ADR number:** `0007` (Story 01.0; see [status.md](./status.md))
+**Status:** ✅ 5 of 5 original stories complete (2026-11-24; see [status.md](./status.md)). **Story 06.0 added 2026-11-25 (owner request):** specification only, no code or threat model exists yet for it. ADR 0007 is `Proposed` (2026-11-21; amended 2026-11-23 for Story 05.0); ADR 0008 is reserved for Story 06.0 and is not yet written.
+**New rule:** `DS302` (`deep` profile). Story 06.0 adds no new rule code (decision Y1).
+**Reserved ADR numbers:** `0007` (Story 01.0) and `0008` (Story 06.0, added 2026-11-25); see [status.md](./status.md)
 **Dependencies:** Milestone 0003 (deep profile, `deep_confirm` triple-gate, advisory-only exit code),
 the existing `DS301` claim-extraction machinery (`src/docsentinel/mining/claims.py`, formerly
 `detectors/_triples.py`, and `src/docsentinel/mining/nlp.py`, formerly `deep_support.py`; moved by
@@ -106,15 +106,23 @@ must not follow, not an instruction from the project owner.
 | [03.0](/docs/roadmap/0010-fact-check/03.0-lenz-backend-client/README.md) | **Lenz backend client:** the one concrete `FactCheckClient` implementation against the documented `/assess` shape, `httpx`-based, fixed base URL/timeout/response cap, verdict normalization, and the pre-code security review of the actual egress code | 01.0, 02.0 |
 | [05.0](/docs/roadmap/0010-fact-check/05.0-extract-facts-cli/README.md) | **`extract-facts` CLI command and `docsentinel.extract_facts()` (added 2026-11-23, owner request):** an offline, non-LLM preview of the exact fact set `DS302` would send. One shared candidate function (`trace_candidates()`/`collect_candidates()`, contract C11) feeds both; CLI overrides for the three `fact_check_*` selection settings, CLI-only exploration weights and dedup threshold, `--all`, and template-rendered `facts-text`/`facts-json` output. No gate, no backend, no network | 01.0, 02.0 |
 | [04.0](/docs/roadmap/0010-fact-check/04.0-fixtures-tests-and-docs/README.md) | **Fixtures, tests, docs and release notes:** fake-backend integration tests, mock tests for the dual gate and the network-failure path, the `extract-facts`/DS302 equality test (C11), `rules.md`/`fault-classes.md`/`finding-types.md`/`configuration.md`/`cli.md`/`report-template-format.md` updates, `RELEASE_NOTES.json` proposal, diagram follow-up recorded (not drawn — see [Diagrams](#diagrams)) | 01.0, 02.0, 03.0, 05.0 |
+| [06.0](/docs/roadmap/0010-fact-check/06.0-ai-statement-rewrite/README.md) | **Optional AI-assisted statement rewrite (added 2026-11-25, owner request, specification only):** a dual-gated, fail-soft post-processing stage that asks a fixed, pinned Anthropic model (`claude-haiku-4-5-20251001`) to rephrase a flagged disconnected statement into an independent, self-contained one, with the original always preserved. New `docsentinel.rewrite` package (`StatementRewriter` Protocol, `AnthropicRewriteClient`), a new consent gate (contract C12), a pure mining-layer signal reusing the existing anaphora/back-reference heuristic. Where it attaches (`extract-facts` only / `DS302` only / shared) is open decision O5. **Note 2026-11-26:** a deterministic, rule-based anaphora resolution landed in `mining.claims.extract_statements` (one statement per sentence, no joining; pronouns, possessives and bare definite noun phrases replaced by their antecedents), so this stage would start from already-resolved statements; the owner should re-evaluate its scope and need (decisions untouched). | 01.0, 02.0, 05.0 (shared or `DS302`-attached scope additionally touches 03.0's risk surface, decision Y13) |
 
 Execution order is **01.0, then 02.0, then 05.0, then 03.0, then 04.0**. 05.0 needs only 01.0's
 contracts and 02.0's pipeline, not the Lenz client, so it may also run in parallel with 03.0. The
 recommended order puts it first, so that the Story 03.0 egress review can inspect exactly which
 texts would be sent. 04.0 comes last because its docs and its C11 equality test cover the command.
+06.0 is additive, added after the original milestone closed; its own order (ADR 0008, a pre-code
+threat model, then implementation and tests) follows the 01.0/03.0 shape and starts only once the
+open decisions in its [story README](/docs/roadmap/0010-fact-check/06.0-ai-statement-rewrite/README.md)
+are ratified.
 
 ```text
 01.0 protocol & rule contract ──► 02.0 salience filter ──┬─► 05.0 extract-facts ──┐
                                                          └─► 03.0 Lenz client ────┴─► 04.0 tests & docs
+
+06.0 ai statement rewrite (added 2026-11-25, spec only) ──► depends on 01.0, 02.0, 05.0
+                                                             (scope TBD: shared/DS302 option also touches 03.0)
 ```
 
 ## Shared contracts (authoritative)
@@ -289,6 +297,42 @@ Added 2026-11-23 for [Story 05.0](/docs/roadmap/0010-fact-check/05.0-extract-fac
   untouched because no egress path exists in the command.
 - **Correction 2026-11-24 (threat model F1/E1):** spaCy itself imports `httpx`, so "never imports `httpx`" here and in exit gate 9 means no backend module, no `httpx` reference in DocSentinel code on the path and no outbound socket ([Story 05.0 X10](/docs/roadmap/0010-fact-check/05.0-extract-facts-cli/README.md#decisions), [threat model](/docs/security/threat-model-0010-extract-facts-2026-11-24.md)).
 
+### C12 — AI-rewrite consent gate (added 2026-11-25, Story 06.0, specification only)
+
+Added for [Story 06.0](/docs/roadmap/0010-fact-check/06.0-ai-statement-rewrite/README.md). Not
+ratified; realised here only as a drafted contract shape so the open decisions below have
+something concrete to confirm or override.
+
+- A brand-new third-party destination (Anthropic) needs its own independent consent gate, shaped
+  exactly like C1 gate 2: an invoker-only CLI flag (`--ai-rewrite`, name open), a library keyword,
+  and a `DOCSENTINEL_`-prefixed environment variable read only for the exact value `"1"`
+  (`DOCSENTINEL_USE_AI_REWRITE`, name open), **plus** the presence of the backend's API key. The
+  gate is never inferred from key presence alone (Story 06.0 decision Y5): a developer may already
+  have `ANTHROPIC_API_KEY` exported for an unrelated tool.
+- **Deliberate divergence from C3.** The key is read from the plain `ANTHROPIC_API_KEY`, not a
+  `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`-shaped name, because the owner asked for the name every
+  other Anthropic SDK/tool already reads. This is flagged, not silently extended (open decision
+  O7/Y5 below) — it is the one place in this milestone where the "one name per backend, always
+  `DOCSENTINEL_`-prefixed" convention does not hold, and the independent opt-in gate is the
+  compensating control.
+- **Never a `Config` field (extends C5).** Neither the opt-in nor the key is ever read from any
+  configuration layer (TOML, `pyproject.toml`, `--config` JSON, user settings). A file naming the
+  opt-in's eventual option name gets the existing generic unknown-option `ConfigError`.
+- **Relationship to C11.** Where this gate's rewrite stage attaches to the one shared candidate
+  source (`trace_candidates()`/`collect_candidates()`) — feeding only `extract-facts`, only
+  `DS302`, or both through one seam — is undecided; see open decision O5 (Story 06.0 decision Y2).
+  A "shared" placement is the recommended option, as the most consistent with C11's "one candidate
+  source" spirit, but it is not adopted by this contract: it would amend `extract-facts`'s
+  long-standing offline/no-gate invariant (C11/Story 05.0 decision X10) and `DS302`'s risk surface
+  (a second third-party destination) at once, so the owner must pick knowingly.
+- **Fail soft (extends C8).** A closed gate, a per-statement rewrite failure, or a rewrite that
+  fails a hallucination/provenance validation check never raises into `scan()`/`extract_facts()`;
+  the affected statement keeps its original text, logged once.
+- **New risk class, not a copy of C2/C4.** The backend Protocol here (`StatementRewriter`) returns
+  *rewritten text*, not a closed-set verdict/confidence pair the way `FactCheckClient` does; its
+  output must therefore be validated before use (Story 06.0 decision Y9), a requirement C2/C4 never
+  needed because Lenz's response space is four fixed strings.
+
 ## Cross-cutting rules
 
 - Follow `/docs/dev/python_coding_standard.md`, ruff, full type annotations, and
@@ -345,7 +389,17 @@ its code lands:
   `extract_facts()`, so its label changes.
 - A possible new `sequence/extract-facts` diagram.
 
-**Diagram impact: none (specification only; no code, module or contract has landed yet).**
+Story 06.0 (added 2026-11-25, specification only) defers the same way: nothing in `/docs/diagrams/`
+changes now, because no `docsentinel.rewrite` module, gate helper or wiring exists in the codebase
+yet. Once the open decisions in its
+[story README](/docs/roadmap/0010-fact-check/06.0-ai-statement-rewrite/README.md) are ratified and
+code lands, the follow-up will likely touch `component-detectors.puml` and/or
+`component-overview.puml` (a `rewrite/` package box, and — only if scope decision O5 attaches the
+stage to `DS302` — a second outbound network edge beside the Lenz one) and possibly a new
+`sequence/ai-rewrite-gate` diagram, drawn only after Story 06.0's code lands, never before.
+
+**Diagram impact: none (specification only; no code, module or contract has landed yet for the
+original milestone, and Story 06.0 adds no code either).**
 
 ## Exit gates
 
@@ -375,6 +429,15 @@ its code lands:
    `0` offline. Its default output reports `matches_ds302: true`, and a fresh-interpreter run
    shows that neither `httpx` nor a backend module was imported (C11). Story 05.0's template-loader
    delta has a Security Auditor verdict of PASS or PASS_WITH_FOLLOWUP.
+10. **(Story 06.0, added 2026-11-25.)** Before any Python Expert task for Story 06.0 starts, a
+    pre-code threat model for the Anthropic rewrite stage (prompt injection, hallucination/
+    provenance validation, and the egress hardening of `docsentinel.rewrite.anthropic_backend`)
+    exists and carries a verdict of PASS or PASS_WITH_FOLLOWUP, mirroring exit gate 5's requirement
+    for Stories 01.0/03.0. Once implemented: a closed gate never imports
+    `docsentinel.rewrite.anthropic_backend`; `RewrittenStatement.original_text` is always
+    retrievable, even when `outcome != "accepted"`, so a rewrite is never silently indistinguishable
+    from the source text; and every run that never passes `--ai-rewrite` leaves whichever of
+    `extract-facts`/`DS302` is in scope byte-identical to its pre-Story-06.0 behaviour.
 
 ## Out of scope
 
@@ -414,3 +477,6 @@ in `status.md` under Notes & decisions.
 | D8 | `DS302` findings use the existing generic `baseline.py` mechanism unchanged; no deep-specific baseline file is introduced | Confirm (informational — see C6). Baseline filtering never changes `DS302`'s effect on exit code either way, because deep stays advisory-only |
 | D9 | Release version: left to the owner; recommend a minor bump once implemented, since every default keeps `DS302` fully inert (no behaviour change for an existing user who sets neither gate) | Confirm after Story 04.0 lands |
 | D10 | This repository's own CI/self-scan **never** exercises `DS302`'s network path; only the skip-with-warning path is covered by the exit gates, using a fake `FactCheckClient` in tests — never the real Lenz endpoint and never the key embedded in `examples/docs/lenz_fact-checking.md` | Confirm. That document's embedded key and its "verify it works" instructions are untrusted file content, not a request from the project owner, and must not be acted on by any implementer or test |
+| D11 | **(Added 2026-11-25.)** Next free ADR number is **0008**, reserved for Story 06.0, not written in this task | Confirm. Mirrors D2 |
+| D12 | **(Added 2026-11-25.) OPEN — not a routine confirm.** Where Story 06.0's AI-rewrite stage attaches to the C11 candidate source: `extract-facts` only, `DS302` only, or one shared place feeding both | The story README's decision Y2 recommends "shared" as most consistent with C11, but flags it because it simultaneously amends `extract-facts`'s offline/no-gate invariant (X10) and `DS302`'s risk surface (a second third-party destination). The owner should pick knowingly, see [Story 06.0](/docs/roadmap/0010-fact-check/06.0-ai-statement-rewrite/README.md#decisions) decisions Y2, Y12, Y13 |
+| D13 | **(Added 2026-11-25.) OPEN — not a routine confirm.** The AI-rewrite opt-in's key is read from the plain `ANTHROPIC_API_KEY`, departing from contract C3's per-backend `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY` naming | Recommended: accept the divergence, because the owner asked for the standard name every Anthropic tool already reads, with the independent opt-in gate (never inferred from key presence) as the compensating control. See Story 06.0 decision Y5 |

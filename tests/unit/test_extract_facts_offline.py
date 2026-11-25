@@ -7,7 +7,7 @@ calls: ``engine.extract_facts``, ``fact_check.trace_candidates``, ``collect_cand
 consent gate, a backend loader, the environment, ``httpx`` or ``docsentinel.fact_check.lenz``
 (threat model 0010-extract-facts E1, AST part; the socket guard is in
 ``tests/integration/test_extract_facts_cli_ds302.py``). It also pins that ``Config`` has no
-weight or dedup field (E9) and that ``detectors/fact_check.py`` has exactly one ``extract_claims``
+weight or dedup field (E9) and that ``detectors/fact_check.py`` has exactly one ``extract_statements``
 call site (plan contract C11). Every checker runs against a seeded violation as well.
 """
 
@@ -228,13 +228,13 @@ def test_config_has_no_weight_or_dedup_field():
     assert {"include_rejected", "selection_policy"}.isdisjoint(names)
 
 
-def test_fact_check_has_exactly_one_extract_claims_call_site():
+def test_fact_check_has_exactly_one_extract_statements_call_site():
     """
-    [Unit] detectors/fact_check.py: verifies one extract_claims call in the whole module, inside trace_candidates.
+    [Unit] detectors/fact_check.py: verifies one extract_statements call in the whole module, inside trace_candidates.
 
     Scenario:
         Given the parsed module (every scope, nested functions and lambdas included)
-        When every call whose callee is named extract_claims is located
+        When every call whose callee is named extract_statements is located
         Then there is exactly one, and it lies within the lines of trace_candidates
 
     Boundaries:
@@ -251,8 +251,8 @@ def test_fact_check_has_exactly_one_extract_claims_call_site():
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and (
-            (isinstance(node.func, ast.Name) and node.func.id == "extract_claims")
-            or (isinstance(node.func, ast.Attribute) and node.func.attr == "extract_claims")
+            (isinstance(node.func, ast.Name) and node.func.id == "extract_statements")
+            or (isinstance(node.func, ast.Attribute) and node.func.attr == "extract_statements")
         )
     ]
     (owner,) = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "trace_candidates"]

@@ -170,6 +170,7 @@ min_paragraph_chars = 30        # DS202/DS203: skip paragraphs shorter than this
 # fact_check_max_claims_per_document = 3
 # fact_check_max_claims_total = 25
 # fact_check_time_budget_seconds = 300
+# fact_check_combination = "each"   # or "all", or ranges such as "1-6,7-8,9-16"
 
 # Base for /-rooted links (DS101, DS103, DS112, DS113, DS116, DS124). "auto" = the nearest
 # .git ancestor, else the scan root; use "." for untrusted content nested in another checkout

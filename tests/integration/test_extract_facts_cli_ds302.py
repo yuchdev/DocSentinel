@@ -557,14 +557,14 @@ def test_extraction_error_prints_the_type_name_only(
     [Integration] extract-facts CLI: verifies an extraction exception carrying claim text exits 2 with the fixed text (E7).
 
     Scenario:
-        Given the real pipeline and extract_claims patched to raise ValueError(<sentinel sentence>)
+        Given the real pipeline and extract_statements patched to raise ValueError(<sentinel sentence>)
         When extract-facts -v runs
         Then it exits 2, stderr holds the fixed type-name message, and no stream, log file or record holds
             the sentence or a traceback
 
     Boundaries:
         - Focus: threat model E7, E13
-        - Fixtures/params: patched extract_claims only
+        - Fixtures/params: patched extract_statements only
         - Scope: cli.main extract-facts error path
 
     On failure, first check:
@@ -581,7 +581,7 @@ def test_extraction_error_prints_the_type_name_only(
         """
         raise ValueError(SENTINEL_SENTENCE)
 
-    monkeypatch.setattr("docsentinel.mining.claims.extract_claims", _boom)
+    monkeypatch.setattr("docsentinel.mining.claims.extract_statements", _boom)
     caplog.set_level(logging.DEBUG, logger="docsentinel")
 
     code, out, err = _run(capsys, "-v", "extract-facts", str(root))

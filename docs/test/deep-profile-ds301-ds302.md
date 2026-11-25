@@ -161,19 +161,103 @@ distinctiveness, with a near-duplicate clustering threshold of `0.92`
 
 | # | Step | Expected |
 |---|------|----------|
-| 1 | `DOCSENTINEL_SETTINGS=off uv run docsentinel extract-facts examples/docs --include New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md` | Exit `0`, no network. INFO `extract-facts: 1 documents read, 37 claims, 1 selected, 1 listed (policy ds302)`; exactly one fact is printed: `#1 score 0.610052 (numeric 0.0, entity 1.0, distinct 0.775131) cluster 11/1 paragraph 8: The project brought together experts in MRI physics, ...`; the footer reads `Matches the DS302 selection for this configuration: yes` |
+| 1 | `DOCSENTINEL_SETTINGS=off uv run docsentinel extract-facts examples/docs --include New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md` | Exit `0`, no network. INFO `extract-facts: 1 documents read, 22 claims, 3 selected, 3 listed (policy ds302)`; three facts are printed, the first being `#1 score 0.711374 (numeric 0.5, entity 1.0, distinct 0.653436) cluster 18/1 paragraph 14: The team led by Nandita Saha tested the new MRI antenna by imaging the eye and orbit in volunteers using a 7.0 Tesla MRI scanner.` (a claim is one self-contained, single-sentence *statement* with its pronouns and bare definite noun phrases resolved: the source sentence says "The researchers tested the design ..."; headings, quotations and hedged sentences are not listed, and every fact is one sentence); the footer reads `Matches the DS302 selection for this configuration: yes` |
 | 2 | Read the trailing notice | `Heuristic, offline claim extraction; no network call was made and nothing was verified.` followed by the statement that the selected facts are what `DS302` would send *if* it ran with both gates open on the same configuration, and that `fact_check_time_budget_seconds` can stop it earlier |
-| 3 | Re-run with `--all` | All `37` claims are listed, each with its disposition appended: `1 selected`, `8 duplicate`, the rest `below_floor`. Footer: `Facts: 1 selected, 37 listed, from 37 claims` |
-| 4 | Find the `7.0 Tesla` claim in the `--all` output (`#34`) | `score 0.289242 (numeric 0.0, entity 0.0, distinct 0.723105) ... below_floor`. Its **numeric signal is `0.0`** even though the sentence contains `7.0`: the same object-span quirk described in use case 1 keeps the number out of the object. Do not assume a sentence with digits scores highly |
-| 5 | Note how newlines are rendered | Hard-wrapped source newlines appear as `\x0a`, not as real breaks — the facts template routes untrusted document text through the neutralizing filter, so one fact is always one line |
-| 6 | `--format facts-json` | `{"schema": "docsentinel-facts", "schema_version": 1, ...}` with `matches_ds302`, `include_rejected`, a `settings` block echoing `min_salience`/`max_per_document`/`max_total`/`weights`/`dedup_threshold`, a `summary` block, and a `facts` array whose entries carry `rank`, `path`, `paragraph_index`, `text`, `score`, `signals`, `cluster`, `numbers` and `entities` (here: the two `ORG:` entities that earned the `entity 1.0`) |
+| 3 | Re-run with `--all` | All `22` claims are listed, each with its disposition appended: `3 selected`, `5 document_cap`, no `duplicate`, the rest `below_floor`. Footer: `Facts: 3 selected, 22 listed, from 22 claims` |
+| 4 | Find the `7.0 Tesla` claim in the `--all` output (`#1`) | `score 0.711374 (numeric 0.5, entity 1.0, distinct 0.653436) ... selected`. A statement's numbers and entities cover the whole statement (subject included), so the `7.0` counts (`numbers` `7.0`, entity `CARDINAL:7.0`), and the resolved subject's name (`PERSON:nandita saha`) raises the entity signal |
+| 5 | Note how newlines are rendered | None appear: statement extraction joins hard-wrapped source lines with a space, so no fact contains a newline. The facts template still routes the untrusted document text through the neutralizing filter (a control character would print as `\xNN`), so one fact is always one line |
+| 6 | `--format facts-json` | `{"schema": "docsentinel-facts", "schema_version": 1, ...}` with `matches_ds302`, `include_rejected`, a `settings` block echoing `min_salience`/`max_per_document`/`max_total`/`weights`/`dedup_threshold`, a `summary` block, and a `facts` array whose entries carry `rank`, `path`, `paragraph_index`, `text`, `score`, `signals`, `cluster`, `numbers` and `entities` (here, for `#1`: `numbers` `["7.0"]` and `entities` `["CARDINAL:7.0", "PERSON:nandita saha"]`, which earned the `numeric 0.5` and `entity 1.0`) |
 | 7 | `-o facts.json` with any format | The report is written to the file instead of stdout. **It contains document text**: keep it out of the scan root and out of version control, as the option's own help text says |
 | 8 | Pass a scan-only option, e.g. `--profile deep` or `--use-external-api` | argparse error, exit `2`: `extract-facts` has no such option by design |
 | 9 | Read the INFO start line with `-v` | `extract-facts started: root=..., format=facts-text, output=stdout, include 1, exclude 0, options <names>` — overrides are logged **by name only**, never by value, and claim text is never logged at any level |
 
+### Fact consolidation: what turns 37 fragments into 22 statements
+
+Before any score is computed, the document's sentences are turned into **statements**:
+single-sentence, self-contained, checkable units. That step decides how many facts there are and
+how they read. Scoring and selection (next section) only decide which of them are sent.
+
+On the MRI article, the old extraction (`mining/claims.py::extract_claims`, one entry per
+subject-verb-object triple) gave 37 entries, 1 selected. The statement extraction
+(`mining/claims.py::extract_statements`) gives 22, 3 selected.
+
+**These parameters are module constants and rules in `src/docsentinel/mining/claims.py`, not
+configuration options.** No `docsentinel.toml` key or CLI flag changes them. Tuning means editing
+the code. A change applies to `DS302` and `extract-facts` together, so `matches_ds302` stays `true`.
+`DS301` still uses `extract_claims` and is not affected.
+
+A statement is **never a join of sentences**. A sentence that refers back is *resolved*: the
+pronoun or noun phrase that points outside the sentence is replaced by the earlier mention it
+stands for. The resolution is classic rule-based anaphora resolution (number and animacy agreement,
+nearest sentence first, subject before object), deterministic for the pinned spaCy model. It uses
+no learned coreference model and no LLM, and it can pick the wrong antecedent: a statement is an
+advisory candidate, never a verified fact. The pipeline runs in four stages.
+
+**Stage 1 — Markdown to prose** (`_prose_blocks`, `_strip_inline_markdown`, `_parse`).
+
+- Headings, whole-line bold pseudo-headings (`**Next Steps**`), thematic breaks, fenced code,
+  front matter, table rows and HTML-only lines are removed. Each one is a *section boundary* that
+  no later sentence may take an antecedent across.
+- List and blockquote markers, a leading `Label:` (`_LABEL`: `Summary:`, `Date:`, `Note:`) and
+  inline syntax (emphasis, link targets, images, code ticks) are stripped. Hard-wrapped lines are
+  joined with a space.
+- No sentence may start inside, or right after, an inline code span. This uses preset
+  `is_sent_start`, with the same spaCy pipeline. So `` `Config(...)` `` or `` `scan(root=".")` ``
+  no longer cut a sentence in two.
+
+**Stage 2 — drop sentences a fact-check cannot confirm.**
+
+| Parameter | Default | What it drops |
+|---|---|---|
+| `_is_declarative` (rule) | finite verb root with a subject | fragments, labels, imperatives, questions, a lead-in ending in `:`, a bare subordinate clause ("When you need those."), unbalanced brackets |
+| `_is_headline` (rule) | 4+ words, every content word capitalized | titles and citation fragments |
+| `_is_quotation` (rule) | opens with a quotation mark, or quoted text is at least half of it | direct quotes: opinions |
+| `_HEDGE_MODALS` | `could may might would should will shall 'll` | predictions and possibilities. The modal is checked on the claim verb; for "X says ..." it is checked on the reported clause. `can` is kept on purpose: it states a capability |
+| `_REPORTING_LEMMAS` | `say add note explain tell state claim suggest believe think argue` | none itself: it tells `_is_hedged` to look inside "X says ..." |
+| `_RESULT_CONNECTIVES` | `as a result`, `therefore`, `thus`, `hence`, `consequently`, `so,` ... | a sentence opening with one states a consequence of the previous sentence and is dropped |
+
+**Stage 3 — resolve and trim** (`_rewrite_sentence`).
+
+| Parameter | Default | Effect |
+|---|---|---|
+| `_PRONOUN_CLASS` | `it they them he she him` and the possessives `its their his her` | a third-person pronoun subject or object is replaced by its antecedent from the previous `_PRONOUN_WINDOW` (`2`) sentences of the same section, nearest first, subject before object, inanimate first for "it", animate or collective first for "they". A pronoun already resolved inside its own sentence ("Because the antenna is light, it ...") stays |
+| possessives | -- | "its/their/his/her N" becomes "the N of <antecedent>": "Their findings were published in Advanced Materials" becomes "The findings of the team led by Nandita Saha were published in Advanced Materials". For "their findings/results/paper" the possessor must be a person or a group |
+| bare definite noun phrase | -- | "the antenna" or "those signals" is replaced by the earlier same-head mention that is more informative: an indefinite introduction ("a new MRI antenna") wins over a later definite one |
+| `_AGENT_NOUNS` | `researchers team scientists engineers ...` | a bare definite agent ("the researchers") names the document's primary agent (the first anchored people-noun subject, here "a team led by Nandita Saha"), unless a same-head anchored mention is in the same paragraph. An organisation never replaces its people |
+| `_SHELL_NOUNS`, `_CREATION_VERBS` | `design technology innovation device ...`, `develop build create ...` | a bare definite shell noun ("the design") names the primary artifact: the indefinite object the primary agent introduced with a creation verb ("has developed a new MRI antenna") |
+| `_MAX_GROUNDING_TOKENS` | `12` | the replacement text is the antecedent's *grounding text*: its noun phrase plus post-modifiers holding a proper name or a number, appositions removed, article normalised to "the". Only a well-formed noun phrase (noun head, no verb, subordinator or wh-word) can be an antecedent |
+| `_GLUE_CONNECTIVES` | `in addition`, `however`, `yet`, `but`, `also`, and with a comma only: `still`, `next`, `first`, ... | a leading connective is removed and the statement kept. `_GLUE_ADVERBS` (`also`) is removed wherever it stands |
+| `_LABEL`, `_LEADING_FILLER` | `Summary:`, `now and today` | removed from the start of a statement; the next word is capitalized only then (so `scan()` keeps its case) |
+| fronted demonstrative | -- | a fronted clause built on a demonstrative with no antecedent ("To overcome this limitation, ...") is removed |
+| `_MAX_CLAUSES` | `4` | a sentence coordinating several predicates under one subject with "and" becomes one statement per predicate, the subject repeated and each resolved. A conjunct without auxiliaries inherits the root's, so "could X and Y" stays hedged in both. The split is skipped when a conjunct carries a time adverbial ("every week", "in 2025") that reads as shared |
+
+**Stage 4 — re-check each rewritten statement.** The statement text is parsed again as one
+sentence and must still be declarative, unhedged and independent (`_is_dependent`). It is dropped
+when a pronoun or demonstrative still has no antecedent, so an orphan is never kept.
+
+A statement's `numbers` and `entities` (`_statement_numbers`, `_object_entities`) cover **the
+whole statement, subject included**, and the subject is the *resolved* one. The idiom "one of" is
+not counted as a number. That is why the selection went from 1 to 3 without touching any salience
+weight: the `7.0 Tesla` statement gets `numeric 0.5` from the number and `entity 1.0` from the
+name its subject was resolved to.
+
+How to verify a change to one of these parameters:
+
+1. Re-run steps 1 and 3 of the checklist above and compare the `claims` count and the `--all` list.
+2. Read every statement aloud. Each must be one sentence, make sense on its own, and name the
+   same person, group or thing as the source sentence it came from. Compare a few against the
+   article: a resolution can be wrong, and a wrong one reads fluently.
+3. Run the extraction tests:
+   `uv run pytest -p docsentinel.pytest_plugin tests/integration/test_mining_statements_ds302.py tests/unit/test_mining_claims.py`.
+   The assets `tests/assets/ds302/statements_self_contained/doc.md` and
+   `tests/assets/ds302/statements_resolved/doc.md` have one paragraph per rule.
+4. Check a technical page too, for example `docs/user/tutorial/library.md`. Code spans, colon
+   lead-ins and identifiers at the start of a sentence only show up in technical docs.
+
 ### Fine-tuning: weights and the other options
 
-The options fall into two groups, and the difference between them matters more than any single
+These options act **after** consolidation: they choose which statements are sent and cannot merge
+or split one. The options fall into two groups, and the difference between them matters more than any single
 value.
 
 **Group A — the three config-backed selection options.** Real `Config` fields that `DS302` itself
@@ -197,11 +281,11 @@ the first thing to check when deciding whether a preview is trustworthy as a pre
 
 | # | Experiment | Verified result |
 |---|---|---|
-| 10 | `--min-salience 0.32` on the article | `3 selected`, and `matches_ds302 false` — the preview no longer predicts `DS302` |
+| 10 | `--min-salience 0.32` on the article | `3 selected` (the document cap binds), and `matches_ds302 false` — the preview no longer predicts `DS302` |
 | 11 | The same floor as `fact_check_min_salience = 0.32` in a `[tool.doc_sentinel]` config, with no CLI flag | The **same** `3 selected`, but `matches_ds302 true`. Identical selection, different trustworthiness: configure the floor rather than flagging it when you want the preview to mean something |
-| 12 | `--weights 0,0,1` (pure distinctiveness) | A different ranking: `#1` becomes the `0.929364`-distinctiveness sentence about larger clinical studies, and the entity-rich sentence the defaults put first drops away. `3 selected` — here the **document cap** binds, not the floor |
-| 13 | `--weights 1,0,0 --min-salience 0.0` (pure numeric) | **Every** score collapses to `0.0`, because no claim in this article has a number inside its object span. With all scores tied, order falls back to the deterministic `(path, paragraph_index, raw_sentence)` tie-break, giving paragraphs `0`, `1`, `4` — document order, capped at `3` |
-| 14 | `--dedup-threshold` at `0.1` / `0.3` / `0.92` / `1.0`, each with `--all` | `34` / `8` / `8` / `0` duplicates. `1.0` collapses only byte-identical claims; `0.1` treats almost the whole article as one cluster. The default `0.92` and `0.3` behave alike here because this document's duplicates are compound sentences that yield several SVO triples from identical text |
+| 12 | `--weights 0,0,1` (pure distinctiveness) | A different ranking: `#1` becomes the `0.893289`-distinctiveness sentence about metamaterials, and the number- and entity-rich sentence the defaults put first drops away. `3 selected` — here the **document cap** binds, not the floor |
+| 13 | `--weights 1,0,0 --min-salience 0.0` (pure numeric) | Only the `7.0 Tesla` statement scores (`0.5`, its `numeric` signal); every other score is `0.0`. Tied scores fall back to the deterministic `(path, paragraph_index, raw_sentence)` tie-break, giving paragraphs `14`, then `4` and `6` — document order, capped at `3` |
+| 14 | `--dedup-threshold` at `0.1` / `0.3` / `0.92` / `1.0`, each with `--all` | `21` / `3` / `0` / `0` duplicates. `0.1` treats almost the whole article as one cluster. Since a statement is one entry (no longer one per SVO triple), the compound-sentence duplicates are gone and the default `0.92` and `1.0` find none here |
 | 15 | `--weights 0.5,0.5,0.5` | `Extraction failed: salience weights must sum to 1.0`, exit `2`. The constraint is enforced in `SalienceWeights.__post_init__` with an absolute tolerance of `1e-9`, so the combined score can never leave `[0, 1]` |
 | 16 | `--max-total 2` over the whole `examples/docs` directory with `--all` | Facts beyond the second carry `total_cap`, across documents, in rank order |
 
@@ -318,7 +402,7 @@ for finding in result.findings:
 
 | # | Step | Expected |
 |---|------|----------|
-| 7 | Run the script as written | `claims sent: 1`, and the claim is **the exact fact use case 2 selected** — the 170-character "The project brought together experts in MRI physics, ..." sentence. This is the contract between the two commands: `extract-facts` predicts the send list, `DS302` sends it |
+| 7 | Run the script as written | `claims sent: N`, where the claims are **the exact facts use case 2 selected** (up to the document cap of 3, in rank order; re-verify `N` for your script and document, the counts changed when DS302 moved to statement-level extraction). This is the contract between the two commands: `extract-facts` predicts the send list, `DS302` sends it |
 | 8 | Read the finding | One `DS302` finding: `external fact-check: '<claim>' rated false by lenz - review to confirm`, with the confidence only in the report-only `value` field: `false (confidence 0.78): <claim>`. Keeping the confidence out of `message` is what makes baseline fingerprints stable when a verdict's confidence wobbles between runs |
 | 9 | Change the scripted verdict to `"mixed"` and re-run | **Zero findings**, plus `WARNING: DS302: fact-check failed for a claim in <path> (FactCheckError)`. The Lenz backend's `_normalize_verdict` recognises **only** `true` and `false`; anything else is an unrecognised verdict and the claim is skipped rather than guessed (owner ruling Q4). So although the protocol lists `mixed` as reportable, **the shipped Lenz backend can only ever produce a `false` finding** |
 | 10 | Script `{"error_code": "no_claim"}`, or `{"claims": []}` | `unverifiable` at confidence `0.0`, which is not reportable: zero findings, no warning. This is the "nothing checkable in that sentence" answer |
@@ -348,6 +432,7 @@ for finding in result.findings:
 | `fact_check_max_claims_per_document` | `3` | Per-document send cap | `select_candidates` |
 | `fact_check_max_claims_total` | `25` | Per-scan send cap | `select_candidates` |
 | `fact_check_time_budget_seconds` | `300` | Wall-clock budget for the network stage; `1`–`3600` | `_check_candidates` |
+| `fact_check_combination` | `"each"` | Groups selected claims into facts (`each`, `all`, or ranges like `1-6,7-8,9-16`); a combined fact over 1000 characters is not sent; `extract-facts` has no flag for it yet | `combine_candidates` in `_check_candidates` |
 
 - **The salience weights and the dedup threshold are deliberately not on this list.** They are
   fixed in `DS302_POLICY` (`0.3`/`0.3`/`0.4`, `0.92`) and reachable only through the

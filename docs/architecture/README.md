@@ -594,7 +594,7 @@ under strict safety and advisory boundaries:
 - **Optional dependencies, loaded lazily.** `spacy`, `textacy` and the `en_core_web_sm` model live in
   the `docsentinel[deep]` extra and load only when a deep scan runs.
 - **One opt-in network edge (`DS302`, Milestone 0010).** The deep profile also registers `DS302`, which
-  sends a few high-salience claim sentences to a third-party fact-check service. It is the only outbound
+  sends a few high-salience claim statements (one self-contained single-sentence statement, pronouns and bare definite noun phrases resolved by rules to their antecedents, from `mining.claims.extract_statements`; `DS301` keeps the triple-based `extract_claims`) to a third-party fact-check service. It is the only outbound
   network edge in DocSentinel and stays closed unless the invoker gives both `--use-external-api` (or
   `DOCSENTINEL_USE_EXTERNAL_API=1`) and the backend's `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`; neither
   is a configuration key. Verdicts are advisory third-party heuristics. The rule lives in

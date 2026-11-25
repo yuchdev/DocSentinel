@@ -4,6 +4,10 @@
 pending owner sign-off. Execution order was 01.0 → 02.0 → 05.0 → 03.0 → 04.0 (see
 [plan.md](/docs/roadmap/0010-fact-check/plan.md#stories)).
 
+**Reopened 2026-11-25 (owner request):** one additional story, 06.0 (optional AI-assisted
+statement rewrite), added. Specification only, no code yet. The five original stories above remain
+complete and unchanged; see the dated entry below.
+
 ## Current status
 
 | Story | Name | State | Tests executed |
@@ -13,6 +17,7 @@ pending owner sign-off. Execution order was 01.0 → 02.0 → 05.0 → 03.0 → 
 | 03.0 | Lenz backend client | ✅ Complete (2026-11-24) | suite 5939 passed; review LGTM |
 | 04.0 | Fixtures, tests and docs | ✅ Complete (2026-11-24) | full suite green; docs sync done |
 | 05.0 | `extract-facts` CLI command | ✅ Complete (2026-11-24) | suite 5714 passed; review LGTM |
+| 06.0 | Optional AI-assisted statement rewrite (added 2026-11-25) | ⬜ Not started | — |
 
 Legend: ⬜ Not started · 🔶 In progress · ✅ Complete.
 
@@ -405,3 +410,70 @@ wherever DS302 is described); DS302 rows in `rules.md`, `fault-classes.md`, `fin
   and tag characters reach `facts-text` flagged, not removed); ADR 0007 and ADR 0003 sign-off; the
   release version for the 1.3.0 notes; Q5 (rotate and remove the API key embedded in
   `examples/docs/lenz_fact-checking.md`, outside this milestone).
+
+- 2026-11-25: **Owner request — Story 06.0 "optional AI-assisted statement rewrite" added.** The
+  owner asked: "optional AI-assisted step after `docsentinel fact-check`. If the resulted set of
+  facts may seem disconnected and either of them can't be checked independently, process the
+  result with AI, on the first step using Anthropic API and `ANTHROPIC_API_KEY` with simplest
+  model and clear instructions - rephrase statements borrowing content from previous statements,
+  to make them processed as independent self-contained, atomic statements."
+  - There is no literal `docsentinel fact-check` subcommand; the request is resolved against the
+    two real pipelines that already share one candidate source (plan contract
+    [C11](/docs/roadmap/0010-fact-check/plan.md#c11--one-candidate-source-for-ds302-and-extract-facts)):
+    `docsentinel extract-facts` / `engine.extract_facts()` and `DS302`'s `detect()`.
+  - Authored [Story 06.0](/docs/roadmap/0010-fact-check/06.0-ai-statement-rewrite/README.md),
+    specification only: a new `docsentinel.rewrite` package (`protocol.py`,
+    `anthropic_backend.py`), a new `StatementRewriter` Protocol (distinct from `FactCheckClient`:
+    it rewrites text, it does not return a verdict), a new dual consent gate mirroring plan
+    contract C1's shape (`--ai-rewrite` / `DOCSENTINEL_USE_AI_REWRITE=1`, plus the presence of
+    `ANTHROPIC_API_KEY`), a pure mining-layer signal reusing `mining/claims.py`'s existing
+    anaphora/back-reference heuristic to flag which statements are offered for rewrite, and a
+    fail-soft original-preserved-alongside-rewritten data contract.
+  - New plan contract **C12** (the AI-rewrite gate shape and its relationship to C1/C5/C11); new
+    plan rows D11-D13; a new exit gate 10; ADR number **0008** reserved for this story (not
+    written yet, per this task's instruction).
+  - Dispositions: plan.md amended (status line, reserved-ADR line, Stories table, dependency
+    diagram, new C12, Open decisions D11-D13, Diagrams note, exit gate 10); status.md amended
+    (this entry, Planning-state reopened note, Current status row).
+  - No code, ADR or threat model is written in this task. This story is purely a specification
+    pass, exactly like the original Story 01.0 specification pass before ADR 0007 was written.
+  - Open owner questions (continuing the O-series from Story 05.0):
+    - **O5**: where the rewrite stage sits — after `extract-facts` selection only, after `DS302`
+      selection only, or in one shared place feeding both (recommended, most consistent with
+      C11's "one candidate source" spirit, but it changes `DS302`'s risk surface with a second
+      third-party destination and changes `extract-facts`'s long-standing offline/no-gate
+      guarantee, so it needs explicit confirmation rather than silent adoption).
+    - **O6**: the opt-in flag/env names, recommended `--ai-rewrite` /
+      `DOCSENTINEL_USE_AI_REWRITE=1`, mirroring C1 gate 2's CLI-flag-or-env shape.
+    - **O7**: the API-key environment variable is the plain `ANTHROPIC_API_KEY`, a deliberate
+      divergence from plan contract C3's per-backend `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`
+      naming, because the owner specified the name every other Anthropic tool already reads;
+      recommended accept, with the explicit opt-in gate (O6) as the independent safeguard so the
+      key's mere presence (set for an unrelated tool) never silently enables egress.
+    - **O8**: a new ADR 0008 versus an amendment to ADR 0007; recommended a new ADR, because the
+      consent-gate shape, the secret, the backend Protocol's I/O shape and the risk class
+      (generated text re-entering the pipeline, not just a verdict) all differ materially, even
+      though the dual-gate pattern of ADR 0007 is the precedent.
+    - **O9**: the pinned model id `claude-haiku-4-5-20251001` (Anthropic's current
+      cheapest/fastest model for a narrow, bounded rewrite task, pinned exactly rather than by
+      alias, to match this project's exact-version dependency-pinning discipline); recommended
+      confirm.
+    - **O10**: if O5 selects "`DS302` only" or "shared", `DS302` gains a second third-party
+      network destination (Anthropic, beside Lenz) inside one rule's `detect()`, which touches
+      ADR 0007 Contract 4 and Decision Driver 9 and needs its own egress threat-model pass beside
+      the Lenz one; recommended named but not written in this story, exactly like the Lenz egress
+      threat model preceded Story 03.0's code.
+
+- 2026-11-26: **Note on Story 06.0 (no change to the story or its open decisions).** A
+  deterministic, rule-based anaphora resolution landed in `mining.claims.extract_statements`, the
+  one candidate source shared by `DS302` and `extract-facts` (plan contract C11). A statement is now
+  one sentence (or one clause of a coordinated sentence), never a join of up to three sentences;
+  a third-person pronoun, a possessive or a bare definite noun phrase is replaced by its
+  antecedent ("Their findings ..." becomes "The findings of the team led by Nandita Saha ..."), a
+  sentence opening with a consequence connective ("As a result") is dropped, and a statement whose
+  pronoun stays unresolved is dropped. It uses no learned coreference and no LLM and can resolve
+  wrongly. On the MRI sample the preview went from 16 joined statements to 22 single-sentence ones.
+  Story 06.0's premise ("disconnected statements") therefore changes: the AI stage would start from
+  already-resolved statements, and the `MAX_STATEMENT_SENTENCES` joining its Goal cites no longer
+  exists. The owner should re-evaluate the story's scope and need (decisions O5-O10 are unchanged
+  and still open).
