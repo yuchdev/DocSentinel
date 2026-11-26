@@ -31,6 +31,12 @@ PATTERNS: dict[str, re.Pattern[str]] = {
     "Google API key": re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b"),
     "GitHub token": re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b"),
     "Slack token": re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}"),
+    # Lenz fact-check keys are a bare `lenz_<alnum>` token; documentation shows them alone in a
+    # code fence, so no keyword-driven pattern ever matched one (see docs/security).
+    "Lenz API key": re.compile(r"\blenz_[A-Za-z0-9]{20,}"),
+    # Fallback for vendors not listed above: a lowercase vendor prefix, one underscore, then
+    # 32+ alphanumerics holding both a letter and a digit (so plain long identifiers do not match).
+    "Vendor-prefixed token": re.compile(r"\b[a-z]{2,10}_(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{32,}\b"),
     "Private key block": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----"),
     "Generic assigned secret": re.compile(
         r"(?i)(password|passwd|secret|token|api[_-]?key)\s*[=:]\s*['\"](?P<value>[^'\"\s]{8,})['\"]"
@@ -101,6 +107,7 @@ def scan_text(text: str) -> list[tuple[str, int, str]]:
                 if value and _is_memory_address(value):
                     continue  # a pointer/offset named `token`, not a credential
             hits.append((name, lineno, line.strip()[:120]))
+            break  # one finding per line: the first (most specific) rule wins
     return hits
 
 
@@ -119,7 +126,7 @@ def _content_from_event(event: dict[str, object]) -> str:
     return "\n".join(parts)
 
 
-def _hook_mode() :
+def _hook_mode():
     event = read_event()
     target = edited_path(event)
     if target and target.suffix.lower() in SKIP_SUFFIXES:
@@ -141,7 +148,7 @@ def _hook_mode() :
     allow()
 
 
-def _cli_mode(paths: Iterable[str]) :
+def _cli_mode(paths: Iterable[str]):
     total = 0
     for raw in paths:
         p = Path(raw)
