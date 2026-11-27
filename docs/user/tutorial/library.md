@@ -24,6 +24,8 @@ from docsentinel import (
     ScanResult,
     Document,
     Finding,
+    FactCheck,        # DS302: one checked fact (ScanResult.fact_checks)
+    FactCheckClaim,   # DS302: one claim rated inside a checked fact
     
     # Baseline Management
     load_baseline,
@@ -187,7 +189,16 @@ class ScanResult:
     enabled_rules: tuple[str, ...]
     pending: tuple[str, ...]
     notice: str
+    fact_checks: tuple[FactCheck, ...] = ()
 ```
+
+`fact_checks` lists every fact the external fact-check rule `DS302` sent, whatever its verdict, and is empty
+when `DS302` did not run. Each `FactCheck` has `path`, `fact`, `verdict` (one of `True`, `Mostly True`,
+`False`, `Mostly False`, `Mixed`, `Unverifiable`), `confidence`, `backend`, `reported` (whether it is also a
+finding) and `claims` (`FactCheckClaim` parts with `claim`, `verdict`, `confidence`). Both classes are
+exported from `docsentinel`. `scan()` also takes `use_external_api=`, `fact_weights=`,
+`fact_dedup_threshold=` and `facts_file=` for `DS302`; see
+[the CLI guide](cli.md#external-fact-checking-ds302).
 
 ### `Document`
 

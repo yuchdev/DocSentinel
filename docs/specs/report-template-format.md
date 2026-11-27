@@ -168,6 +168,12 @@ Operators: `eq`, `ne`, `in`, `gt`, `lt`, `truthy`, `falsy`.
           "text": ": {p.message|neutralize}", "variables_used": ["p.message"] } ] } ] },
     { "type": "loop", "over": "pending", "as": "reason", "placement": "block", "body": [
       { "type": "line", "text": "Pending: {reason|neutralize}", "variables_used": ["reason"] } ] },
+    { "type": "loop", "over": "fact_checks", "as": "fc", "placement": "block", "body": [
+      { "type": "line", "text": "Fact check: {fc.verdict} (confidence {fc.confidence}) [{fc.path|neutralize}]: {fc.fact|neutralize}",
+        "variables_used": ["fc.verdict", "fc.confidence", "fc.path", "fc.fact"] },
+      { "type": "loop", "over": "fc.claims", "as": "c", "placement": "block", "body": [
+        { "type": "line", "text": "  {c.verdict} (confidence {c.confidence}): {c.claim|neutralize}",
+          "variables_used": ["c.verdict", "c.confidence", "c.claim"] } ] } ] },
     { "type": "line", "when": { "var": "blocking_count", "gt": 0 },
       "text": "Blocking findings: {blocking_count}", "variables_used": ["blocking_count"] },
     { "type": "loop", "when": { "var": "blocking_count", "gt": 0 }, "over": "findings", "as": "p",
@@ -247,11 +253,14 @@ needed (and none is applied, preserving JSON v1 behaviour).
       ]
     }
   ],
-  "pending": []
+  "pending": [],
+  "fact_checks": [ { "path": "adr/0003.md", "fact": "...", "verdict": "Mixed", "confidence": 0.9,
+                    "backend": "lenz", "reported": true,
+                    "claims": [ { "claim": "...", "verdict": "True", "confidence": 0.9 } ] } ]
 }
 ```
 
-Clean documents are **included** with `"problems": []`: the denominator is what
+`fact_checks` is omitted when it is empty (`DS302` did not run, or sent nothing). Clean documents are **included** with `"problems": []`: the denominator is what
 turns a fault count into a fault *rate*. `summary.documents` and
 `summary.documents_with_problems` count inventory documents only; a document entry
 appended for an out-of-inventory finding path (`bytes: null`) is listed in
@@ -280,6 +289,8 @@ The loader validates every reference against this schema. Each variable carries 
 | `notice` | str (legacy pre-built string, kept for json v1) | trusted |
 | `advisory` | str or null (deep-profile banner when it applies) | trusted |
 | `pending` | list[str] | **untrusted** |
+| `fact_checks` | list[fact check]: every fact `DS302` sent to an external backend, in send order, whatever its verdict (empty when `DS302` did not run); see "Fact check" below | -- |
+| `fact_checks_count` | int (`len(fact_checks)`) | trusted |
 | `severity_counts`, `rule_counts` | dict[str,int] | trusted |
 | `model` | str or null (`generated_by_model`) | trusted |
 | `show_clean_documents` | bool: `--show-clean-documents` / `report_show_clean_documents`; the `text` template lists every document when set, only those with problems otherwise | trusted |
@@ -305,6 +316,23 @@ Every deeper segment (`ext.<name>.*`) has the value kind **`any`**, which is alw
 and no template can mark an `ext.*` value trusted. An `any` value is accepted where a
 scalar is expected only with a render-time check (a container is a `TemplateError`),
 and `$for`/`over` on a non-list `any` is a `TemplateError`.
+
+### Fact check
+
+One element of `fact_checks` (`telemetry.model.FACT_CHECK_SCHEMA`, built from `ScanResult.fact_checks`):
+
+| Variable | Notes | Trust |
+|---|---|---|
+| `path` | document of the fact's first claim | **untrusted** |
+| `fact` | the exact text that was sent | **untrusted** |
+| `verdict` | explicit label: `True`, `Mostly True`, `False`, `Mostly False`, `Mixed` or `Unverifiable` | trusted |
+| `confidence` | float in `[0.0, 1.0]` | trusted |
+| `backend` | backend name | trusted |
+| `reported` | bool: whether the fact is also a `DS302` finding | trusted |
+| `claims` | list of `{claim, verdict, confidence}`: each claim the backend rated inside the fact; `claim` is third-party text, **untrusted**; `verdict` is an explicit label | -- |
+
+The `verdict` values are fixed labels, but the backend's text in `claims[].claim` is not, so a `text`
+template passes it through `neutralize`.
 
 ### Problem
 

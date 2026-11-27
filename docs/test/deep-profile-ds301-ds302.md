@@ -128,7 +128,7 @@ It deliberately rejects the scan-only options: `--profile`, `--select`, `--ignor
 
 ### Fixture
 
-[`examples/docs/New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md`](/examples/docs/New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md),
+[`examples/docs/New_MRI_breakthrough_reveals_the_brain_and_eye.md`](/examples/docs/New_MRI_breakthrough_reveals_the_brain_and_eye.md),
 a press-style article about an MRI antenna, is the document whose facts we extract here and
 fact-check in use case 3.
 
@@ -161,7 +161,7 @@ distinctiveness, with a near-duplicate clustering threshold of `0.92`
 
 | # | Step | Expected |
 |---|------|----------|
-| 1 | `DOCSENTINEL_SETTINGS=off uv run docsentinel extract-facts examples/docs --include New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md` | Exit `0`, no network. INFO `extract-facts: 1 documents read, 22 claims, 3 selected, 3 listed (policy ds302)`; three facts are printed, the first being `#1 score 0.711374 (numeric 0.5, entity 1.0, distinct 0.653436) cluster 18/1 paragraph 14: The team led by Nandita Saha tested the new MRI antenna by imaging the eye and orbit in volunteers using a 7.0 Tesla MRI scanner.` (a claim is one self-contained, single-sentence *statement* with its pronouns and bare definite noun phrases resolved: the source sentence says "The researchers tested the design ..."; headings, quotations and hedged sentences are not listed, and every fact is one sentence); the footer reads `Matches the DS302 selection for this configuration: yes` |
+| 1 | `DOCSENTINEL_SETTINGS=off uv run docsentinel extract-facts examples/docs --include New_MRI_breakthrough_reveals_the_brain_and_eye.md` | Exit `0`, no network. INFO `extract-facts: 1 documents read, 22 claims, 3 selected, 3 listed (policy ds302)`; three facts are printed, the first being `#1 score 0.711374 (numeric 0.5, entity 1.0, distinct 0.653436) cluster 18/1 paragraph 14: The team led by Nandita Saha tested the new MRI antenna by imaging the eye and orbit in volunteers using a 7.0 Tesla MRI scanner.` (a claim is one self-contained, single-sentence *statement* with its pronouns and bare definite noun phrases resolved: the source sentence says "The researchers tested the design ..."; headings, quotations and hedged sentences are not listed, and every fact is one sentence); the footer reads `Matches the DS302 selection for this configuration: yes` |
 | 2 | Read the trailing notice | `Heuristic, offline claim extraction; no network call was made and nothing was verified.` followed by the statement that the selected facts are what `DS302` would send *if* it ran with both gates open on the same configuration, and that `fact_check_time_budget_seconds` can stop it earlier |
 | 3 | Re-run with `--all` | All `22` claims are listed, each with its disposition appended: `3 selected`, `5 document_cap`, no `duplicate`, the rest `below_floor`. Footer: `Facts: 3 selected, 22 listed, from 22 claims` |
 | 4 | Find the `7.0 Tesla` claim in the `--all` output (`#1`) | `score 0.711374 (numeric 0.5, entity 1.0, distinct 0.653436) ... selected`. A statement's numbers and entities cover the whole statement (subject included), so the `7.0` counts (`numbers` `7.0`, entity `CARDINAL:7.0`), and the resolved subject's name (`PERSON:nandita saha`) raises the entity signal |
@@ -265,9 +265,10 @@ reads, so a value set in `docsentinel.toml` changes both commands identically:
 | `fact_check_max_claims_per_document` | `--max-per-document INT` | `3` | Per-document cap; the rest is `document_cap` |
 | `fact_check_max_claims_total` | `--max-total INT` | `25` | Per-scan cap; the rest is `total_cap` |
 
-**Group B — the two exploration-only flags.** `--weights N,E,D` and `--dedup-threshold FLOAT` have
-**no** configuration key and are never read by `DS302` (story decision X5). They exist to show how
-the ranking responds, and nothing else.
+**Group B — the two invoker-only flags.** `--weights N,E,D` and `--dedup-threshold FLOAT` have
+**no** configuration key. Since the owner ruling of 2026-11-27, `scan` and `baseline` take the same two
+flags (and the Group A flags, as `scan(fact_weights=, fact_dedup_threshold=)` in Python), so `DS302` can
+send under them when you pass them to `scan`; a config file still cannot set them.
 
 The honesty marker ties the groups together. Any override — from either group, the Group A flags
 included — makes the run diverge from what `DS302` would do with the project's own configuration,
@@ -284,6 +285,7 @@ the first thing to check when deciding whether a preview is trustworthy as a pre
 | 14 | `--dedup-threshold` at `0.1` / `0.3` / `0.92` / `1.0`, each with `--all` | `21` / `3` / `0` / `0` duplicates. `0.1` treats almost the whole article as one cluster. Since a statement is one entry (no longer one per SVO triple), the compound-sentence duplicates are gone and the default `0.92` and `1.0` find none here |
 | 15 | `--weights 0.5,0.5,0.5` | `Extraction failed: salience weights must sum to 1.0`, exit `2`. The constraint is enforced in `SalienceWeights.__post_init__` with an absolute tolerance of `1e-9`, so the combined score can never leave `[0, 1]` |
 | 16 | `--max-total 2` over the whole `examples/docs` directory with `--all` | Facts beyond the second carry `total_cap`, across documents, in rank order |
+| 16a | `--fact-combination all` on the article, no `--all` | Exit `0`. Every claim above the salience floor is listed; the per-document cap of `3` does not apply, so more than `3` can be selected (with the default `each` the same run lists at most `3`). The output does not show how the claims would be grouped into requests (known gap), and `matches_ds302` is `false` |
 
 Practical guidance:
 
@@ -294,8 +296,10 @@ Practical guidance:
 - **Cost control before enabling `DS302`**: `extract-facts` tells you how many claims a real run
   would send, for free. Multiply the `selected` count by your backend's per-claim cost before you
   ever pass `--use-external-api`.
-- **Do not tune with the flags and then assume `DS302` follows.** Only Group A values written to
-  the configuration change `DS302`. The flags are a microscope, not a dial.
+- **Pass the same flags to `scan` to make `DS302` follow.** A preview made with `--weights` or
+  `--dedup-threshold` predicts `DS302` only when `scan` gets the same values; without them `DS302` uses
+  its fixed policy (`0.3`/`0.3`/`0.4`, `0.92`), and Group A values written to the configuration apply to
+  both commands.
 
 ## Use case 3 — DS302: external fact-check with the Lenz API
 
@@ -325,7 +329,7 @@ timeout, a 64 KiB response cap and a 1,000-character claim cap.
 
 | # | Step | Expected |
 |---|------|----------|
-| 1 | `DOCSENTINEL_SETTINGS=off uv run docsentinel scan examples/docs --include New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md --profile deep` (no flag, no key) | Exit `0`; `WARNING: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY`; the report's `Pending:` line repeats it; zero `DS302` findings and **no** network call |
+| 1 | `DOCSENTINEL_SETTINGS=off uv run docsentinel scan examples/docs --include New_MRI_breakthrough_reveals_the_brain_and_eye.md --profile deep` (no flag, no key) | Exit `0`; `WARNING: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY`; the report's `Pending:` line repeats it; zero `DS302` findings and **no** network call |
 | 2 | Same, adding `--use-external-api` but still no key | A shorter message, not the identical one: `WARNING: DS302 skipped: set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY` — the satisfied half of the gate drops out of the reason list |
 | 3 | `DOCSENTINEL_SETTINGS=off uv run docsentinel doctor` with nothing set | `fact-check gate: off (pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY)` |
 | 4 | `doctor` with only the key set | `fact-check gate: off (pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1))` — `doctor` always resolves as if the flag were absent |
@@ -350,7 +354,7 @@ from docsentinel.config import Config
 from docsentinel.fact_check.lenz import LenzFactCheckClient
 from docsentinel.fact_check.protocol import FACT_CHECK_BACKENDS
 
-ARTICLE = "New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md"
+ARTICLE = "New_MRI_breakthrough_reveals_the_brain_and_eye.md"
 KEY_ENV = "DOCSENTINEL_FACTCHECK_LENZ_API_KEY"
 sent = []
 
@@ -399,11 +403,13 @@ for finding in result.findings:
 | # | Step | Expected |
 |---|------|----------|
 | 7 | Run the script as written | `claims sent: N`, where the claims are **the exact facts use case 2 selected** (up to the document cap of 3, in rank order; re-verify `N` for your script and document, the counts changed when DS302 moved to statement-level extraction). This is the contract between the two commands: `extract-facts` predicts the send list, `DS302` sends it |
-| 8 | Read the finding | One `DS302` finding: `external fact-check: '<claim>' rated false by lenz - review to confirm`, with the confidence only in the report-only `value` field: `false (confidence 0.78): <claim>`. Keeping the confidence out of `message` is what makes baseline fingerprints stable when a verdict's confidence wobbles between runs |
-| 9 | Change the scripted verdict to `"mixed"` and re-run | A `warning` finding of type `unverified claim` with `value` `mixed (confidence ...): <claim>` when the scripted confidence is at or above `fact_check_min_confidence`. Since the owner ruling R of 2026-11-27 every verdict is kept: `Mostly True` maps to `true`, `Half True` to `mixed`, any unknown label to `unverifiable` (printed in the INFO trace `DS302: fact i/n ... verdict unverifiable, ... not reported`, never a finding). Confidence may also be `high`, `medium` or `low` (0.9, 0.6, 0.3) |
-| 10 | Script `{"error_code": "no_claim"}`, or `{"claims": []}` | `unverifiable` at confidence `0.0`, which is not reportable: zero findings, no warning. This is the "nothing checkable in that sentence" answer |
+| 8 | Read the finding | One `DS302` finding: `external fact-check: '<claim>' rated false by lenz - review to confirm`, with the confidence only in the report-only `value` field: `False (confidence 0.78): <claim>`. Keeping the confidence out of `message` is what makes baseline fingerprints stable when a verdict's confidence wobbles between runs |
+| 9 | Change the scripted verdict to `"mixed"` and re-run | A `warning` finding of type `unverified claim` with `value` `Mixed (confidence ...): <claim>` when the scripted confidence is at or above `fact_check_min_confidence`. Since the owner rulings of 2026-11-27 every verdict is kept and shown as one of `True`, `Mostly True`, `False`, `Mostly False`, `Mixed`, `Unverifiable`: `Mostly True` is `true` (not reported), `Mostly False` is `false` (reported), `Half True` shows as `Mixed`, and any unknown label shows as `Unverifiable` (INFO trace `DS302: fact i/n (<range>) "..." in <path>: verdict Unverifiable, confidence 0.00, not reported`, never a finding). Confidence may also be `high`, `medium` or `low` (0.9, 0.6, 0.3) |
+| 10 | Script `{"error_code": "no_claim"}`, or `{"claims": []}` | `Unverifiable` at confidence `0.0`, which is not reportable: zero findings, no warning. This is the "nothing checkable in that sentence" answer |
 | 11 | Add `fact_check_min_confidence=0.79` to the `Config(...)` call, keeping the `false`/`0.78` verdict | Zero findings: the floor is an inclusive `>=`, so `0.78` no longer clears `0.79`. At exactly `0.78` the finding returns |
 | 12 | Script a non-200 status, or a response larger than 64 KiB | A per-claim `FactCheckError` with a fixed message, logged as one WARNING naming the document only. Backend messages never carry request or response data — a header error can contain the `Bearer` value, which is why only the exception *type* name survives |
+| 12a | In the script, print `result.fact_checks` after the scan, or render it: `from docsentinel.reporting import render; print(render(result, "text", config=Config(profile="deep")))` | Every sent fact appears whatever its verdict, as `Fact check: False (confidence 0.78) [<path>]: <fact>` after any `Pending:` lines, with one indented `  <Label> (confidence 0.78): <claim>` line per claim the mock rated (the mock above rates the whole fact, so the claim line echoes it). Scripted `true` at any confidence gives a `Fact check:` line and **no** finding |
+| 12b | Render with `"json"` instead | A top-level `fact_checks` array (`path`, `fact`, `verdict`, `confidence`, `backend`, `reported`, `claims`), `reported: true` exactly when the fact is also a finding; the array is absent when `DS302` sent nothing. `"json-v1"` and `"github"` do not contain it |
 
 ### The real run, with your own key
 
@@ -413,6 +419,23 @@ for finding in result.findings:
 | 14 | Compare the sent count against the use case 2 preview | They match for the same configuration and selection, unless the time budget cut the run short |
 | 15 | Set `fact_check_time_budget_seconds=1` against a slow or distant endpoint | Remaining claims are skipped with `DS302: time budget of 1 s exhausted; N of M claim(s) not checked`. This skip is logged **only**: it never reaches `ScanResult.pending` or the report's `Pending:` line, so a budget cutoff is invisible to anyone reading just the rendered report |
 | 16 | Confirm nothing leaked | The key must not appear in stdout, stderr, the per-run log file, any finding field, any rendered report, or the client `repr` (the fixed `LenzFactCheckClient(base_url='https://lenz.io/api/v1')`). `tests/mock/test_fact_check_no_key_logged.py` asserts exactly this with a sentinel key |
+
+### Combination, shared selection options and a facts file
+
+These steps use the rehearsal script above (extend its `scan(...)` call with `fact_weights=`,
+`fact_dedup_threshold=` or `facts_file=`), or the CLI with your own key. The mock sends nothing over the
+network.
+
+| # | Step | Expected |
+|---|------|----------|
+| 12c | Script `Config(profile="deep", fact_check_combination="all")` | The `claims sent` count equals the number of requests, not claims: one request when every claim above the floor fits in 1000 characters, several consecutive requests otherwise. INFO `DS302: fact combination all: <n> claim(s) grouped into <k> fact(s)`. The per-document cap of `3` does not apply, so more claims than the cap are covered (compare with `each`) |
+| 12d | Same with `fact_check_combination="1-3,4-6"` | Facts are the ranges; a range whose joined text exceeds 1000 characters logs `DS302: combined fact <range> is <n> characters, over the 1000-character limit; not sent` and is skipped (not truncated) |
+| 12e | `scan` with `--min-salience 0.32 --max-total 5 --weights 0,0,1 --dedup-threshold 0.5` (CLI, gate closed, no key) | Exit `0`, the gate-closed WARNING and `Pending:` as in step 1, and **no** option error: the five options are accepted by `scan` and `baseline` as well as `extract-facts` |
+| 12f | Write the preview: `uv run docsentinel extract-facts examples/docs --include New_MRI_breakthrough_reveals_the_brain_and_eye.md --format facts-json -o <scratch>/facts.json`, then `scan ... --profile deep --include-facts <scratch>/facts.json` with the gate closed | Exit `0`; the gate-closed WARNING; nothing is read from the file beyond validation, nothing is sent |
+| 12g | In the rehearsal script, pass `facts_file="<scratch>/facts.json"` to `scan(...)` | INFO `DS302: <n> fact(s) taken from the facts file; no extraction or selection`; every listed fact is sent in file order, one request each, whatever its `disposition`. Hand-edit one `text` or delete everything but `text` and `path` from an entry: the edited text is what the mock receives |
+| 12h | Add `--include-facts <scratch>/facts.json --min-salience 0.9 --fact-combination all` to a gate-open run, or call `scan(..., facts_file=...)` with a config that sets `fact_check_combination="all"` | One WARNING `--include-facts given: ignoring --fact-combination, --min-salience` (CLI flags only); the combination and selection settings have no effect |
+| 12i | Point `--include-facts` at a missing file, a file over 1 MiB, one with more than 500 facts, one with a duplicate key, one that is not valid UTF-8 JSON, or an `extract-facts` file of another schema | `Scan failed: facts file <path>: <reason>` on stderr, exit `2`, no scan, no request |
+| 12j | Check what the file may hold | The file is a trusted invoker path and its text is sent verbatim: a fact that appears in none of the scanned documents is still sent. Review the file before every run |
 
 ### Adjusting DS302's weights and parameters
 
@@ -428,12 +451,13 @@ for finding in result.findings:
 | `fact_check_max_claims_per_document` | `3` | Per-document send cap | `select_candidates` |
 | `fact_check_max_claims_total` | `25` | Per-scan send cap | `select_candidates` |
 | `fact_check_time_budget_seconds` | `300` | Wall-clock budget for the network stage; `1`–`3600` | `_check_candidates` |
-| `fact_check_combination` | `"each"` | Groups selected claims into facts (`each`, `all`, or ranges like `1-6,7-8,9-16`); a combined fact over 1000 characters is not sent; `extract-facts` has no flag for it yet | `combine_candidates` in `_check_candidates` |
+| `fact_check_combination` | `"each"` | Groups selected claims into facts (`each`, `all`, or ranges like `1-6,7-8,9-16`). `all` joins every claim above the salience floor (the caps do not apply) and splits into facts within 1000 characters; a combined range over 1000 characters is not sent. `--fact-combination` on `scan`, `baseline` and `extract-facts` overrides it | `combine_candidates` in `_check_candidates` |
 
 - **The salience weights and the dedup threshold are deliberately not on this list.** They are
-  fixed in `DS302_POLICY` (`0.3`/`0.3`/`0.4`, `0.92`) and reachable only through the
-  exploration-only `extract-facts` flags. There is no configuration key for them, so what `DS302`
-  sends cannot be re-weighted from a config file — only the floor and the caps move.
+  fixed in `DS302_POLICY` (`0.3`/`0.3`/`0.4`, `0.92`) and reachable only through the invoker-only
+  `--weights` and `--dedup-threshold` flags (`extract-facts`, `scan`, `baseline`). There is no
+  configuration key for them, so what `DS302` sends cannot be re-weighted from a config file — only the
+  floor and the caps move.
 - **To send less, tune selection, not confidence.** `fact_check_min_salience` and the two caps
   change what leaves the machine, so they are the privacy and cost levers.
   `fact_check_min_confidence` only filters verdicts after the round trip: it reduces report noise

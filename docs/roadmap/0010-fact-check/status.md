@@ -495,4 +495,20 @@ wherever DS302 is described); DS302 rows in `rules.md`, `fault-classes.md`, `fin
 - 2026-11-27: **Tracing (O).** At INFO, `DS302` and the lenz client log the first ten words of each
   claim and its verdict: an explicit owner exception to "document content is never logged"
   (`log.quote_start`).
-- Docs synced 2026-11-27. The version bump and the `RELEASE_NOTES.json` entry remain the owner's.
+- 2026-11-27: **Explicit verdict labels (R, O).** Every verdict is shown as `True`, `Mostly True`, `False`,
+  `Mostly False`, `Mixed` or `Unverifiable` (`protocol.VERDICT_LABELS`, `lenz.DISPLAY_LABELS`); the lenz INFO
+  line is `verdict <Label>, confidence 0.90`; the finding `value` is `<Label> (confidence 0.90): <text>` and
+  its `message` is unchanged (baseline fingerprints unchanged).
+- 2026-11-27: **Fact checks in the report (O, P).** `ScanResult.fact_checks` (`FactCheck`, `FactCheckClaim`);
+  context variables `fact_checks` and `fact_checks_count`; `Fact check:` lines in the `text` template and a
+  top-level `fact_checks` array in `json` (omitted when empty); `json-v1` and `github` unchanged.
+- 2026-11-27: **`all` combination (K, R).** `all` joins every claim above the salience floor, ignores the
+  caps and splits into facts within 1000 characters.
+- 2026-11-27: **Shared selection options (C); reverses the O1 ruling's "never read by DS302".** `scan` and
+  `baseline` take `--min-salience`, `--max-per-document`, `--max-total`, `--weights`, `--dedup-threshold`;
+  `extract-facts` takes `--fact-combination`. Known gap: its preview does not show the request grouping.
+- 2026-11-27: **Facts file (C, R).** `scan`/`baseline --include-facts FILE` sends the facts of a `facts-json`
+  file (1 MiB, 500 facts); the selection and combination options are ignored with one WARNING; the dual gate
+  and the time budget still apply. Threat model addenda dated 2026-11-27 record the verbatim-egress risk.
+- Docs synced 2026-11-27 (second pass the same day for the rulings above). The version bump and the
+  `RELEASE_NOTES.json` entry remain the owner's.

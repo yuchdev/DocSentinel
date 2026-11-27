@@ -112,6 +112,7 @@ The output is a plain list of lines, always in this order:
 | 8 | `  SEVERITY RULE TYPE, line N, col M: VALUE` under its document | Indented two spaces, severity padded to 7 characters. One line per finding, directly under the document it belongs to, so the path is printed once. `, col M` is left out when the finding has no column, and `, line N, col M` when it has no line. |
 | 9 | `Blocking findings: N` and one recap line per blocking finding | Present only when something blocks, after the documents. Each recap line repeats the finding with its path: `  SEVERITY RULE TYPE: PATH, line N, col M: VALUE`. Blocking means `error`, or `warning` with `--strict`. |
 | 10 | `Pending: REASON` for each pending reason     | Work that was requested but could not run, such as missing optional dependencies.                                   |
+| 11 | `Fact check: VERDICT (confidence C) [PATH]: FACT` for each fact `DS302` checked, with one indented line per rated claim | Present only when the external fact-check rule ran. Every checked fact is listed, whatever its verdict; see [External fact-checking](cli.md#external-fact-checking-ds302). |
 
 ### Reading a finding line
 
@@ -294,6 +295,7 @@ readability.
 | `rules`          | object           | `enabled` (rule codes active for this run), `evaluated` (how many ran) and `opt_in_off`.          |
 | `documents`      | array of objects | Every scanned document, sorted, each with its `problems`. Baselined findings are already removed. |
 | `pending`        | array of strings | Reasons part of the scan did not run. Empty when everything requested ran.                        |
+| `fact_checks`    | array of objects | Only when `DS302` checked facts: each with `path`, `fact`, `verdict`, `confidence`, `backend`, `reported` and `claims`. Omitted when empty. |
 
 `rules.opt_in_off` lists the opt-in rules that are selected but whose policy is off, each as
 `{"code": ..., "option": ...}`. Opt-in rules appear in `rules.enabled` even while their policy is off.

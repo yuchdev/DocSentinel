@@ -59,7 +59,10 @@ maps a list, and every other value is copied as written.
 
 The context holds run-level values (`findings_count`, `documents_count`, `profile`,
 ...), the `documents` list (each with `path`, `bytes`, `domain`, `problem_count` and
-`problems`) and the flat `findings` list. Extension data lives only under `ext`:
+`problems`), the flat `findings` list and, when the external fact-check rule `DS302` ran, the
+`fact_checks` list (each with `path`, `fact`, `verdict`, `confidence`, `backend`, `reported` and `claims`;
+`fact_checks_count` is its length; `path`, `fact` and each `claims[].claim` are untrusted, so a `text`
+template passes them through `neutralize`). Extension data lives only under `ext`:
 `ext.<name>` for the run, `doc.ext.<name>` for a document and `p.ext.<name>` for a
 problem.
 

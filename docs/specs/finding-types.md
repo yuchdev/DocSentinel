@@ -133,7 +133,7 @@ migration can be traced.
 | Rule | Type label | `value` | `detail` | Sev | Was |
 |---|---|---|---|---|---|
 | DS301 | `candidate contradiction` | subject | `'x' in A but 'y' in B; review to confirm` | warning | `candidate contradiction: subject …` |
-| DS302 | `unverified claim` | `<verdict> (confidence <0.00>): ` + the exact candidate text sent (at most 1,000 characters, untrusted) | — | warning | none (new rule; message `external fact-check: '<snippet>' rated <verdict> by <backend> - review to confirm`) |
+| DS302 | `unverified claim` | `<Label> (confidence <0.00>): ` (`Label` one of `True`, `Mostly True`, `False`, `Mostly False`, `Mixed`, `Unverifiable`) + the exact candidate text sent (at most 1,000 characters, untrusted) | — | warning | none (new rule; message `external fact-check: '<snippet>' rated <verdict> by <backend> - review to confirm`) |
 
 ## 5. Rules for changing this standard
 

@@ -353,8 +353,8 @@ def test_real_lenz_client_network_failure_skips_one_claim(
     assert SENTINEL not in text
     assert _claim_records(caplog) == [
         *CLAIM_TRACE,
-        f'lenz /assess: claim 1/1 "{SEND_ORDER[0]}": verdict False (false), confidence 0.87',
+        f'lenz /assess: claim 1/1 "{SEND_ORDER[0]}": verdict False, confidence 0.87',
         _fact_trace(1, "gamma.md"),
-        f'lenz /assess: claim 1/1 "{SEND_ORDER[2]}": verdict False (false), confidence 0.87',
+        f'lenz /assess: claim 1/1 "{SEND_ORDER[2]}": verdict False, confidence 0.87',
         _fact_trace(3, "beta.md"),
     ]

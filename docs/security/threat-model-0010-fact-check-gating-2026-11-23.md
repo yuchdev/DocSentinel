@@ -704,3 +704,22 @@ The findings above are kept as written. These owner rulings change what they des
   `safe()`), so document content now reaches stderr and the log file. This is an explicit owner exception. Counts-only
   M10 line is unchanged. Reviewers should treat a CI log of a deep scan with the gate open as containing sentence
   fragments of the scanned documents.
+
+## Addendum 2026-11-27: facts file and shared selection options (second pass)
+
+The findings above are kept as written.
+
+- **Gate unchanged.** `scan --include-facts FILE` and the shared selection options (`--min-salience`,
+  `--max-per-document`, `--max-total`, `--weights`, `--dedup-threshold`, `--fact-combination all`) change
+  what is selected or listed, not the consent: nothing is sent without `--use-external-api` (or
+  `DOCSENTINEL_USE_EXTERNAL_API=1`) and the key, and a closed gate still reads one WARNING, `pending` and no
+  evaluated count, with the reason `set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY`.
+- **FC-selection integrity.** The earlier "exploration only, never DS302" position is reversed by owner ruling C of
+  2026-11-27 (see ADR 0007's amendment). The options are invoker-only flags (never configuration keys, never in
+  user settings), so a scanned repository still cannot widen what is sent; a pre-commit `args:` or workflow that
+  passes them is the invoker's own choice, under the same rules as `--use-external-api`.
+- **Verbatim egress from a facts file.** The file is a trusted invoker path and `DS302` sends its `text` values as
+  written, one request each, whether or not they appear in the scanned documents. Treat the file as the consent
+  record: review it, keep it out of version control if it holds private text, and never accept a facts file from
+  an untrusted source (a pull request that adds one is not a way to run it: the file is named only on the command
+  line). Details: egress model, addendum of the same date.

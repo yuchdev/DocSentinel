@@ -374,3 +374,21 @@ not an exploitable flaw: the command has no egress path by design. However, the 
 must be applied before Task 04 is written, so that the offline guarantee is actually verified.
 E2, E3 and E4 (MEDIUM) must land in Task 02 before merge. E5 to E10, E12 and E13 land with their
 tasks. E11 may follow in a later change.
+
+## Addendum 2026-11-27: exploration options now reach DS302
+
+The findings above are kept as written. Owner ruling C of 2026-11-27 reverses one asset line.
+
+- **"An exploration policy must never reach DS302 (C5, X5, O1)" no longer holds.** `scan` and `baseline` now
+  take `--min-salience`, `--max-per-document`, `--max-total`, `--weights N,E,D` and `--dedup-threshold`
+  (`scan(fact_weights=, fact_dedup_threshold=)`), and `extract-facts` takes `--fact-combination`. `--weights` and
+  `--dedup-threshold` stay invoker-only and are still never configuration keys, so a scanned repository cannot
+  change the selection policy; only the person who runs the command can. Preview integrity is kept by using one
+  shared option definition on all three commands: the same values on `extract-facts` give the set `DS302`
+  sends, and `matches_ds302` still reports `no` for any override.
+- **`all` and request grouping.** Under `--fact-combination all`, `extract-facts` lists every claim above the
+  salience floor, as `DS302` sends them, but it does not show how they are grouped into requests (known gap), so a
+  consent review sees the claims, not the request boundaries.
+- **Facts file.** `scan --include-facts` consumes the `facts-json` output of this command. The offline
+  guarantee of `extract-facts` is unchanged: it never reads that file. See the egress model's addendum of the
+  same date for the verbatim-egress risk of a hand-edited file.

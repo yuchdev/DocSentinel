@@ -94,7 +94,8 @@ def test_reportable_verdict_gives_one_exact_finding_per_candidate(
         When a confirmed deep scan selecting DS302 runs with use_external_api=True
         Then there is one finding per sent claim, sorted by (path, message); each has rule DS302, the
             claim's document path, severity warning, type "unverified claim", no line, value
-            "<verdict> (confidence 0.87): <the exact text sent>" and the message
+            "<Label> (confidence 0.87): <the exact text sent>" (the explicit label, owner ruling
+            2026-11-27: False or Mixed for a fake without a label) and the message
             "external fact-check: '<first 200 code points>' rated <verdict> by fake - review to confirm"
             with no confidence in it
 
@@ -122,7 +123,7 @@ def test_reportable_verdict_gives_one_exact_finding_per_candidate(
             "unverified claim",
             None,
         )
-        assert finding.value == f"{verdict} (confidence 0.87): {sent}"
+        assert finding.value == f"{verdict.capitalize()} (confidence 0.87): {sent}"
         assert finding.value.split(": ", 1)[1] in backend.calls
         assert finding.message == f"external fact-check: '{sent[:200]}' rated {verdict} by fake - review to confirm"
         assert "confidence" not in finding.message

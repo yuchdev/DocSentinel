@@ -1300,7 +1300,9 @@ third-party heuristic output, not ground truth.** Treat a finding as a prompt to
 
 **Sending text to a third party.** When the rule runs, the text of each selected claim sentence (at most
 1,000 characters each) leaves your machine for the backend. Preview exactly what would be sent with
-`docsentinel extract-facts` first; see
+`docsentinel extract-facts` first (it takes the same selection options as `scan` and `baseline`:
+`--min-salience`, `--max-per-document`, `--max-total`, `--fact-combination`, `--weights`,
+`--dedup-threshold`); see
 [the CLI guide](../tutorial/cli.md#previewing-what-ds302-would-send-docsentinel-extract-facts).
 
 **The dual gate.** Nothing is sent unless all of these hold:
@@ -1318,6 +1320,18 @@ same text to `ScanResult.pending`, and does not count `DS302` as evaluated in th
 `docsentinel doctor` prints `fact-check gate: on (backend: lenz)`, `off (<reasons>)` or
 `unknown (configuration error)`.
 
+**What the report shows.** Every fact that was sent is listed in the report with an explicit verdict
+(`True`, `Mostly True`, `False`, `Mostly False`, `Mixed` or `Unverifiable`; `ScanResult.fact_checks`, the
+`Fact check:` lines of the `text` report and the `fact_checks` array of the `json` report), whatever its
+verdict. Only a fact rated false or mixed at or above `fact_check_min_confidence` is also a finding, whose
+`value` is `<Label> (confidence 0.90): <text>`.
+
+**A facts file.** `scan --include-facts FILE` (and `scan(..., facts_file=FILE)`) sends the facts listed in a
+`facts-json` file, in file order, one request each, instead of extracting claims. The selection options,
+`fact_check_combination` and `--fact-combination` are then ignored. The file is a trusted invoker path
+and its text is sent as written, so it need not come from the scanned documents. See
+[the CLI guide](../tutorial/cli.md#external-fact-checking-ds302).
+
 **Never a configuration key.** `use_external_api` and the API key are not configuration options, in the
 project file, the JSON file or the user settings file. A file that names one is rejected as an unknown
 option (`Unknown config options: use_external_api`, exit code 2). A repository you scan must never be able to switch on network egress or carry a key, so consent
@@ -1329,9 +1343,11 @@ whole CI job.
 rules on redirects and proxies are fixed in the backend and are not configurable.
 
 **What a finding says.** Its `type` is `unverified claim` and its `value` is
-`<verdict> (confidence 0.87): <claim>`, so the backend confidence is visible. Every verdict is kept and
-printed in the `INFO` trace; only `false` and `mixed` at or above `fact_check_min_confidence` are
-reported. A label DocSentinel does not recognise is rated `unverifiable` (printed, never a finding), and the
+`<Label> (confidence 0.87): <claim>`, so the backend confidence is visible. `<Label>` is one of `True`,
+`Mostly True`, `False`, `Mostly False`, `Mixed` or `Unverifiable`. Every verdict is kept and printed in the
+`INFO` trace and the report; only a fact whose verdict is false (`False`, `Mostly False`) or mixed
+(`Mixed`, `Half True`) at or above `fact_check_min_confidence` is also a finding. A label DocSentinel does
+not recognise is rated `Unverifiable` (printed, never a finding), and the
 words `high`, `medium` and `low` count as confidence 0.9, 0.6 and 0.3. When the backend splits a combined fact,
 the most severe verdict wins. The trace quotes the first ten words of each claim in stderr and the log file.
 
@@ -1442,7 +1458,10 @@ fact_check_time_budget_seconds = 120
 How the selected claims are grouped into facts before they are sent. Each fact is one backend request.
 
 - `each` (default): one request per selected claim, as before.
-- `all`: every selected claim is joined into one fact and sent in one request.
+- `all`: every claim above the salience floor (`fact_check_min_salience`) is joined, in send order. The
+  per-document and total caps do not apply. The claims are split into consecutive facts of whole
+  claims so that each joined text stays within 1000 characters: one request when everything fits,
+  several otherwise.
 - Ranges: each range is `N` or `N-M` and becomes one fact. Numbers count the selected claims in send
   order, which is the listing order of `docsentinel extract-facts`. `1-6,7-8,9-16` gives three facts.
 
@@ -1451,16 +1470,18 @@ overlap. Anything else is a `ConfigError` (exit `2`). A range is clipped to the 
 claims, a range that starts past the last claim is dropped, and a claim named by no range is still
 sent alone. The value is at most 2048 characters.
 
-The members of a fact are joined by one space. A combined fact over 1000 characters is **not sent and
-not truncated**: DS302 logs one WARNING per such fact and one INFO count. A reportable combined fact
+The members of a fact are joined by one space. For explicit ranges, a combined fact over 1000
+characters is **not sent and not truncated**: DS302 logs one WARNING per such fact and one INFO count
+(`all` never produces one, it splits instead). A reportable combined fact
 (false or mixed at or above `fact_check_min_confidence`) gives one finding per document it drew claims
-from, and each finding's `value` holds the whole combined text. The selection caps
+from, and each finding's `value` holds the whole combined text. For `each` and ranges the selection caps
 (`fact_check_max_claims_per_document`, `fact_check_max_claims_total`) apply before grouping, so
-combining many claims usually needs higher caps. The key is allowed in user settings. The CLI flag
-`--fact-combination SPEC` on `scan` and `baseline` overrides it for one run.
+combining many claims usually needs higher caps; `all` ignores them. The key is allowed in user settings. The CLI flag
+`--fact-combination SPEC` on `scan`, `baseline` and `extract-facts` overrides it for one run.
 
-`extract-facts` has no `--fact-combination` yet: it still lists individual claims, so with a
-combination other than `each` its preview shows the members, not the joined facts.
+`extract-facts` lists claims, not requests: under `all` it lists every above-floor claim, and with a
+combination other than `each` its preview shows the members, not the joined facts or how they are split
+into requests.
 
 ```toml
 fact_check_combination = "1-6,7-8,9-16"

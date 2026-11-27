@@ -602,7 +602,9 @@ under strict safety and advisory boundaries:
   `mining/clustering.py`); the backend sits behind the `FactCheckClient` Protocol in
   `fact_check/protocol.py`, with the only implementation in `fact_check/lenz.py` (fixed URL, no
   redirects or proxies, bounded response; `httpx` is a declared dependency imported only when the gate is
-  open). `docsentinel extract-facts` previews the same candidate set offline. See
+  open). `docsentinel extract-facts` previews the same candidate set offline. `scan --include-facts FILE`
+  sends the facts of a `facts-json` file instead of extracting claims. Each checked fact is recorded in
+  `ScanResult.fact_checks` with an explicit verdict label and reaches the report context as `fact_checks`. See
   [ADR 0007](../adr/0007-fact-check-backend-protocol-and-dual-consent-gate.md) (`Proposed`).
 - **Advisory-only exit codes.** Deep findings are candidates for review. A deep scan always exits
   `0`, even under `--strict` or with findings present, and prints an advisory banner. Promoting deep

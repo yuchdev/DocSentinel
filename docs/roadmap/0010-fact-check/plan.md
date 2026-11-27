@@ -279,6 +279,20 @@ Contracts 6 to 9; where an older story text disagrees, this section and the ADR 
   client trace each selected claim and each verdict with the first ten words of the claim
   (`log.quote_start`), an explicit exception to "document content is never logged". stderr and the
   log file use `[{timestamp}][{severity}]: {message}`.
+- **Explicit verdict labels and the report section (owner rulings R, O, P of 2026-11-27).** A verdict is
+  shown as `True`, `Mostly True`, `False`, `Mostly False`, `Mixed` or `Unverifiable`
+  (`protocol.VERDICT_LABELS`, `lenz.DISPLAY_LABELS`; the lenz INFO line is now `verdict <Label>`, with no raw
+  label). The finding `value` is `<Label> (confidence 0.90): <text>`; its `message` is unchanged. Every checked
+  fact is listed in `ScanResult.fact_checks` and in the report (`Fact check:` lines in `text`, a top-level
+  `fact_checks` array in `json`, context variables `fact_checks` and `fact_checks_count`), whatever its verdict.
+- **`all` combination (ruling K).** `fact_check_combination = "all"` joins every claim above the salience
+  floor, ignoring the per-document and total caps, split into consecutive facts of whole claims within 1000
+  characters. Explicit ranges keep "caps apply first" and "over 1000 characters is not sent".
+- **Shared selection options and the facts file (ruling C).** `scan`/`baseline` take `--min-salience`,
+  `--max-per-document`, `--max-total`, `--weights`, `--dedup-threshold`; `extract-facts` takes
+  `--fact-combination`. This reverses the "exploration only, never DS302" rule of C11 below: `DS302` can send
+  under an exploration policy (invoker-only, never a config key). `scan`/`baseline --include-facts FILE`
+  sends the facts of a `facts-json` file instead of extracting claims (see ADR 0007, Amendment 2026-11-27).
 
 ### C11 — One candidate source for DS302 and extract-facts
 
@@ -303,7 +317,9 @@ Added 2026-11-23 for [Story 05.0](/docs/roadmap/0010-fact-check/05.0-extract-fac
 - Settings that make `extract-facts` differ from DS302 (a CLI override that differs from the
   effective config, or an exploration `SelectionPolicy`) set `matches_ds302 = false` and are named
   in the output notice. An exploration policy is never a `Config` field, never read from any file
-  or environment variable, and cannot reach `DS302`.
+  or environment variable, and cannot reach `DS302`. **Reversed 2026-11-27 (owner ruling C):** `scan` and
+  `baseline` now take the same selection options, so an exploration policy can reach `DS302` when the
+  invoker passes it; it is still never a configuration key.
 - `extract-facts` never resolves `use_external_api`, never reads `DOCSENTINEL_USE_EXTERNAL_API` or a
   `DOCSENTINEL_FACTCHECK_*` variable, and never imports `httpx` or a backend module. C1 and C5 are
   untouched because no egress path exists in the command.

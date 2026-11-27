@@ -808,6 +808,39 @@ These rulings are already implemented and win over the text above where they dif
   except the lenz client's own fixed rejection message at DEBUG.
 - **Log format (ruling O of 2026-11-26).** stderr and the log file both use `[{timestamp}][{severity}]: {message}`
   (`log.LOG_FORMAT`).
+- **Explicit verdict labels (rulings R and O of 2026-11-27; refines the response-parsing and tracing bullets).**
+  A verdict is shown as one of `True`, `Mostly True`, `False`, `Mostly False`, `Mixed` or `Unverifiable`
+  (`protocol.VERDICT_LABELS`; `lenz.DISPLAY_LABELS` maps the raw label, `half true` to `Mixed`, an unknown label
+  to `Unverifiable`). The coarse `Verdict` (`true`, `false`, `mixed`, `unverifiable`) still decides what is
+  reportable. `FactCheckResult` gains `label`, `claims` (`ClaimVerdict` per rated claim) and `display`. The lenz
+  trace line is `lenz /assess: claim i/n "<first 10 words> ...": verdict <Label>, confidence 0.90`, replacing
+  the `<raw> (<mapped>)` form; the `DS302` fact line prints the label. The finding `value` becomes
+  `<Label> (confidence 0.90): <text>`; the finding `message` is unchanged, so baseline fingerprints are too.
+- **Fact checks in the report (rulings O and P of 2026-11-27).** `ScanResult.fact_checks` holds one `FactCheck`
+  (with `FactCheckClaim` parts) for every fact sent, whatever its verdict; only a false or mixed one at or above
+  `fact_check_min_confidence` is also a finding. The report context gains `fact_checks` and
+  `fact_checks_count`; the `text` template prints `Fact check:` lines after the `Pending:` lines and the
+  `json` template a top-level `fact_checks` array (omitted when empty). `json-v1` and `github` are unchanged.
+- **`all` combination (ruling K of 2026-11-27; refines Contract on combination).** `all` joins every claim above
+  the salience floor, ignores the per-document and total caps, and splits the claims into consecutive facts of
+  whole claims so each joined text stays within 1000 characters. For `all` the "over 1000 characters is not
+  sent" rule therefore never applies; explicit ranges keep it.
+- **Shared selection options and the exploration rule (ruling C of 2026-11-27; reverses the earlier
+  "exploration only, never `DS302`" rule).** `scan` and `baseline` take `--min-salience`, `--max-per-document`,
+  `--max-total`, `--weights N,E,D` and `--dedup-threshold` (`scan(fact_weights=, fact_dedup_threshold=)`), and
+  `extract-facts` takes `--fact-combination` (`extract_facts(fact_combination=)`). `DS302` can therefore send
+  under a non-default selection policy. `--weights` and `--dedup-threshold` stay invoker-only, never
+  configuration keys. Consent is unchanged: the claims sent are still what the invoker asked for, behind the
+  same dual gate. `extract-facts` under `all` lists every above-floor claim but does not show the request
+  grouping (known gap).
+- **Facts file (ruling C of 2026-11-27).** `scan`/`baseline --include-facts FILE` (`scan(facts_file=)`,
+  `detectors.fact_check.load_facts_file`) makes `DS302` send the facts of a `facts-json` file (schema
+  `docsentinel-facts` 1; only `text` and `path` are required per entry) instead of extracting claims: every
+  listed fact, in file order, whatever its disposition, one request each. The combination and selection options
+  are ignored with one WARNING naming those passed. Limits: 1 MiB, 500 facts, strict UTF-8 JSON, no duplicate
+  keys; a bad file is `Scan failed: facts file ...` (exit `2`). The dual gate and the time budget still apply.
+  The file is a trusted invoker path and its text goes to the third party verbatim, so the facts need not come
+  from the scanned documents (see the egress threat model's 2026-11-27 addendum).
 
 ## Links
 

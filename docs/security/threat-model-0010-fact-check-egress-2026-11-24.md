@@ -621,3 +621,27 @@ The findings above are kept as written. Owner ruling R of 2026-11-27 replaces ru
   strings are third-party controlled and pass through `safe()`, so they cannot forge a record or a GitHub Actions
   command. Citations, other fields and keys are still never logged.
 - **Key fallback.** See the gating model's addendum of the same date: `LENZ_API_KEY` is now read as a fallback.
+
+## Addendum 2026-11-27: explicit labels, report section and facts file (second pass)
+
+The findings above are kept as written. Later owner rulings of 2026-11-27 change what they describe.
+
+- **Logging (refines the addendum above).** The lenz client no longer logs the raw verdict label. Its INFO
+  line per claim row is `lenz /assess: claim i/n "<first 10 words> ...": verdict <Label>, confidence 0.90`, where
+  `<Label>` is one of the fixed labels `True`, `Mostly True`, `False`, `Mostly False`, `Mixed`, `Unverifiable`
+  (`lenz.DISPLAY_LABELS`; an unknown raw label becomes `Unverifiable`), so no third-party string other than the
+  echoed claim words reaches the log. The echo still goes through `safe()`.
+- **Third-party text in the report.** `ScanResult.fact_checks` carries the backend's `claim` echo (cut to 1000
+  characters, at most 64 rows per fact) into the report as `fact_checks[].claims[].claim`, a new untrusted sink.
+  The `text` template passes it through `neutralize` and the `json` template escapes it; the loader's sink check
+  rejects a `text` template that prints it without a neutralizing filter. The verdict labels are fixed text.
+- **Facts file (`--include-facts`).** The file is a trusted invoker path, read once before any analyzer runs
+  (1 MiB, 500 facts, strict UTF-8 JSON, no duplicate keys, schema `docsentinel-facts` 1, entries of at most 1000
+  characters). **Its text is sent to the third party verbatim and need not come from the scanned documents.**
+  The egress is therefore exactly what the invoker wrote, behind the same dual gate and time budget; the file
+  path is never a configuration key, so a scanned repository cannot name one. A hand-edited file can contain
+  anything the invoker types, including private text: review it before sending. A bad file is a fixed
+  `facts file ...` `ConfigError` (exit `2`) that echoes no file content.
+- **Selection options and `all`.** `scan`/`baseline` accept the claim-selection options and `all` joins every
+  above-floor claim without the caps, so one run can send more claims than the configured caps. The time budget
+  and the 1000-character limit per request still bound it; `all` splits the claims into several requests.

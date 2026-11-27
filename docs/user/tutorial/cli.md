@@ -117,34 +117,81 @@ DOCSENTINEL_FACTCHECK_LENZ_API_KEY=<your key here> \
   docsentinel scan docs --profile deep --use-external-api
 ```
 
-By default each selected claim is one request. `--fact-combination SPEC` (on `scan` and `baseline`;
-overrides the `fact_check_combination` option) joins claims into fewer facts: `each`, `all`, or 1-based
-ranges in the `extract-facts` listing order such as `1-6,7-8,9-16`. A bad value exits `2`. A combined
-fact over 1000 characters is not sent (one WARNING). `extract-facts` does not take the flag yet, so its
-preview still lists individual claims.
+By default each selected claim is one request. `--fact-combination SPEC` (on `scan`, `baseline` and
+`extract-facts`; overrides the `fact_check_combination` option) joins claims into fewer facts:
+
+- `each` (default): one request per claim.
+- `all`: every claim above the salience floor is joined. The per-document and total caps do not apply,
+  and the claims are split into consecutive facts of whole claims so that each joined text stays within
+  1000 characters. Use it for a thorough pass; it can send many claims.
+- 1-based ranges in the `extract-facts` listing order such as `1-6,7-8,9-16` (the caps apply first;
+  unnamed claims are sent alone). A range whose joined text is over 1000 characters is not sent (one
+  WARNING).
+
+A bad value exits `2`. Under `all`, `extract-facts --fact-combination all` lists every above-floor claim;
+it does not show how they are grouped into requests.
 
 ```bash
 DOCSENTINEL_FACTCHECK_LENZ_API_KEY=<your key here> \
   docsentinel scan docs --profile deep --use-external-api --fact-combination 1-3,4-6
 ```
 
+`scan` and `baseline` also take the claim-selection options of `extract-facts`: `--min-salience`,
+`--max-per-document`, `--max-total` (each replaces its `fact_check_*` option for the run), `--weights
+N,E,D` and `--dedup-threshold` (never configuration keys). They change what `DS302` sends, so preview the
+same options with `extract-facts` first.
+
+To send exactly the facts you reviewed, write them with `extract-facts --format facts-json`, edit the
+file if you wish, and pass it to `scan` or `baseline` with `--include-facts FILE`:
+
+```bash
+docsentinel extract-facts docs --format facts-json -o /tmp/facts.json
+DOCSENTINEL_FACTCHECK_LENZ_API_KEY=<your key here> \
+  docsentinel scan docs --profile deep --use-external-api --include-facts /tmp/facts.json
+```
+
+`DS302` then sends every fact in the file, in file order and whatever its disposition, one request each,
+instead of extracting claims from the documents. Only `text` and `path` are required per entry. The
+selection options and `--fact-combination` are ignored (one WARNING names those you passed). The file is
+at most 1 MiB and 500 facts, strict UTF-8 JSON with schema `docsentinel-facts` 1 and no duplicate keys; an
+unusable file prints `Scan failed: facts file ...` and exits `2`. You still need `--use-external-api` and
+the key, and the time budget still applies. The file is a path you chose and its text is sent to the third
+party as written, so the facts need not come from the scanned documents: review it before sending.
+
 Tune it with the `fact_check_*` options in the
 [configuration reference](../reference/configuration.md#external-fact-checking-ds302). Each finding has
-type `unverified claim` and a `value` such as `false (confidence 0.87): <claim>`.
+type `unverified claim` and a `value` such as `False (confidence 0.87): <claim>`.
 
-Every verdict the backend returns is kept and printed in the log, but only `false` and `mixed` at or
-above `fact_check_min_confidence` become findings. The client maps `Mostly True` to `true`, `Mostly
-False` to `false`, `Half True` to `mixed`, and any label it does not know to `unverifiable`; the
-confidence words `high`, `medium` and `low` count as 0.9, 0.6 and 0.3. When the backend splits a combined
-fact into several claims, the fact takes the most severe verdict. By default the run traces its work at
-`INFO` (see [Logging](#logging--v--q-and-the-per-run-log-file)), quoting the first ten words of each
-claim, which is document content and reaches stderr and the log file:
+Every verdict is shown as one of `True`, `Mostly True`, `False`, `Mostly False`, `Mixed` or
+`Unverifiable`. Every checked fact is listed in the report, whatever its verdict (see
+[Fact checks in the report](#fact-checks-in-the-report)); only a fact rated `False`, `Mostly False` or
+`Mixed`, at or above `fact_check_min_confidence`, also becomes a finding. The client
+maps `Mostly True` to `true`, `Mostly False` to `false`, `Half True` to `Mixed`, and any label it does not
+know to `Unverifiable`; the confidence words `high`, `medium` and `low` count as 0.9, 0.6 and 0.3. When the
+backend splits a combined fact into several claims, the fact takes the most severe verdict. By default the
+run traces its work at `INFO` (see [Logging](#logging--v--q-and-the-per-run-log-file)), quoting the first
+ten words of each claim, which is document content and reaches stderr and the log file:
 
 ```text
 [2026-11-27 10:14:02][INFO]: DS302: claim 1/3 "The Eiffel Tower is 330 metres tall and ..." in docs/a.md
-[2026-11-27 10:14:03][INFO]: lenz /assess: claim 1/1 "The Eiffel Tower is 330 metres tall and ...": verdict Mostly True (true), confidence 0.90
-[2026-11-27 10:14:03][INFO]: DS302: fact 1/3 (1) "The Eiffel Tower is 330 metres tall and ..." in docs/a.md: verdict true, confidence 0.90, not reported
+[2026-11-27 10:14:03][INFO]: lenz /assess: claim 1/1 "The Eiffel Tower is 330 metres tall and ...": verdict Mostly True, confidence 0.90
+[2026-11-27 10:14:03][INFO]: DS302: fact 1/3 (1) "The Eiffel Tower is 330 metres tall and ..." in docs/a.md: verdict Mostly True, confidence 0.90, not reported
 ```
+
+###### Fact checks in the report
+
+The `text` report lists every fact `DS302` checked, after the `Pending:` lines, with one indented line per
+claim the backend rated (here a synthetic example):
+
+```text
+Fact check: Mixed (confidence 0.9) [docs/a.md]: The Eiffel Tower is 330 metres tall and was finished in 1889.
+  True (confidence 0.9): The Eiffel Tower is 330 metres tall.
+  False (confidence 0.8): It was finished in 1889.
+```
+
+The `json` report adds a top-level `fact_checks` array (omitted when empty) with `path`, `fact`,
+`verdict`, `confidence`, `backend`, `reported` (whether the fact is also a finding) and `claims`.
+`json-v1` and `github` are unchanged. In Python, the list is `ScanResult.fact_checks`.
 
 While either opt-in is missing, a deep scan logs one WARNING, lists the reason under
 `Pending:` (and in `pending` in JSON), and does not count `DS302` as evaluated:
@@ -572,15 +619,18 @@ docsentinel extract-facts docs --format facts-json -o /tmp/facts.json
 | `--min-salience FLOAT` | Override `fact_check_min_salience` for this run. |
 | `--max-per-document INT` | Override `fact_check_max_claims_per_document` for this run. |
 | `--max-total INT` | Override `fact_check_max_claims_total` for this run. |
-| `--weights N,E,D` | Exploration only: numeric, entity and distinctiveness weights summing to 1. |
-| `--dedup-threshold FLOAT` | Exploration only: near-duplicate threshold in (0, 1]. |
+| `--fact-combination SPEC` | Override `fact_check_combination` for this run (`each`, `all` or ranges). Under `all` it lists every claim above the salience floor; the request grouping is not shown. |
+| `--weights N,E,D` | Numeric, entity and distinctiveness weights summing to 1; not a configuration key. |
+| `--dedup-threshold FLOAT` | Near-duplicate threshold in (0, 1]; not a configuration key. |
 | `--all` | Also list claims that were not selected, with their disposition. |
 | `-v`, `-q` | Logging verbosity. |
 
 With no overrides, the default output is the set `DS302` would send for the same root, configuration,
 selection and spaCy model. The `matches_ds302` field of `facts-json` (and the `Matches the DS302
 selection` line of `facts-text`) says `no` when an override or exploration setting changed it.
-`--weights` and `--dedup-threshold` never change `DS302` and are not configuration keys.
+`scan` and `baseline` take the same five selection options, so the same values can drive `DS302`
+(see [External fact-checking](#external-fact-checking-ds302)); `--weights` and `--dedup-threshold` are
+never configuration keys.
 
 `--all` lists every extracted claim, each with a disposition: `selected`, `duplicate`, `below_floor`,
 `document_cap` or `total_cap`; `rank` then counts the listed entries.
