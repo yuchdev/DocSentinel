@@ -953,14 +953,14 @@ def extract_facts(
     :param min_salience: Override of ``fact_check_min_salience`` for this run.
     :param max_per_document: Override of ``fact_check_max_claims_per_document`` for this run.
     :param max_total: Override of ``fact_check_max_claims_total`` for this run.
-    :param fact_combination: Override of ``fact_check_combination`` for this run
-        (``extract-facts --fact-combination``). Under ``all`` the listed facts are every claim
-        above the salience floor, as ``DS302`` sends them (the caps do not apply).
     :param weights: Salience weights ``(numeric, entity, distinctiveness)`` for this run;
         never a configuration key (``DS302`` uses them only when ``scan`` gets the same
         ``fact_weights``).
     :param dedup_threshold: Clustering threshold for this run; never a configuration key
         (``DS302`` uses it only when ``scan`` gets the same ``fact_dedup_threshold``).
+    :param fact_combination: Override of ``fact_check_combination`` for this run
+        (``extract-facts --fact-combination``). Under ``all`` the listed facts are every claim
+        above the salience floor, as ``DS302`` sends them (the caps do not apply).
     :param include_rejected: List every extracted claim with its disposition, not only
         the selected ones.
     :returns: The facts, the effective settings, ``matches_ds302`` and a fixed notice.
