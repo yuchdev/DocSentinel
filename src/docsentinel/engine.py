@@ -13,8 +13,16 @@ from pathlib import Path
 from typing import Callable, Final, Optional, Union
 
 from docsentinel.baseline import filter_baselined, load_baseline
-from docsentinel.config import Config, ConfigError, load_config, validate_fact_check_option
+from docsentinel.config import (
+    FACT_COMBINATION_ALL,
+    Config,
+    ConfigError,
+    load_config,
+    parse_fact_combination,
+    validate_fact_check_option,
+)
 from docsentinel.detectors.fact_check import (
+    ALL_DISPOSITIONS,
     DS302_POLICY,
     USE_EXTERNAL_API_TYPE_MESSAGE,
     CandidateClaim,
@@ -22,6 +30,7 @@ from docsentinel.detectors.fact_check import (
     ExternalApiGate,
     SelectionPolicy,
     external_api_requested,
+    load_facts_file,
     resolve_external_api_gate,
     trace_candidates,
     validate_selection_policy,
@@ -37,7 +46,15 @@ from docsentinel.discovery import (
 from docsentinel.link_root import LINK_ROOT_RULES, resolve_invoker_link_root, resolve_link_root
 from docsentinel.log import FILE_ONLY, safe
 from docsentinel.mining.nlp import DEEP_EXTRA_HINT, deep_ready
-from docsentinel.models import Document, ExtractedFact, FactExtractionResult, FactSettings, Finding, ScanResult
+from docsentinel.models import (
+    Document,
+    ExtractedFact,
+    FactCheck,
+    FactExtractionResult,
+    FactSettings,
+    Finding,
+    ScanResult,
+)
 from docsentinel.rules import (
     ANALYZERS,
     ENGINE_RULES,
@@ -183,6 +200,28 @@ def _analyzer_accepts_config(analyzer: Analyzer) -> bool:
     return _analyzer_config_mode(analyzer) != _CONFIG_NONE
 
 
+@lru_cache(maxsize=256)
+def _analyzer_accepts_fact_checks(analyzer: Analyzer) -> bool:
+    """Return True when an analyzer declares a ``fact_checks`` parameter.
+
+    Only an external fact-check rule declares it; the engine then passes a list that
+    collects one record per checked fact. Signatures that cannot be introspected are
+    treated as not accepting it.
+
+    :param analyzer: A registered analyzer callable.
+    :returns: True when ``fact_checks`` is forwarded by keyword.
+    """
+    try:
+        parameter = inspect.signature(analyzer).parameters.get("fact_checks")
+    except (ValueError, TypeError):
+        # Not introspectable: it cannot declare fact_checks; call it the legacy way.
+        parameter = None
+    return parameter is not None and parameter.kind in (
+        inspect.Parameter.KEYWORD_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    )
+
+
 def _run_analyzer(
     analyzer: Analyzer,
     directory: Path,
@@ -190,6 +229,9 @@ def _run_analyzer(
     settings: Config,
     link_root: Optional[Path] = None,
     use_external_api: Optional[bool] = None,
+    fact_checks: Optional[list[FactCheck]] = None,
+    fact_policy: Optional[SelectionPolicy] = None,
+    facts: Optional[tuple[CandidateClaim, ...]] = None,
 ) -> tuple[Finding, ...]:
     """Invoke an analyzer, forwarding effective config when its signature accepts it.
 
@@ -201,6 +243,12 @@ def _run_analyzer(
         to analyzers that declare it; ``None`` forwards nothing.
     :param use_external_api: The invoker's external-API request, forwarded as
         ``use_external_api=`` to analyzers that declare it; ``None`` forwards nothing.
+    :param fact_checks: The scan's fact-check record list, forwarded as ``fact_checks=``
+        to analyzers that declare it; ``None`` forwards nothing.
+    :param fact_policy: The invoker's claim-selection policy, forwarded as ``policy=``
+        to analyzers that declare ``fact_checks``; ``None`` forwards nothing.
+    :param facts: The facts of an invoker facts file, forwarded as ``facts=`` to
+        analyzers that declare ``fact_checks``; ``None`` forwards nothing.
     :returns: The analyzer's findings.
     """
     extra: dict[str, object] = {}
@@ -208,6 +256,12 @@ def _run_analyzer(
         extra["link_root"] = link_root
     if use_external_api is not None and _analyzer_accepts_use_external_api(analyzer):
         extra["use_external_api"] = use_external_api
+    if fact_checks is not None and _analyzer_accepts_fact_checks(analyzer):
+        extra["fact_checks"] = fact_checks
+        if fact_policy is not None:
+            extra["policy"] = fact_policy
+        if facts is not None:
+            extra["facts"] = facts
     mode = _analyzer_config_mode(analyzer)
     if mode == _CONFIG_KEYWORD:
         return analyzer(directory, documents, config=settings, **extra)
@@ -560,6 +614,9 @@ def scan(
     include: Optional[Sequence[str]] = None,
     exclude: Optional[Sequence[str]] = None,
     use_external_api: bool = False,
+    fact_weights: Optional[tuple[float, float, float]] = None,
+    fact_dedup_threshold: Optional[float] = None,
+    facts_file: Optional[Union[Path, str]] = None,
 ) -> ScanResult:
     """Inventory documents and run registered analyzers, without implicit deep checks.
 
@@ -593,7 +650,20 @@ def scan(
         gate helper only, never here. When ``DS302`` is active
         and its gate is closed, it is not counted as evaluated and ``pending``
         names what is missing.
+    :param fact_weights: Invoker salience weights ``(numeric, entity, distinctiveness)``
+        for the ``DS302`` claim selection of this run (``scan --weights``); ``None``
+        keeps the ``DS302`` weights. Never a configuration key.
+    :param fact_dedup_threshold: Invoker near-duplicate clustering threshold for the
+        ``DS302`` claim selection of this run (``scan --dedup-threshold``); ``None``
+        keeps the ``DS302`` value. Never a configuration key.
+    :param facts_file: A ``facts-json`` file (``scan --include-facts``) whose facts
+        ``DS302`` sends instead of extracting and selecting claims from the scanned
+        documents; the selection and combination settings, ``fact_weights`` and
+        ``fact_dedup_threshold`` are then ignored. A trusted invoker path, relative to
+        the current directory. It is read before any analyzer runs; an unusable file
+        is a ``ConfigError``.
     :returns: The scan result.
+    :raises ValueError: When ``fact_weights`` or ``fact_dedup_threshold`` is invalid.
     :raises ConfigError: When ``use_external_api`` is not a ``bool``, when
         ``fact_check_backend`` of an injected ``config`` is unknown and ``DS302`` is
         active, when the configured or invoker link root is invalid, when an
@@ -659,6 +729,13 @@ def scan(
     else:
         resolved_link_root = None
     collected: list[Finding] = []
+    fact_checks: list[FactCheck] = []
+    file_facts = load_facts_file(facts_file) if facts_file is not None else None
+    fact_policy = (
+        _exploration_policy(fact_weights, fact_dedup_threshold)
+        if file_facts is None and (fact_weights is not None or fact_dedup_threshold is not None)
+        else None
+    )
     unreadable_reported = bool(unreadable) and bool(effective_rules((DS100.code,), settings.select, settings.ignore))
     if unreadable_reported:
         collected.extend(unreadable_finding(document.path, reason) for document, reason in unreadable)
@@ -668,7 +745,17 @@ def scan(
             continue
         started = time.perf_counter()
         produced = tuple(
-            _run_analyzer(ANALYZERS[code], directory, readable, settings, resolved_link_root, forwarded_consent)
+            _run_analyzer(
+                ANALYZERS[code],
+                directory,
+                readable,
+                settings,
+                resolved_link_root,
+                forwarded_consent,
+                fact_checks,
+                fact_policy,
+                file_facts,
+            )
         )
         logger.debug("%s: %d findings in %.2fs", code, len(produced), time.perf_counter() - started)
         collected.extend(produced)
@@ -713,6 +800,7 @@ def scan(
         notice=notice,
         rules_evaluated=rules_evaluated,
         opt_in_off=opt_in_off,
+        fact_checks=tuple(fact_checks),
     )
 
 
@@ -844,6 +932,7 @@ def extract_facts(
     max_total: Optional[int] = None,
     weights: Optional[tuple[float, float, float]] = None,
     dedup_threshold: Optional[float] = None,
+    fact_combination: Optional[str] = None,
     include_rejected: bool = False,
 ) -> FactExtractionResult:
     """Offline preview of the ``DS302`` fact set (plan contract C11); no gate, no network, no backend.
@@ -864,10 +953,14 @@ def extract_facts(
     :param min_salience: Override of ``fact_check_min_salience`` for this run.
     :param max_per_document: Override of ``fact_check_max_claims_per_document`` for this run.
     :param max_total: Override of ``fact_check_max_claims_total`` for this run.
-    :param weights: Exploration salience weights ``(numeric, entity, distinctiveness)``;
-        never a configuration key and never used by ``DS302``.
-    :param dedup_threshold: Exploration clustering threshold; never a configuration key
-        and never used by ``DS302``.
+    :param fact_combination: Override of ``fact_check_combination`` for this run
+        (``extract-facts --fact-combination``). Under ``all`` the listed facts are every claim
+        above the salience floor, as ``DS302`` sends them (the caps do not apply).
+    :param weights: Salience weights ``(numeric, entity, distinctiveness)`` for this run;
+        never a configuration key (``DS302`` uses them only when ``scan`` gets the same
+        ``fact_weights``).
+    :param dedup_threshold: Clustering threshold for this run; never a configuration key
+        (``DS302`` uses it only when ``scan`` gets the same ``fact_dedup_threshold``).
     :param include_rejected: List every extracted claim with its disposition, not only
         the selected ones.
     :returns: The facts, the effective settings, ``matches_ds302`` and a fixed notice.
@@ -890,7 +983,12 @@ def extract_facts(
         "fact_check_max_claims_total": max_total,
     }
     changes = {name: value for name, value in overrides.items() if value is not None}
+    if fact_combination is not None:
+        parse_fact_combination(fact_combination)
+        changes["fact_check_combination"] = fact_combination
     settings = replace(base, **changes) if changes else base
+    # Under ``all`` DS302 sends every claim above the floor, so the preview lists the same set.
+    sent = ALL_DISPOSITIONS if settings.fact_check_combination == FACT_COMBINATION_ALL else frozenset({"selected"})
     # The selection's own validator, run before the (slow) extraction so a bad value fails fast.
     effective = {name: validate_fact_check_option(name, getattr(settings, name)) for name in overrides}
     differs = (
@@ -904,9 +1002,9 @@ def extract_facts(
         raise RuntimeError(f"extract-facts needs the deep extras and the spaCy model - {DEEP_EXTRA_HINT}")
 
     trace = _traced(inventory, settings, policy)
-    listed = tuple(entry for entry in trace.entries if include_rejected or entry[1] == "selected")
+    listed = tuple(entry for entry in trace.entries if include_rejected or entry[1] in sent)
     facts = tuple(_fact(rank, candidate, disposition) for rank, (candidate, disposition) in enumerate(listed, start=1))
-    selected_count = sum(1 for _, disposition in trace.entries if disposition == "selected")
+    selected_count = sum(1 for _, disposition in trace.entries if disposition in sent)
     logger.info(
         "extract-facts: %d documents read, %d claims, %d selected, %d listed (policy %s)",
         trace.documents_read,

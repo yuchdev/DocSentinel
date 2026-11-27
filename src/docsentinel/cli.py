@@ -107,11 +107,13 @@ USE_EXTERNAL_API_HELP = (
     "must also be set (see docsentinel doctor). Never put it in pre-commit args"
 )
 
-#: The ``--fact-combination`` help text shared by ``scan`` and ``baseline``.
+#: The ``--fact-combination`` help text shared by ``scan``, ``baseline`` and ``extract-facts``.
 FACT_COMBINATION_HELP = (
     "How DS302 groups the selected claims into the facts it sends: 'each' (default, one "
-    "request per claim), 'all' (one request for every claim) or 1-based ranges in send order "
-    "such as '1-6,7-8,9-16' (unnamed claims are sent alone); overrides fact_check_combination"
+    "request per claim), 'all' (every claim above the salience floor joined, the per-document "
+    "and total caps ignored, split into several requests past 1000 characters) or 1-based ranges "
+    "in send order such as '1-6,7-8,9-16' (unnamed claims are sent alone); overrides "
+    "fact_check_combination"
 )
 
 
@@ -815,12 +817,14 @@ def _add_selector_options(parser: argparse.ArgumentParser):
     )
 
 
-#: Help text of the exploration-only ``extract-facts`` options (story decision X5).
+#: Help text of ``--weights`` and ``--dedup-threshold`` on ``scan``, ``baseline`` and ``extract-facts``
+#: (invoker-only, never configuration keys; owner ruling of 2026-11-27).
 EXPLORATION_HELP = (
-    "exploration only: changes this command's output, never DS302; the output is then marked as not matching DS302"
+    "not a configuration key: applies to this run only; extract-facts then marks its output "
+    "as differing from the configured DS302 selection"
 )
 
-#: Help text suffix of the three config-backed ``extract-facts`` overrides (decision X6).
+#: Help text suffix of the three config-backed selection overrides (decision X6).
 FACT_OVERRIDE_HELP = "default: the effective fact_check_* configuration value"
 
 
@@ -886,32 +890,9 @@ def _add_extract_facts_parser(commands: argparse._SubParsersAction, verbosity: a
             "It holds document text: keep it out of the scan root and out of version control"
         ),
     )
+    _add_fact_selection_options(parser)
     parser.add_argument(
-        "--min-salience", type=float, default=None, metavar="FLOAT", help=f"Salience floor; {FACT_OVERRIDE_HELP}"
-    )
-    parser.add_argument(
-        "--max-per-document",
-        type=int,
-        default=None,
-        metavar="INT",
-        help=f"Most facts per document; {FACT_OVERRIDE_HELP}",
-    )
-    parser.add_argument(
-        "--max-total", type=int, default=None, metavar="INT", help=f"Most facts overall; {FACT_OVERRIDE_HELP}"
-    )
-    parser.add_argument(
-        "--weights",
-        type=_weights_argument,
-        default=None,
-        metavar="N,E,D",
-        help=f"Numeric, entity and distinctiveness salience weights summing to 1; {EXPLORATION_HELP}",
-    )
-    parser.add_argument(
-        "--dedup-threshold",
-        type=float,
-        default=None,
-        metavar="FLOAT",
-        help=f"Near-duplicate clustering threshold in (0, 1]; {EXPLORATION_HELP}",
+        "--fact-combination", type=_fact_combination_argument, default=None, metavar="SPEC", help=FACT_COMBINATION_HELP
     )
     parser.add_argument(
         "--all",
@@ -1016,6 +997,8 @@ def _build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument(
         "--fact-combination", type=_fact_combination_argument, default=None, metavar="SPEC", help=FACT_COMBINATION_HELP
     )
+    _add_fact_selection_options(scan_parser)
+    scan_parser.add_argument("--include-facts", type=Path, default=None, metavar="FILE", help=INCLUDE_FACTS_HELP)
     baseline_parser = commands.add_parser(
         "baseline", help="Record current findings into a baseline file", parents=[verbosity]
     )
@@ -1049,6 +1032,8 @@ def _build_parser() -> argparse.ArgumentParser:
     baseline_parser.add_argument(
         "--fact-combination", type=_fact_combination_argument, default=None, metavar="SPEC", help=FACT_COMBINATION_HELP
     )
+    _add_fact_selection_options(baseline_parser)
+    baseline_parser.add_argument("--include-facts", type=Path, default=None, metavar="FILE", help=INCLUDE_FACTS_HELP)
     init_parser = commands.add_parser("init", help="Create a starter config", parents=[verbosity])
     init_parser.add_argument(
         "root", nargs="?", default=".", help="Directory for docsentinel.toml (default: current directory)"
@@ -1277,6 +1262,74 @@ def _validate_selectors(args: argparse.Namespace, target: Path):
         )
 
 
+#: The ``--include-facts`` help text shared by ``scan`` and ``baseline``.
+INCLUDE_FACTS_HELP = (
+    "Send the facts listed in this facts-json file (the output of docsentinel extract-facts "
+    "--format facts-json, possibly edited) to DS302 instead of extracting claims from the scanned "
+    "documents; every listed fact is sent, one request each. --fact-combination, --min-salience, "
+    "--max-per-document, --max-total, --weights and --dedup-threshold are then ignored. "
+    "Still needs --use-external-api and the backend API key"
+)
+
+#: The fine-tuning options ``--include-facts`` makes ineffective, as ``(dest, flag)``.
+_FACTS_FILE_IGNORED: tuple[tuple[str, str], ...] = (
+    ("fact_combination", "--fact-combination"),
+    ("min_salience", "--min-salience"),
+    ("max_per_document", "--max-per-document"),
+    ("max_total", "--max-total"),
+    ("weights", "--weights"),
+    ("dedup_threshold", "--dedup-threshold"),
+)
+
+
+def _warn_ignored_fact_options(args: argparse.Namespace):
+    """Log one WARNING naming the fine-tuning options ``--include-facts`` overrides.
+
+    :param args: The parsed ``scan`` or ``baseline`` command line.
+    """
+    if args.include_facts is None:
+        return
+    ignored = [flag for dest, flag in _FACTS_FILE_IGNORED if getattr(args, dest) is not None]
+    if ignored:
+        logger.warning("--include-facts given: ignoring %s", ", ".join(ignored))
+
+
+def _add_fact_selection_options(parser: argparse.ArgumentParser):
+    """Add the claim-selection options shared by ``scan``, ``baseline`` and ``extract-facts``.
+
+    The three commands select claims the same way, so they take the same options.
+
+    :param parser: The command parser to extend.
+    """
+    parser.add_argument(
+        "--min-salience", type=float, default=None, metavar="FLOAT", help=f"Salience floor; {FACT_OVERRIDE_HELP}"
+    )
+    parser.add_argument(
+        "--max-per-document",
+        type=int,
+        default=None,
+        metavar="INT",
+        help=f"Most facts per document; {FACT_OVERRIDE_HELP}",
+    )
+    parser.add_argument(
+        "--max-total", type=int, default=None, metavar="INT", help=f"Most facts overall; {FACT_OVERRIDE_HELP}"
+    )
+    parser.add_argument(
+        "--weights",
+        type=_weights_argument,
+        default=None,
+        metavar="N,E,D",
+        help=f"Numeric, entity and distinctiveness salience weights summing to 1; {EXPLORATION_HELP}",
+    )
+    parser.add_argument(
+        "--dedup-threshold",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help=f"Near-duplicate clustering threshold in (0, 1]; {EXPLORATION_HELP}",
+    )
+
+
 def _scan_overrides(args: argparse.Namespace) -> dict[str, object]:
     """Return the ``scan()`` keywords the invoker gave, so unset ones are not passed.
 
@@ -1291,7 +1344,34 @@ def _scan_overrides(args: argparse.Namespace) -> dict[str, object]:
         overrides["include"] = tuple(args.include)
     if args.exclude is not None:
         overrides["exclude"] = tuple(args.exclude)
+    if args.include_facts is not None:
+        _warn_ignored_fact_options(args)
+        overrides["facts_file"] = args.include_facts
+        return overrides
+    if args.weights is not None:
+        overrides["fact_weights"] = args.weights
+    if args.dedup_threshold is not None:
+        overrides["fact_dedup_threshold"] = args.dedup_threshold
     return overrides
+
+
+#: ``scan``/``baseline`` selection options and the ``Config`` field each replaces for the run.
+_FACT_CONFIG_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("min_salience", "fact_check_min_salience"),
+    ("max_per_document", "fact_check_max_claims_per_document"),
+    ("max_total", "fact_check_max_claims_total"),
+)
+
+
+def _fact_config_changes(args: argparse.Namespace) -> dict[str, object]:
+    """Return the ``fact_check_*`` configuration values the invoker replaced for this run.
+
+    :param args: The parsed ``scan`` or ``baseline`` command line.
+    :returns: ``Config`` field name -> value, for each selection option that was given.
+    """
+    return {
+        field_name: getattr(args, dest) for dest, field_name in _FACT_CONFIG_OPTIONS if getattr(args, dest) is not None
+    }
 
 
 def _run_baseline(args: argparse.Namespace) -> int:
@@ -1311,6 +1391,8 @@ def _run_baseline(args: argparse.Namespace) -> int:
             settings = replace(settings, reference_scope=args.reference_scope)
         if args.fact_combination is not None:
             settings = replace(settings, fact_check_combination=args.fact_combination)
+        if _fact_config_changes(args):
+            settings = replace(settings, **_fact_config_changes(args))
         if args.output is not None:
             output_path = Path(args.output) if Path(args.output).is_absolute() else Path.cwd() / args.output
         elif settings.baseline is not None:
@@ -1385,6 +1467,7 @@ def _run_scan(args: argparse.Namespace) -> int:
             changes["reference_scope"] = args.reference_scope
         if args.fact_combination is not None:
             changes["fact_check_combination"] = args.fact_combination
+        changes.update(_fact_config_changes(args))
         if args.show_clean_documents:
             changes["report_show_clean_documents"] = True
         if changes:
@@ -1462,7 +1545,7 @@ def _fact_overrides(args: argparse.Namespace) -> dict[str, object]:
     """Return the ``extract_facts()`` keywords the invoker gave, so unset ones are not passed.
 
     :param args: The parsed ``extract-facts`` command line.
-    :returns: ``include``/``exclude`` and the five selection settings when given.
+    :returns: ``include``/``exclude``, the five selection settings and ``fact_combination`` when given.
     """
     overrides: dict[str, object] = {}
     if args.include is not None:
@@ -1473,6 +1556,8 @@ def _fact_overrides(args: argparse.Namespace) -> dict[str, object]:
         value = getattr(args, dest)
         if value is not None:
             overrides[dest] = value
+    if args.fact_combination is not None:
+        overrides["fact_combination"] = args.fact_combination
     return overrides
 
 

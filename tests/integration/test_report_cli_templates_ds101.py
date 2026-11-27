@@ -19,7 +19,7 @@ from docsentinel import cli
 from docsentinel.mining import nlp
 from docsentinel.telemetry.loader import packaged_template_names
 from tests.asset_helpers import AssetCase, load_asset_case
-from tests.log_helpers import problem_output
+from tests.log_helpers import problem_output, without_timestamps
 
 ESC = chr(0x1B)
 
@@ -38,10 +38,11 @@ _PROFILE_ARGS: dict[str, tuple[str, ...]] = {
 
 
 #: The one stderr problem line of a deep scan: ``DS302`` is active but its gate is closed (no
-#: consent, no key), so it is skipped with this fixed WARNING (Milestone 0010 D5).
+#: consent, no key), so it is skipped with this fixed WARNING (Milestone 0010 D5). Shown without the
+#: line's leading ``[timestamp]`` (compared through ``without_timestamps``).
 _DS302_GATE_WARNING = (
-    "docsentinel: WARNING: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); "
-    "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY\n"
+    "[WARNING]: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); "
+    "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY\n"
 )
 
 
@@ -94,7 +95,7 @@ def test_scan_renders_every_packaged_template_on_each_profile(
 
     captured = capsys.readouterr()
     assert exit_code == (1 if profile == "fast" else 0), captured.err
-    assert problem_output(captured.err) == (_DS302_GATE_WARNING if profile == "deep" else "")
+    assert without_timestamps(problem_output(captured.err)) == (_DS302_GATE_WARNING if profile == "deep" else "")
     if name.startswith("json"):
         json.loads(captured.out)
     if profile == "fast" and name in ("text", "github"):

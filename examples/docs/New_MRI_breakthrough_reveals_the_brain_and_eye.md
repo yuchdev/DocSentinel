@@ -7,10 +7,10 @@ Date: July 10, 2026
 Source: Max Delbrück Center for Molecular Medicine in the Helmholtz Association
 
 Summary: Scientists have redesigned a key piece of MRI hardware using
-  metamaterials, allowing existing scanners to produce clearer images of
-  difficult-to-see parts of the body in less time. The breakthrough
-  could improve diagnoses, make scans more comfortable, and open the
-  door to new medical imaging and treatment applications.
+metamaterials, allowing existing scanners to produce clearer images of
+difficult-to-see parts of the body in less time. The breakthrough
+could improve diagnoses, make scans more comfortable, and open the
+door to new medical imaging and treatment applications.
 
 Share:
 

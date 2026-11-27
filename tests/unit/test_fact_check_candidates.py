@@ -745,30 +745,30 @@ def test_validator_refuses_weights_of_the_wrong_shape():
             fact_check.validate_selection_policy(fact_check.SelectionPolicy(weights, 0.92))  # type: ignore[arg-type]
 
 
-def test_collect_candidates_signature_is_exactly_root_documents_config():
+def test_collect_candidates_signature_takes_only_a_keyword_policy():
     """
-    [Unit] collect_candidates: verifies its parameters are exactly root, documents, config (no policy).
+    [Unit] collect_candidates: verifies (root, documents, config) plus a keyword-only policy defaulting to DS302_POLICY.
 
     Scenario:
         Given collect_candidates and trace_candidates
         When their signatures are inspected
-        Then collect_candidates has exactly (root, documents, config) and trace_candidates adds only a
-            keyword-only policy defaulting to DS302_POLICY
+        Then both have exactly (root, documents, config, policy), policy keyword-only with the
+            default DS302_POLICY
 
     Boundaries:
-        - Focus: plan contract C11, decision X5
+        - Focus: plan contract C11; owner ruling 2026-11-27 (scan --weights/--dedup-threshold
+          reach DS302, which replaces the "no policy" rule of decision X5)
         - Fixtures/params: none
         - Scope: signatures
 
     On failure, first check:
-        - A keyword added to collect_candidates
+        - A further keyword added to collect_candidates or trace_candidates
     """
-    collect = inspect.signature(fact_check.collect_candidates).parameters
-    assert list(collect) == ["root", "documents", "config"]
-    trace = inspect.signature(fact_check.trace_candidates).parameters
-    assert list(trace) == ["root", "documents", "config", "policy"]
-    assert trace["policy"].kind is inspect.Parameter.KEYWORD_ONLY
-    assert trace["policy"].default is fact_check.DS302_POLICY
+    for function in (fact_check.collect_candidates, fact_check.trace_candidates):
+        params = inspect.signature(function).parameters
+        assert list(params) == ["root", "documents", "config", "policy"]
+        assert params["policy"].kind is inspect.Parameter.KEYWORD_ONLY
+        assert params["policy"].default is fact_check.DS302_POLICY
 
 
 def test_candidate_claims_carry_the_trace_signal_fields():

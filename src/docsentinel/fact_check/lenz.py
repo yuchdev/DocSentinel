@@ -15,16 +15,22 @@ model ``docs/security/threat-model-0010-fact-check-egress-2026-11-24.md`` (E1 to
   timeout (E4).
 * Only an identity-encoded body is accepted, read with ``iter_raw()`` and capped at
   :attr:`LenzFactCheckClient.MAX_RESPONSE_BYTES` raw bytes, so no decompressor ever runs (E5).
-* Strict UTF-8, no ``NaN``/``Infinity``, and only ``claims[0].verdict`` and
-  ``claims[0].confidence`` are read; only the first claim row is used because DocSentinel sends one
-  candidate sentence per call, and the response's ``claim`` echo and any other field (citations
-  included) are ignored (E6, E9).
+* Strict UTF-8, no ``NaN``/``Infinity``, and only the ``verdict``, ``confidence`` and ``claim``
+  of each row in ``claims`` are read. Lenz may split a combined fact into several rows; every row
+  is read, the result's verdict is the most severe one and its ``label`` the most severe explicit
+  label (:data:`DISPLAY_LABELS`), and the first
+  :data:`~docsentinel.fact_check.protocol.MAX_RESULT_CLAIMS` rows are kept in ``claims`` (owner
+  rulings of 2026-11-27). The ``claim`` echo (untrusted third-party text, cut to
+  :data:`~docsentinel.fact_check.protocol.MAX_RESULT_CLAIM_CHARS`) is used for the per-row INFO
+  trace line (its first words, through ``quote_start``) and the report's fact-check rows; every
+  other field, citations included, is ignored (E6, E9).
 * The API key is validated before any ``httpx`` object exists, lives only in the ``httpx`` header
   store, and never appears in a message, an exception chain or a log record. Every
   :class:`~docsentinel.fact_check.protocol.FactCheckError` carries fixed text and is raised outside
   any ``except`` block, so ``__cause__`` and ``__context__`` are ``None`` (E7, E12).
-* No retries. The module logs at most DEBUG status codes and counts, and never touches the
-  ``httpx`` or ``httpcore`` loggers.
+* No retries. The module logs one INFO line per claim row (the row's first words, its explicit
+  verdict label and the confidence), otherwise at most DEBUG status codes, counts and fixed
+  messages, and never touches the ``httpx`` or ``httpcore`` loggers.
 
 Layering (plan contract C9): the standard library, ``httpx`` and
 ``docsentinel.fact_check.protocol`` only. The module does no I/O and reads no environment at import
@@ -36,8 +42,9 @@ Known limitations
 * The verdict is a third party's heuristic output, not ground truth. ``DS302`` reports it as an
   advisory prompt to review the claim, never as a verified fact.
 * The raw verdict vocabulary is not documented as closed and may change on the provider's side.
-  Only ``true`` and ``false`` (case-insensitive) are recognised; anything else raises
-  ``FactCheckError`` and ``DS302`` skips that claim (ADR 0007 Contract 8).
+  :data:`VERDICT_LABELS` maps the known labels (case-insensitive); any other label is rated
+  ``unverifiable``, which ``DS302`` prints but never reports (owner ruling of 2026-11-27, which
+  replaces ruling Q4).
 * Only ``/assess`` is used; ``/extract``, ``/verify`` and ``/ask`` are not.
 * An abandoned request thread keeps its socket until the peer closes it, its read times out or the
   process exits (threat model residual risk RE3).
@@ -49,12 +56,23 @@ import math
 import re
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from types import MappingProxyType
 from typing import ClassVar, Final, NoReturn, Optional
 
 import httpx
 
-from docsentinel.fact_check.protocol import FACT_CHECK_BACKENDS, FactCheckError, FactCheckResult, Verdict
+from docsentinel.fact_check.protocol import (
+    FACT_CHECK_BACKENDS,
+    MAX_RESULT_CLAIM_CHARS,
+    MAX_RESULT_CLAIMS,
+    ClaimVerdict,
+    FactCheckError,
+    FactCheckResult,
+    Verdict,
+)
+from docsentinel.fact_check.protocol import VERDICT_LABELS as LABEL_ORDER
+from docsentinel.log import quote_start
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +100,10 @@ VERDICT_MESSAGE: Final = "lenz /assess returned an unrecognised verdict"
 CLOSED_MESSAGE: Final = "lenz client is closed"
 
 
+#: Lenz's confidence words as numbers, comparable with ``fact_check_min_confidence``.
+CONFIDENCE_WORDS: Final[Mapping[str, float]] = MappingProxyType({"high": 0.9, "medium": 0.6, "low": 0.3})
+
+
 def _status_message(status: int) -> str:
     """Return the fixed message for a non-200 status (E2).
 
@@ -100,21 +122,48 @@ def _request_failed_message(exc: BaseException) -> str:
     return f"lenz /assess request failed ({type(exc).__name__})"
 
 
-def _normalize_verdict(raw: str) -> Optional[Verdict]:
-    """Map a raw Lenz verdict string to a :data:`Verdict` (decision U7, owner ruling Q4).
+#: Lenz's raw verdict labels (stripped, case-folded) as :data:`Verdict` values. A label that is
+#: not listed is rated ``unverifiable``: it is printed, never reported as a finding.
+VERDICT_LABELS: Final[Mapping[str, Verdict]] = MappingProxyType(
+    {
+        "true": "true",
+        "mostly true": "true",
+        "false": "false",
+        "mostly false": "false",
+        "mixed": "mixed",
+        "half true": "mixed",
+        "unverifiable": "unverifiable",
+    }
+)
 
-    The value is stripped and case-folded. Only ``true`` and ``false`` are recognised; there is
-    no confidence band, so an unknown value is never guessed as ``mixed`` or ``unverifiable``.
+#: Lenz's raw verdict labels (stripped, case-folded) as the explicit labels shown to the user.
+#: A label that is not listed is shown as ``Unverifiable``.
+DISPLAY_LABELS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "true": "True",
+        "mostly true": "Mostly True",
+        "false": "False",
+        "mostly false": "Mostly False",
+        "mixed": "Mixed",
+        "half true": "Mixed",
+        "unverifiable": "Unverifiable",
+    }
+)
+
+#: Verdicts from most to least severe: a combined fact takes the most severe one of its claims.
+_SEVERITY: Final[tuple[Verdict, ...]] = ("false", "mixed", "unverifiable", "true")
+
+
+def _normalize_verdict(raw: str) -> Verdict:
+    """Map a raw Lenz verdict string to a :data:`Verdict` (owner ruling of 2026-11-27).
+
+    The value is stripped and case-folded and looked up in :data:`VERDICT_LABELS`. Every verdict
+    is kept and printed; a label that is not listed maps to ``unverifiable``.
 
     :param raw: The raw ``verdict`` string from the response.
-    :return: ``"true"`` or ``"false"``, or ``None`` for any other value (including ``""``).
+    :return: The mapped verdict.
     """
-    folded = raw.strip().casefold()
-    if folded == "true":
-        return "true"
-    if folded == "false":
-        return "false"
-    return None
+    return VERDICT_LABELS.get(raw.strip().casefold(), "unverifiable")
 
 
 def _refuse_constant(name: str) -> NoReturn:
@@ -164,9 +213,14 @@ def _decode_json(body: bytes) -> object:
 def _confidence(value: object) -> Optional[float]:
     """Return a finite confidence clamped to ``[0.0, 1.0]``, or ``None`` for a bad value (E6).
 
-    :param value: The raw ``confidence`` value; ``bool``, ``str`` and other types are refused.
+    Lenz rates confidence with a word; :data:`CONFIDENCE_WORDS` maps it to a number (stripped and
+    case-folded). Any other string is refused.
+
+    :param value: The raw ``confidence`` value; ``bool`` and other types are refused.
     :return: The clamped ``float``, or ``None``.
     """
+    if isinstance(value, str):
+        return CONFIDENCE_WORDS.get(value.strip().casefold())
     if not isinstance(value, (int, float)) or type(value) not in (int, float):
         return None
     try:
@@ -201,21 +255,46 @@ def _parse_assess(body: bytes, backend: str) -> FactCheckResult:
         raise FactCheckError(SHAPE_MESSAGE)
     if not claims:
         return FactCheckResult("unverifiable", 0.0, backend)
-    first = claims[0]
-    if not isinstance(first, dict):
-        raise FactCheckError(SHAPE_MESSAGE)
-    raw_verdict = first.get("verdict")
-    if not isinstance(raw_verdict, str):
-        raise FactCheckError(SHAPE_MESSAGE)
-    confidence = _confidence(first.get("confidence"))
-    if confidence is None:
-        raise FactCheckError(SHAPE_MESSAGE)
-    verdict = _normalize_verdict(raw_verdict)
-    if verdict is None:
-        raise FactCheckError(VERDICT_MESSAGE)
+    # Lenz splits a combined fact into several claims, each with its own verdict. Every claim is
+    # read; the result is the most severe verdict (false, mixed, unverifiable, true).
+    rated: list[tuple[Verdict, float]] = []
+    labels: list[str] = []
+    parts: list[ClaimVerdict] = []
+    for position, item in enumerate(claims, start=1):
+        if not isinstance(item, dict):
+            raise FactCheckError(SHAPE_MESSAGE)
+        raw_verdict = item.get("verdict")
+        if not isinstance(raw_verdict, str):
+            raise FactCheckError(SHAPE_MESSAGE)
+        confidence = _confidence(item.get("confidence"))
+        if confidence is None:
+            raise FactCheckError(SHAPE_MESSAGE)
+        verdict = _normalize_verdict(raw_verdict)
+        label = DISPLAY_LABELS.get(raw_verdict.strip().casefold(), "Unverifiable")
+        claim_text = item.get("claim")
+        claim_text = claim_text if isinstance(claim_text, str) else ""
+        # Every verdict is printed with its explicit label: True, Mostly True, False, Mostly False, ...
+        logger.info(
+            "lenz /assess: claim %d/%d %s: verdict %s, confidence %.2f",
+            position,
+            len(claims),
+            quote_start(claim_text),
+            label,
+            confidence,
+        )
+        rated.append((verdict, confidence))
+        labels.append(label)
+        if len(parts) < MAX_RESULT_CLAIMS:
+            parts.append(ClaimVerdict(claim_text[:MAX_RESULT_CLAIM_CHARS], label, confidence))
+    worst = next(verdict for verdict in _SEVERITY if any(rated_verdict == verdict for rated_verdict, _ in rated))
+    confidences = [confidence for verdict, confidence in rated if verdict == worst]
+    # A true answer is only as sure as its weakest claim; any other verdict keeps its strongest rating.
+    chosen = min(confidences) if worst == "true" else max(confidences)
+    # The fact's label is the most severe label among all its claims, kept or not.
+    worst_label = min(labels, key=LABEL_ORDER.index)
     result: Optional[FactCheckResult] = None
     try:
-        result = FactCheckResult(verdict, confidence, backend)
+        result = FactCheckResult(worst, chosen, backend, label=worst_label, claims=tuple(parts))
     except FactCheckError:
         result = None
     if result is None:
@@ -346,7 +425,12 @@ class LenzFactCheckClient:
             raise FactCheckError(attempt.failure)
         if attempt.body is None:
             raise FactCheckError(SHAPE_MESSAGE)
-        return _parse_assess(attempt.body, self.name)
+        try:
+            return _parse_assess(attempt.body, self.name)
+        except FactCheckError as exc:
+            # Fixed message (E12): safe for the log file, names the rejecting check.
+            logger.debug("lenz /assess: response rejected: %s", exc)
+            raise
 
     def close(self) -> "None":
         """Release the ``httpx.Client``. Idempotent and never raises (E12).

@@ -51,6 +51,30 @@
         }
       }
     },
-    "pending": { "$var": "pending" }
+    "pending": { "$var": "pending" },
+    "fact_checks": {
+      "$omit_if": { "var": "fact_checks_count", "eq": 0 },
+      "value": {
+        "$for": "fact_checks",
+        "as": "fc",
+        "each": {
+          "path": { "$var": "fc.path" },
+          "fact": { "$var": "fc.fact" },
+          "verdict": { "$var": "fc.verdict" },
+          "confidence": { "$var": "fc.confidence" },
+          "backend": { "$var": "fc.backend" },
+          "reported": { "$var": "fc.reported" },
+          "claims": {
+            "$for": "fc.claims",
+            "as": "c",
+            "each": {
+              "claim": { "$var": "c.claim" },
+              "verdict": { "$var": "c.verdict" },
+              "confidence": { "$var": "c.confidence" }
+            }
+          }
+        }
+      }
+    }
   }
 }

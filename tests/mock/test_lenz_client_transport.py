@@ -32,7 +32,13 @@ from typing import TYPE_CHECKING, Optional
 import httpx
 import pytest
 
-from docsentinel.fact_check.protocol import FACT_CHECK_BACKENDS, FactCheckClient, FactCheckError, load_backend
+from docsentinel.fact_check.protocol import (
+    FACT_CHECK_BACKENDS,
+    ClaimVerdict,
+    FactCheckClient,
+    FactCheckError,
+    load_backend,
+)
 from tests.conftest import NETWORK_GUARD_MESSAGE
 from tests.fact_check_fakes import SENTINEL
 
@@ -57,14 +63,18 @@ SIZE_MESSAGE = "lenz /assess response exceeded the size cap"
 TIME_MESSAGE = "lenz /assess request exceeded the time limit"
 SHAPE_MESSAGE = "lenz /assess returned an unexpected response shape"
 ERROR_MESSAGE = "lenz /assess returned an error"
-VERDICT_MESSAGE = "lenz /assess returned an unrecognised verdict"
 CLOSED_MESSAGE = "lenz client is closed"
 
 #: The cap of MAX_RESPONSE_BYTES, pinned.
 MAX_RESPONSE_BYTES = 65_536
 
-#: A marker string that must never reach a message, a result or a log record.
+#: A marker string that must never reach a message, a result or a log record. Since the owner
+#: ruling of 2026-11-27 the backend's verdict label and the first words of its claim echo are
+#: logged at INFO; a test that puts the marker there pins that line exactly instead.
 MARKER = "MARKER-0010-response-data"
+
+#: A marker for response fields that are never read (citations, explanation, unknown keys).
+UNUSED_MARKER = "UNUSED-0010-response-field"
 
 #: A claim used where its text does not matter.
 CLAIM = "Python 3.12 was released in 2023."
@@ -236,7 +246,7 @@ FAILURE_RESPONSES: list[tuple[str, Handler, str]] = [
     ("confidence_bool", lambda r: _success(confidence=True), SHAPE_MESSAGE),
     ("top_level_list", lambda r: _json_response([]), SHAPE_MESSAGE),
     ("claims_not_list", lambda r: _json_response({"claims": {}}), SHAPE_MESSAGE),
-    ("unknown_verdict", lambda r: _success(verdict=MARKER), VERDICT_MESSAGE),
+    ("verdict_not_str", lambda r: _success(verdict=[MARKER]), SHAPE_MESSAGE),
     (
         "safe_error_code",
         lambda r: _json_response({"claims": [], "error_code": "rate_limited"}),
@@ -1416,43 +1426,91 @@ def _with_cookie() -> httpx.Response:
 
 
 @pytest.mark.parametrize("confidence", [0.0, 0.5, 1.0])
-def test_unrecognised_verdict_message_does_not_echo(caplog: pytest.LogCaptureFixture, confidence: float):
+def test_unrecognised_verdict_is_unverifiable_at_every_confidence(caplog: pytest.LogCaptureFixture, confidence: float):
     """
-    [Unit] lenz client: verifies an unrecognised verdict raises fixed text at every confidence.
+    [Unit] lenz client: verifies an unlisted verdict label is rated unverifiable, never an error.
 
     Scenario:
         Given a success body whose verdict is a marker string, at confidence 0.0, 0.5 or 1.0
         When check_claim parses it with DEBUG capture
-        Then FactCheckError says "returned an unrecognised verdict" and the marker is in no
-        message or log record (no confidence band guesses a verdict).
+        Then the result is unverifiable at that confidence with the label Unverifiable, the marker is
+        neither in the result nor in any record (the raw label is never logged, owner ruling
+        2026-11-27), and the one INFO verdict line names the explicit label.
 
     Boundaries:
-        - Focus: E9, owner ruling Q4
+        - Focus: E9, owner ruling 2026-11-27 (replaces Q4)
         - Fixtures/params: confidence; caplog at DEBUG
         - Scope: _parse_assess
 
     On failure, first check:
-        - _normalize_verdict and VERDICT_MESSAGE
+        - _normalize_verdict, VERDICT_LABELS and the claim loop's logger.info in _parse_assess
 
     :param caplog: The log capture.
     :param confidence: The confidence sent with the marker verdict.
     """
     caplog.set_level(logging.DEBUG)
-    error = _failure(lambda request: _success(verdict=MARKER, confidence=confidence))
-    _assert_fixed(error, VERDICT_MESSAGE)
+    client = _client(lambda request: _success(verdict=MARKER, confidence=confidence), [])
+    result = client.check_claim(CLAIM)
+    client.close()
+    assert (result.verdict, result.confidence, result.citations) == ("unverifiable", confidence, ())
+    assert (result.label, result.display) == ("Unverifiable", "Unverifiable")
+    assert MARKER not in repr(result)
     assert not [record for record in caplog.records if MARKER in record.getMessage()]
+    assert [r.getMessage() for r in caplog.records if r.getMessage().startswith("lenz /assess: claim")] == [
+        f'lenz /assess: claim 1/1 "x": verdict Unverifiable, confidence {confidence:.2f}'
+    ]
+
+
+def test_hostile_verdict_label_and_claim_echo_are_never_logged_raw(caplog: pytest.LogCaptureFixture):
+    """
+    [Unit] lenz client: verifies a hostile verdict label is never logged and the claim echo is neutralised.
+
+    Scenario:
+        Given a success body whose verdict holds an ESC sequence and ``##[`` and whose claim echo
+        holds an ESC sequence, ``##[`` and more than ten words
+        When check_claim parses it with DEBUG capture
+        Then the result is Unverifiable, no record holds the raw label, an ESC or a raw ``##[``,
+        and the one INFO line quotes the escaped first ten words of the echo with the explicit label.
+
+    Boundaries:
+        - Focus: E9, E12 (untrusted response text in a log record), owner ruling 2026-11-27
+        - Fixtures/params: caplog at DEBUG
+        - Scope: _parse_assess
+
+    On failure, first check:
+        - The quote_start argument and DISPLAY_LABELS lookup in _parse_assess
+    """
+    caplog.set_level(logging.DEBUG)
+    raw = "\x1b[31m ##[error]" + "v" * 60
+    echo = "\x1b[1m ##[warning]x one two three four five six seven eight nine"
+    payload = {"claims": [{"claim": echo, "verdict": raw, "confidence": 0.5}]}
+    client = _client(lambda request: _json_response(payload), [])
+    result = client.check_claim(CLAIM)
+    client.close()
+    assert (result.verdict, result.label) == ("unverifiable", "Unverifiable")
+    text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "v" * 30 not in text and "\x1b" not in text and "##[" not in text
+    messages = [
+        record.getMessage() for record in caplog.records if record.getMessage().startswith("lenz /assess: claim")
+    ]
+    assert messages == [
+        'lenz /assess: claim 1/1 "\\x1b[1m ##\\[warning]x one two three four five six seven eight ...": '
+        "verdict Unverifiable, confidence 0.50"
+    ]
 
 
 def test_response_claim_and_extra_fields_never_used(caplog: pytest.LogCaptureFixture):
     """
-    [Unit] lenz client: verifies the claim echo, extra fields and later rows never reach the result.
+    [Unit] lenz client: verifies extra fields never reach the result and every claim row is read.
 
     Scenario:
-        Given a success body whose claim echo, an extra citations field, a top-level error text
-        that is null-equivalent, and a second claim row all hold markers
+        Given a success body with two claim rows whose claim echo holds a marker, plus citations,
+        an explanation and unknown top-level keys holding another marker
         When check_claim parses it with DEBUG capture
-        Then the result is built from claims[0].verdict and confidence only, citations is (), and
-        the markers are in no result field or log record.
+        Then the result is the most severe verdict of the rows (false at 0.25, label False),
+        citations is (), the claim echo is kept only in result.claims (owner ruling 2026-11-27,
+        fact checks in the report), the unused-field marker is in neither the result nor any
+        record, and the echo reaches the log only as the two exact INFO verdict lines.
 
     Boundaries:
         - Focus: E9
@@ -1460,7 +1518,7 @@ def test_response_claim_and_extra_fields_never_used(caplog: pytest.LogCaptureFix
         - Scope: _parse_assess
 
     On failure, first check:
-        - Which keys _parse_assess reads
+        - Which keys _parse_assess reads and its claim loop's logger.info
     """
     caplog.set_level(logging.DEBUG)
     payload = {
@@ -1469,20 +1527,26 @@ def test_response_claim_and_extra_fields_never_used(caplog: pytest.LogCaptureFix
                 "claim": MARKER,
                 "verdict": "False",
                 "confidence": 0.25,
-                "citations": [MARKER, {"url": f"https://{MARKER}.example"}],
-                "explanation": MARKER,
+                "citations": [UNUSED_MARKER, {"url": f"https://{UNUSED_MARKER}.example"}],
+                "explanation": UNUSED_MARKER,
             },
             {"claim": MARKER, "verdict": "True", "confidence": 1.0},
         ],
-        "citations": [MARKER],
-        MARKER: MARKER,
+        "citations": [UNUSED_MARKER],
+        UNUSED_MARKER: UNUSED_MARKER,
     }
     client = _client(lambda request: _json_response(payload), [])
     result = client.check_claim(CLAIM)
     client.close()
     assert (result.verdict, result.confidence, result.backend, result.citations) == ("false", 0.25, "lenz", ())
-    assert MARKER not in repr(result)
-    assert not [record for record in caplog.records if MARKER in record.getMessage()]
+    assert result.label == "False"
+    assert result.claims == (ClaimVerdict(MARKER, "False", 0.25), ClaimVerdict(MARKER, "True", 1.0))
+    assert UNUSED_MARKER not in repr(result)
+    assert not [record for record in caplog.records if UNUSED_MARKER in record.getMessage()]
+    assert [record.getMessage() for record in caplog.records if MARKER in record.getMessage()] == [
+        f'lenz /assess: claim 1/2 "{MARKER}": verdict False, confidence 0.25',
+        f'lenz /assess: claim 2/2 "{MARKER}": verdict True, confidence 1.00',
+    ]
 
 
 # --- E12: exception boundary --------------------------------------------------------------------
@@ -1592,7 +1656,7 @@ def _scenario_closed(monkeypatch: pytest.MonkeyPatch) -> FactCheckError:
             "lenz /assess returned error quota_exceeded",
         ),
         (_scenario_response(lambda r: _json_response({"claims": [], "error": MARKER})), ERROR_MESSAGE),
-        (_scenario_response(lambda r: _success(verdict="Mixed")), VERDICT_MESSAGE),
+        (_scenario_response(lambda r: _success(verdict=None)), SHAPE_MESSAGE),
         (_scenario_closed, CLOSED_MESSAGE),
     ],
     ids=[
@@ -1607,7 +1671,7 @@ def _scenario_closed(monkeypatch: pytest.MonkeyPatch) -> FactCheckError:
         "shape",
         "error_code",
         "error",
-        "verdict",
+        "verdict_shape",
         "closed",
     ],
 )

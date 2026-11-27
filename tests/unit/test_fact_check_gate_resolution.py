@@ -148,8 +148,8 @@ def test_reasons_name_only_what_is_missing(monkeypatch: pytest.MonkeyPatch):
     key_only = resolve_external_api_gate(Config(), use_external_api=False)
     both = resolve_external_api_gate(Config(), use_external_api=True)
 
-    assert neither.skip_message() == f"DS302 skipped: {request}; set {LENZ_KEY_ENV}"
-    assert flag_only.skip_message() == f"DS302 skipped: set {LENZ_KEY_ENV}"
+    assert neither.skip_message() == f"DS302 skipped: {request}; set {LENZ_KEY_ENV} or LENZ_API_KEY"
+    assert flag_only.skip_message() == f"DS302 skipped: set {LENZ_KEY_ENV} or LENZ_API_KEY"
     assert key_only.skip_message() == f"DS302 skipped: {request}"
     assert both == ExternalApiGate(requested=True, backend="lenz", key_env_var=LENZ_KEY_ENV, key_present=True)
     assert both.open and both.reasons() == ()
@@ -269,7 +269,7 @@ def test_reasons_order_with_every_item_missing():
 
     assert gate.reasons() == (
         "pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1)",
-        f"set {LENZ_KEY_ENV}",
+        f"set {LENZ_KEY_ENV} or LENZ_API_KEY",
         "backend lenz not available",
     )
     assert gate.skip_message() == "DS302 skipped: " + "; ".join(gate.reasons())

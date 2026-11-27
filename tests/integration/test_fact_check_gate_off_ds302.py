@@ -35,11 +35,11 @@ REQUEST_REASON = "pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1
 #: Exact WARNING / pending text and ``doctor`` line per gate state (threat model M6).
 GATE_STATES = {
     "neither": (
-        f"DS302 skipped: {REQUEST_REASON}; set {LENZ_KEY_ENV}",
-        f"fact-check gate: off ({REQUEST_REASON}; set {LENZ_KEY_ENV})",
+        f"DS302 skipped: {REQUEST_REASON}; set {LENZ_KEY_ENV} or LENZ_API_KEY",
+        f"fact-check gate: off ({REQUEST_REASON}; set {LENZ_KEY_ENV} or LENZ_API_KEY)",
     ),
     "key_only": (f"DS302 skipped: {REQUEST_REASON}", f"fact-check gate: off ({REQUEST_REASON})"),
-    "flag_only": (f"DS302 skipped: set {LENZ_KEY_ENV}", f"fact-check gate: off (set {LENZ_KEY_ENV})"),
+    "flag_only": (f"DS302 skipped: set {LENZ_KEY_ENV} or LENZ_API_KEY", f"fact-check gate: off (set {LENZ_KEY_ENV} or LENZ_API_KEY)"),
 }
 
 #: The ``rules`` listing line of DS302 (Task 03).

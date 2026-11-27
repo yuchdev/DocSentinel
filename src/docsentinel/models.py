@@ -47,6 +47,46 @@ class Finding:
     type: Optional[str] = field(default=None, compare=False)
 
 
+@dataclass(frozen=True)
+class FactCheckClaim:
+    """One claim an external backend rated inside a checked fact (``DS302``).
+
+    :ivar claim: The claim text as the backend states it (untrusted third-party text).
+    :ivar verdict: The explicit label: ``True``, ``Mostly True``, ``False``, ``Mostly False``,
+        ``Mixed`` or ``Unverifiable``.
+    :ivar confidence: The backend's confidence in ``[0.0, 1.0]``.
+    """
+
+    claim: str
+    verdict: str
+    confidence: float
+
+
+@dataclass(frozen=True)
+class FactCheck:
+    """One fact ``DS302`` sent to the external backend, with the verdict it got.
+
+    Every checked fact is listed, whatever its verdict; only a reportable one is also a finding.
+    The verdict is third-party heuristic output, not ground truth.
+
+    :ivar path: The document of the fact's first claim, relative to the scan root (untrusted).
+    :ivar fact: The exact text that was sent (untrusted document text).
+    :ivar verdict: The explicit label of the fact, the most severe of its claims.
+    :ivar confidence: The confidence of that verdict in ``[0.0, 1.0]``.
+    :ivar backend: The backend name.
+    :ivar reported: Whether the fact also produced a ``DS302`` finding.
+    :ivar claims: The backend's rating of each claim it found in the fact.
+    """
+
+    path: str
+    fact: str
+    verdict: str
+    confidence: float
+    backend: str
+    reported: bool
+    claims: tuple[FactCheckClaim, ...] = ()
+
+
 @dataclass(frozen=True, kw_only=True)
 class ScanResult:
     """The result of a documentation scan.
@@ -57,6 +97,8 @@ class ScanResult:
     :ivar opt_in_off: ``(code, option)`` pairs, in rule-code order, for active
         opt-in policy rules whose enabling option is not set. ``notice`` is built
         from this value.
+    :ivar fact_checks: Every fact ``DS302`` checked with an external backend, in send
+        order, with its explicit verdict; empty when ``DS302`` did not run.
     """
 
     schema_version: int = 1
@@ -68,6 +110,7 @@ class ScanResult:
     notice: str = "Detection rules are not implemented in M0; this is an inventory only."
     rules_evaluated: int = 0
     opt_in_off: tuple[tuple[str, str], ...] = ()
+    fact_checks: tuple[FactCheck, ...] = ()
 
 
 @dataclass(frozen=True)

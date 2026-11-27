@@ -604,3 +604,20 @@ Merge-gate conditions. Any of the following in a Story 03.0 change, or a later c
   `docsentinel.fact_check.lenz` (E13);
 - any test sends a real request, or any file contains the embedded key in
   examples/docs/lenz_fact-checking.md or any part of it.
+
+## Addendum 2026-11-27: response parsing and logging rulings
+
+The findings above are kept as written. Owner ruling R of 2026-11-27 replaces ruling Q4 and changes EG-9 and E9:
+
+- **EG-9 / E9.** Every item of `claims` is now read (`verdict`, `confidence`, and `claim` for the trace line only), not
+  only `claims[0]`. Labels map through `VERDICT_LABELS` (true, mostly true, false, mostly false, mixed, half true,
+  unverifiable); any other label is rated `unverifiable` (printed, never a finding), so the fixed message
+  `lenz /assess returned an unrecognised verdict` is no longer raised for an unknown label. The confidence words
+  `high`, `medium` and `low` map to 0.9, 0.6 and 0.3. The response is still strict-UTF-8 JSON under the same size cap,
+  and citations and every other field are still ignored.
+- **Logging.** "The module never logs any response value" no longer holds. The client logs, at INFO, per claim row: the
+  first ten words of the backend's `claim` echo (`log.quote_start`), the raw verdict label capped at 40 characters
+  through `safe()`, the mapped verdict and the confidence; at DEBUG it logs its own fixed rejection message. Both
+  strings are third-party controlled and pass through `safe()`, so they cannot forge a record or a GitHub Actions
+  command. Citations, other fields and keys are still never logged.
+- **Key fallback.** See the gating model's addendum of the same date: `LENZ_API_KEY` is now read as a fallback.

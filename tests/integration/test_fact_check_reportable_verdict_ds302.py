@@ -159,7 +159,7 @@ def test_long_claim_message_snippet_is_cut_at_200_code_points(
     quoted = basin.message.split("'")[1]
     assert quoted == LONG_CLAIM[:200]
     assert len(quoted) == 200
-    assert basin.value == f"false (confidence 0.87): {LONG_CLAIM}"
+    assert basin.value == f"False (confidence 0.87): {LONG_CLAIM}"
 
 
 @pytest.mark.parametrize(
@@ -195,7 +195,7 @@ def test_confidence_floor_boundary(
 
     assert backend.calls == [MIXED_CLAIM]
     assert [f.value for f in result.findings] == (
-        [f"false (confidence {confidence:.2f}): {MIXED_CLAIM}"] if reported else []
+        [f"False (confidence {confidence:.2f}): {MIXED_CLAIM}"] if reported else []
     )
 
 
@@ -293,7 +293,7 @@ def test_cli_reports_the_finding_and_exits_zero(
     case = asset_case("ds302", "both_gates_on_mixed_verdict_reports")
     backend = register_fake_backend(monkeypatch, make_case_backend(case.root, name="lenz"))
     fact_check_env(monkeypatch, flag=False, key=True, key_env=backend.API_KEY_ENV_VAR)
-    value = f"mixed (confidence 0.87): {MIXED_CLAIM}"
+    value = f"Mixed (confidence 0.87): {MIXED_CLAIM}"
 
     code = cli.main(
         [

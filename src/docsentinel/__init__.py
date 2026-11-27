@@ -19,6 +19,8 @@ from docsentinel.engine import extract_facts, scan
 from docsentinel.models import (
     Document,
     ExtractedFact,
+    FactCheck,
+    FactCheckClaim,
     FactExtractionResult,
     FactSettings,
     Finding,
@@ -33,6 +35,8 @@ __all__ = [
     "ConfigSources",
     "Document",
     "ExtractedFact",
+    "FactCheck",
+    "FactCheckClaim",
     "FactExtractionResult",
     "FactSettings",
     "Finding",

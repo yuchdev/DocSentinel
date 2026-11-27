@@ -151,3 +151,79 @@ def test_combined_text_joins_member_texts_with_one_space():
     (group,) = fact_check.combine_candidates(_candidates(3), "all")
 
     assert group.text == "S1. S2. S3."
+
+
+def _sized(*lengths: int) -> tuple[fact_check.CandidateClaim, ...]:
+    """Build candidates whose texts have the given lengths.
+
+    :param lengths: The text length of each candidate, in send order.
+    :returns: The candidates.
+    """
+    return tuple(
+        fact_check.CandidateClaim(claim=SimpleNamespace(path="a.md"), text=chr(ord("a") + i) * n, score=0.9)
+        for i, n in enumerate(lengths)
+    )
+
+
+@pytest.mark.parametrize(
+    ("lengths", "ranges"),
+    [
+        ((), ()),
+        ((1000,), ((1, 1),)),
+        ((10, 20, 30), ((1, 3),)),
+        ((500, 499), ((1, 2),)),
+        ((500, 500), ((1, 1), (2, 2))),
+        ((600, 399, 2), ((1, 2), (3, 3))),
+        ((1000, 1000, 1000), ((1, 1), (2, 2), (3, 3))),
+        ((1, 1000, 1), ((1, 1), (2, 2), (3, 3))),
+        ((333, 333, 332, 1), ((1, 3), (4, 4))),
+    ],
+    ids=["empty", "one-at-bound", "fits", "join-at-1000", "join-at-1001", "split", "each-full", "big-middle", "tail"],
+)
+def test_pack_all_splits_at_the_1000_character_boundary(lengths: tuple[int, ...], ranges: tuple[tuple[int, int], ...]):
+    """
+    [Unit] fact combination 'all': verifies _pack_all packs whole claims into facts of at most 1000 characters.
+
+    Scenario:
+        Given candidates of the listed text lengths, joined by one space
+        When _pack_all packs them
+        Then the ranges cover every candidate in order, a join of exactly 1000 characters stays one
+        fact, 1001 characters starts a new one, and all is one fact when it fits.
+
+    Boundaries:
+        - Focus: owner ruling 2026-11-27 (all split into consecutive whole-claim facts)
+        - Fixtures/params: lengths, ranges
+        - Scope: fact_check._pack_all
+
+    On failure, first check:
+        - The length + added > MAX_CANDIDATE_CHARS test in _pack_all
+    """
+    candidates = _sized(*lengths)
+
+    assert fact_check._pack_all(candidates) == ranges
+    for group in fact_check.combine_candidates(candidates, "all"):
+        assert len(group.text) <= fact_check.MAX_CANDIDATE_CHARS
+
+
+def test_combine_all_is_a_single_fact_when_it_fits():
+    """
+    [Unit] fact combination 'all': verifies a join within the bound is one group labelled 1-n.
+
+    Scenario:
+        Given four short candidates
+        When combine_candidates groups them with 'all'
+        Then there is exactly one group, labelled '1-4', holding all four members.
+
+    Boundaries:
+        - Focus: the single-fact case of 'all'
+        - Fixtures/params: none
+        - Scope: fact_check.combine_candidates
+
+    On failure, first check:
+        - _pack_all and the FACT_COMBINATION_ALL branch of combine_candidates
+    """
+    candidates = _candidates(4)
+
+    (group,) = fact_check.combine_candidates(candidates, "all")
+
+    assert (group.label, group.members) == ("1-4", candidates)

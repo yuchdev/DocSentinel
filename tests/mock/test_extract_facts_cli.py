@@ -20,6 +20,7 @@ from docsentinel.engine import EMPTY_SELECTION_MESSAGE
 from docsentinel.log import LOG_DIR_ENV
 from docsentinel.mining import nlp
 from docsentinel.mining.claims import Claim
+from tests.log_helpers import without_timestamps
 
 #: A claim sentence that may reach stdout or the ``-o`` file, never stderr, a log file or a record.
 SENTINEL_SENTENCE = "Sentinel-0010 node alpha holds 7 shards in Q3 region nine."
@@ -163,8 +164,9 @@ def test_claim_text_reaches_stdout_only(
     captured = capsys.readouterr()
     assert code == 0
     assert SENTINEL_SENTENCE in captured.out
-    assert "docsentinel: extract-facts started:" in captured.err
-    assert "docsentinel: config: user settings off, project none" in captured.err
+    err_lines = without_timestamps(captured.err).splitlines()
+    assert any(line.startswith("[INFO]: extract-facts started:") for line in err_lines)
+    assert "[INFO]: config: user settings off, project none" in err_lines
     assert SENTINEL_SENTENCE not in captured.err
     assert SENTINEL_SENTENCE not in _log_text(log_dir)
     assert SENTINEL_SENTENCE not in records.text()

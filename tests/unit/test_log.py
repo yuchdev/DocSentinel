@@ -15,7 +15,8 @@ from pathlib import Path
 import pytest
 
 from docsentinel import log
-from docsentinel.log import FILE_ONLY, configure_cli_logging, safe, shutdown_cli_logging
+from docsentinel.log import FILE_ONLY, configure_cli_logging, quote_start, safe, shutdown_cli_logging
+from tests.log_helpers import TIMESTAMP_PATTERN, without_timestamps
 
 ESC = chr(0x1B)
 RLO = chr(0x202E)
@@ -126,6 +127,69 @@ def test_safe_rejects_a_limit_below_one():
         safe("value", limit=0)
 
 
+@pytest.mark.parametrize(
+    ("text", "words", "expected"),
+    [
+        (
+            "one two three four five six seven eight nine ten eleven",
+            10,
+            '"one two three four five six seven eight nine ten ..."',
+        ),
+        ("one two three four five six seven eight nine ten", 10, '"one two three four five six seven eight nine ten"'),
+        ("  spaced\tout\n words  ", 10, '"spaced out words"'),
+        ("alpha beta gamma", 2, '"alpha beta ..."'),
+        ("", 10, '""'),
+    ],
+)
+def test_quote_start_keeps_the_first_words(text: str, words: int, expected: str):
+    """
+    [Unit] log quote_start: verifies the first words are quoted and ``...`` marks a cut.
+
+    Scenario:
+        Given texts longer, exactly as long and shorter than the word limit, odd whitespace and empty text
+        When quote_start quotes them
+        Then the first ``words`` words are joined by one space in double quotes, with `` ...`` only
+            when words were left out.
+
+    Boundaries:
+        - Focus: the DS302 and lenz claim trace (owner ruling 2026-11-27)
+        - Fixtures/params: text, words, expected
+        - Scope: one call each
+
+    On failure, first check:
+        - The split and join in ``quote_start``
+
+    :param text: The text to quote.
+    :param words: The word limit.
+    :param expected: The quoted result.
+    """
+    assert quote_start(text, words) == expected
+
+
+def test_quote_start_neutralizes_and_rejects_a_bad_limit():
+    """
+    [Unit] log quote_start: verifies controls and ``##[`` are neutralised and a limit below 1 is refused.
+
+    Scenario:
+        Given a word holding an ESC sequence and the GitHub command marker, and a limit of 0
+        When quote_start quotes them
+        Then the quote shows visible escapes, never ESC or ``##[``, and the bad limit raises ValueError.
+
+    Boundaries:
+        - Focus: untrusted claim text reaching a log record
+        - Fixtures/params: none
+        - Scope: two calls
+
+    On failure, first check:
+        - The ``safe`` call and the ``words < 1`` guard in ``quote_start``
+    """
+    quoted = quote_start("bad" + ESC + "[31m ##[error]x")
+
+    assert quoted == '"bad\\x1b[31m ##\\[error]x"'
+    with pytest.raises(ValueError, match="at least 1"):
+        quote_start("value", words=0)
+
+
 def test_configure_creates_private_per_run_file_in_private_directory(tmp_path: Path):
     """
     [Unit] log configure: verifies the per-run file is 0o600, its new directory 0o700, and it gets DEBUG records.
@@ -154,7 +218,7 @@ def test_configure_creates_private_per_run_file_in_private_directory(tmp_path: P
     assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     text = path.read_text(encoding="utf-8")
-    assert re.search(r"^\S+ \S+ DEBUG   docsentinel\.unit: checking a\.md$", text, re.MULTILINE)
+    assert re.search(r"^" + TIMESTAMP_PATTERN + r"\[DEBUG\]: checking a\.md$", text, re.MULTILINE)
 
 
 def _old_log(directory: Path, name: str, age: int) -> Path:
@@ -239,7 +303,7 @@ def test_invalid_or_too_small_keep_warns_and_falls_back(
     configure_cli_logging(env=_env(tmp_path, DOCSENTINEL_LOG_KEEP=value))
 
     assert len(list(logs.glob("docsentinel-*.log"))) == kept
-    assert capsys.readouterr().err == f"docsentinel: WARNING: {warning}\n"
+    assert without_timestamps(capsys.readouterr().err) == f"[WARNING]: {warning}\n"
 
 
 @pytest.mark.parametrize(
@@ -250,13 +314,13 @@ def test_verbosity_selects_stderr_level_and_format(
     verbosity: int, shown: list[str], tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ):
     """
-    [Unit] log stderr: verifies -q/default/-v levels and the two stderr formats.
+    [Unit] log stderr: verifies -q/default/-v levels and the one stderr format.
 
     Scenario:
         Given verbosity -1 (quiet), 0, 1 and 3
         When a DEBUG, an INFO and a WARNING record are logged
-        Then stderr shows only the records at or above WARNING/INFO/DEBUG, INFO and DEBUG as
-            ``docsentinel: msg`` and WARNING as ``docsentinel: WARNING: msg``.
+        Then stderr shows only the records at or above WARNING/INFO/DEBUG, each as
+            ``[YYYY-mm-dd HH:MM:SS][LEVEL]: msg``.
 
     Boundaries:
         - Focus: ``_stderr_level`` and ``_StderrFormatter``
@@ -274,11 +338,13 @@ def test_verbosity_selects_stderr_level_and_format(
     unit.warning("a warning record")
 
     expected = {
-        "DEBUG": "docsentinel: a debug record",
-        "INFO": "docsentinel: an info record",
-        "WARNING": "docsentinel: WARNING: a warning record",
+        "DEBUG": "[DEBUG]: a debug record",
+        "INFO": "[INFO]: an info record",
+        "WARNING": "[WARNING]: a warning record",
     }
-    assert capsys.readouterr().err.splitlines() == [expected[level] for level in shown]
+    err = capsys.readouterr().err
+    assert all(re.match(TIMESTAMP_PATTERN + r"\[", line) for line in err.splitlines())
+    assert without_timestamps(err).splitlines() == [expected[level] for level in shown]
 
 
 @pytest.mark.parametrize(("value", "verbosity"), [("debug", -1), ("ERROR", 1), (" warning ", 0)])
@@ -328,9 +394,9 @@ def test_invalid_log_level_env_is_ignored_with_a_warning(tmp_path: Path, capsys:
     configure_cli_logging(env=_env(tmp_path, DOCSENTINEL_LOG_LEVEL=f"LOUD{ESC}"))
     logging.getLogger("docsentinel.unit").info("still info")
 
-    lines = capsys.readouterr().err.splitlines()
-    assert lines[0].startswith("docsentinel: WARNING: ignoring invalid DOCSENTINEL_LOG_LEVEL=LOUD\\x1b;")
-    assert lines[1:] == ["docsentinel: still info"]
+    lines = without_timestamps(capsys.readouterr().err).splitlines()
+    assert lines[0].startswith("[WARNING]: ignoring invalid DOCSENTINEL_LOG_LEVEL=LOUD\\x1b;")
+    assert lines[1:] == ["[INFO]: still info"]
 
 
 def test_configure_twice_does_not_stack_handlers(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
@@ -355,7 +421,7 @@ def test_configure_twice_does_not_stack_handlers(tmp_path: Path, capsys: pytest.
     configure_cli_logging(env=_env(tmp_path))
     logging.getLogger("docsentinel.unit").info("once")
 
-    assert capsys.readouterr().err == "docsentinel: once\n"
+    assert without_timestamps(capsys.readouterr().err) == "[INFO]: once\n"
     assert len(_cli_handlers()) == 2
     assert first_file.stream.closed
 
@@ -416,10 +482,10 @@ def test_unwritable_log_directory_falls_back_to_stderr_only(tmp_path: Path, caps
     logging.getLogger("docsentinel.unit").info("still running")
 
     assert path is None
-    lines = capsys.readouterr().err.splitlines()
+    lines = without_timestamps(capsys.readouterr().err).splitlines()
     assert len(lines) == 2
-    assert lines[0].startswith("docsentinel: WARNING: log file disabled, logging to stderr only: ")
-    assert lines[1] == "docsentinel: still running"
+    assert lines[0].startswith("[WARNING]: log file disabled, logging to stderr only: ")
+    assert lines[1] == "[INFO]: still running"
 
 
 def test_file_only_record_skips_stderr(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
@@ -444,7 +510,8 @@ def test_file_only_record_skips_stderr(tmp_path: Path, capsys: pytest.CaptureFix
     shutdown_cli_logging()
 
     assert capsys.readouterr().err == ""
-    assert path is not None and "WARNING docsentinel.unit: scan failed: bad config" in path.read_text(encoding="utf-8")
+    assert path is not None
+    assert "[WARNING]: scan failed: bad config\n" in without_timestamps(path.read_text(encoding="utf-8"))
 
 
 def test_default_log_directory_is_local_logs_under_home():
@@ -590,8 +657,8 @@ def test_log_file_with_more_than_one_link_is_refused(
     path = configure_cli_logging(env=_env(tmp_path))
 
     assert path is None
-    err = capsys.readouterr().err
-    assert "docsentinel: WARNING: log file disabled, logging to stderr only: " in err
+    err = without_timestamps(capsys.readouterr().err)
+    assert "[WARNING]: log file disabled, logging to stderr only: " in err
     assert "has 2 hard links; expected 1" in err
 
 
@@ -638,9 +705,9 @@ def test_unsafe_existing_log_directory_disables_the_file(
 
     assert path is None
     assert list(real.iterdir()) == []
-    lines = capsys.readouterr().err.splitlines()
+    lines = without_timestamps(capsys.readouterr().err).splitlines()
     assert len(lines) == 1
-    assert lines[0].startswith("docsentinel: WARNING: log file disabled, logging to stderr only: ")
+    assert lines[0].startswith("[WARNING]: log file disabled, logging to stderr only: ")
     assert lines[0].endswith(reason)
 
 
@@ -754,7 +821,7 @@ def test_file_traceback_cannot_forge_a_record(tmp_path: Path, capsys: pytest.Cap
         - ``_FileFormatter`` and ``_exception_only_chunks`` in ``docsentinel.log``
     """
     path = configure_cli_logging(env=_env(tmp_path))
-    hostile = "bad\n2026-01-01 00:00:00,000 ERROR   docsentinel.forged: owned " + ESC + "[31m ##[x]"
+    hostile = "bad\n[2026-01-01 00:00:00][ERROR]: owned " + ESC + "[31m ##[x]"
     try:
         try:
             raise KeyError("inner\nline")
@@ -765,9 +832,9 @@ def test_file_traceback_cannot_forge_a_record(tmp_path: Path, capsys: pytest.Cap
     shutdown_cli_logging()
 
     text = path.read_text(encoding="utf-8")
-    assert "ValueError: bad\\x0a2026-01-01 00:00:00,000 ERROR   docsentinel.forged: owned \\x1b[31m ##\\[x]" in text
+    assert "ValueError: bad\\x0a[2026-01-01 00:00:00][ERROR]: owned \\x1b[31m ##\\[x]" in text
     assert "KeyError: 'inner\\nline'" in text
-    assert not any(line.startswith("2026-01-01 00:00:00,000") for line in text.splitlines())
+    assert not any(line.startswith("[2026-01-01 00:00:00]") for line in text.splitlines())
     assert ESC not in text and "##[" not in text
     assert "Traceback (most recent call last):" in text and '  File "' in text
     assert "Traceback" not in capsys.readouterr().err

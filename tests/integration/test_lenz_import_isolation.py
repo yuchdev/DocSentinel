@@ -160,7 +160,7 @@ def test_lenz_import_isolation():
         ["DS302"],
         [
             "DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); "
-            "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY"
+            "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY"
         ],
     ]
     gates = report["gates"]

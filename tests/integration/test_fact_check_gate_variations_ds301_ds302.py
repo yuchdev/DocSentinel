@@ -117,7 +117,7 @@ def test_requested_without_key_skips_ds302_naming_only_the_key(
     Scenario:
         Given the gate_off_no_key corpus, no key variable and a recording fake
         When a deep scan runs with use_external_api=True
-        Then pending and the one DS302 WARNING are exactly "DS302 skipped: set DOCSENTINEL_FACTCHECK_FAKE_API_KEY",
+        Then pending and the one DS302 WARNING are exactly "DS302 skipped: set DOCSENTINEL_FACTCHECK_FAKE_API_KEY or FAKE_API_KEY",
             no DS302 finding exists, DS302 is not counted and the fake was never constructed
 
     Boundaries:
@@ -135,7 +135,7 @@ def test_requested_without_key_skips_ds302_naming_only_the_key(
 
     result = scan(case.root, config=fake_deep_config(), use_external_api=True)
 
-    expected = f"DS302 skipped: set {FAKE_KEY_ENV}"
+    expected = f"DS302 skipped: set {FAKE_KEY_ENV} or FAKE_API_KEY"
     assert [d.path for d in result.documents] == ["bridge.md"]
     assert [f for f in result.findings if f.rule == "DS302"] == []
     assert result.pending == (expected,)
@@ -153,7 +153,7 @@ def test_cli_requested_without_key_reports_the_key_reason(
     Scenario:
         Given the gate_off_no_key corpus, no lenz key and a fake registered as lenz
         When "docsentinel scan ROOT --profile deep --use-external-api" runs
-        Then the exit code is 0, pending holds exactly "DS302 skipped: set DOCSENTINEL_FACTCHECK_LENZ_API_KEY"
+        Then the exit code is 0, pending holds exactly "DS302 skipped: set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY"
             and no DS302 problem is reported
 
     Boundaries:
@@ -172,7 +172,7 @@ def test_cli_requested_without_key_reports_the_key_reason(
 
     report = json.loads(capsys.readouterr().out)
     assert code == 0
-    assert report["pending"] == [f"DS302 skipped: set {LENZ_KEY_ENV}"]
+    assert report["pending"] == [f"DS302 skipped: set {LENZ_KEY_ENV} or LENZ_API_KEY"]
     assert [p for doc in report["documents"] for p in doc["problems"] if p["rule"] == "DS302"] == []
     assert backend.constructed == 0
 

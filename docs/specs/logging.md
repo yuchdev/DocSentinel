@@ -25,8 +25,8 @@ prints to stderr. Agents that add log calls follow this document. Change it here
 | Log directory | `~/.local/logs/docsentinel/`, overridable by `DOCSENTINEL_LOG_DIR`. Created with mode `0o700`. An existing directory must be a real directory (`lstat`, not a symlink), owned by the current user, with no group or other write bit; otherwise the file is disabled (see Failure). Never point `DOCSENTINEL_LOG_DIR` into a checked-out repository or a shared directory. |
 | File name | `docsentinel-<YYYYmmdd-HHMMSS>-<pid>.log`, local time, one new file per run. It is created with `O_CREAT|O_EXCL|O_NOFOLLOW`, so an existing file, hard link or symlink is never opened; when the name is taken, `-1`, `-2` ... is appended. The new file must be a regular file owned by the current user with exactly one link. |
 | Rotation | After the file is created, keep the newest `DOCSENTINEL_LOG_KEEP` files (default 20, minimum 1) whose name matches `^docsentinel-\d{8}-\d{6}-\d+(?:-\d+)?\.log$` in that directory and delete the rest. Only regular files owned by the current user are counted or deleted; symlinks and non-regular files are skipped, never followed. A file with a modification time in the future is ignored (neither counted nor deleted), and a file modified in the last 60 seconds is never deleted, so concurrent runs keep their live files. |
-| File level | `DEBUG`. Format: `%(asctime)s %(levelname)-7s %(name)s: %(message)s`. File mode `0o600`, UTF-8. Tracebacks are neutralised line by line, and an exception's `Type: message` text is one neutralised line, so it cannot forge a record. |
-| Stderr level | `INFO` by default; `-v/--verbose` gives `DEBUG`, `-q/--quiet` gives `WARNING`. `DOCSENTINEL_LOG_LEVEL` (a level name) overrides both. Stderr format: `docsentinel: %(levelname)s: %(message)s` for `WARNING` and above, `docsentinel: %(message)s` below. |
+| File level | `DEBUG`. Format: `[{timestamp}][{severity}]: {message}` (`log.LOG_FORMAT`, timestamp `%Y-%m-%d %H:%M:%S`, `log.LOG_DATE_FORMAT`; no logger name). File mode `0o600`, UTF-8. Tracebacks are neutralised line by line, and an exception's `Type: message` text is one neutralised line, so it cannot forge a record. |
+| Stderr level | `INFO` by default; `-v/--verbose` gives `DEBUG`, `-q/--quiet` gives `WARNING`. `DOCSENTINEL_LOG_LEVEL` (a level name) overrides both. Stderr format: the same `[{timestamp}][{severity}]: {message}` line as the file, at every level (the old `docsentinel: ` prefix and the unlabelled `INFO` form are gone; since 2026-11-26, owner ruling). |
 | Failure | If the directory or file cannot be created (read-only home, full disk), the run continues with stderr only and logs one `WARNING` naming the reason. Logging must never change an exit code. |
 | Tests | `tests/conftest.py` points `DOCSENTINEL_LOG_DIR` at a temporary directory for every test, so the suite never writes to the real home. |
 
@@ -58,7 +58,13 @@ finding totals at `INFO`, and each finding at most at `DEBUG`.
 Logs land in a file under the user's home and in CI logs, so the reporting rules apply:
 
 - **Never document content.** No paragraph, line, snippet, comment text or frontmatter value.
-  A count, a byte size, a line number, a rule code or a relative path is fine.
+  A count, a byte size, a line number, a rule code or a relative path is fine. One explicit
+  exception (owner ruling of 2026-11-27): the `DS302` trace lines may quote the first ten words of
+  a claim sentence, and the lenz client the first ten words of the backend's echo of it, through
+  `docsentinel.log.quote_start(text)` (first words, then `...`, through `safe()`). These reach stderr and
+  the log file at `INFO` by default. Nothing else of a document is quoted; `FactCheckError`
+  messages, citations and API keys are never logged (the lenz client's own fixed rejection message
+  is logged at `DEBUG`).
 - **Paths and other untrusted strings** (link targets, config values, template names) go through
   `docsentinel.log.safe(value)`, which applies `neutralize_text` and caps the length (200
   characters). A crafted file name must not forge log lines, carry terminal control

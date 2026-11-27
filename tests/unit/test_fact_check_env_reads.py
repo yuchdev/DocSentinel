@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 import docsentinel
+from docsentinel.detectors.fact_check import _read_api_key
 
 #: The installed package source tree.
 _SRC = Path(docsentinel.__file__).resolve().parent
@@ -408,3 +409,32 @@ def test_handler_name_collector_follows_calls():
     source = "def entry():\n    helper()\n\n\ndef helper():\n    return gate.resolve_external_api_gate()\n"
 
     assert "resolve_external_api_gate" in handler_names(source, "entry")
+
+
+def test_api_key_falls_back_to_the_standard_variable(monkeypatch: pytest.MonkeyPatch):
+    """
+    [Unit] key fallback: verifies the DocSentinel variable wins and the standard one is the fallback.
+
+    Scenario:
+        Given the standard variable set and the DocSentinel one unset or empty
+        When the key is read
+        Then the standard value is used; a set DocSentinel value always wins.
+
+    Boundaries:
+        - Focus: DS302 key lookup
+        - Fixtures/params: monkeypatch
+        - Scope: one function
+
+    On failure, first check:
+        - detectors/fact_check.py _read_api_key
+    """
+    primary = "DOCSENTINEL_FACTCHECK_LENZ_API_KEY"
+    monkeypatch.setenv(_OTHER_TOOL_KEY, "standard-key-0123456789")
+    assert _read_api_key(primary) == "standard-key-0123456789"
+    monkeypatch.setenv(primary, "")
+    assert _read_api_key(primary) == "standard-key-0123456789"
+    monkeypatch.setenv(primary, "primary-key-0123456789")
+    assert _read_api_key(primary) == "primary-key-0123456789"
+    monkeypatch.delenv(primary)
+    monkeypatch.delenv(_OTHER_TOOL_KEY)
+    assert _read_api_key(primary) == ""

@@ -131,7 +131,7 @@ schemas, not code. `python-expert` implements them in the tasks listed under
 | R7 | While either gate is closed, `DS302` is not counted in `rules_evaluated`, so `ScanResult.notice` does not count it (Contract 6) | Q1 |
 | R8 | Backend confidence is carried in `Finding.value`, never in `message` (Contract 9) | Q2 |
 | R9 | A per-scan time budget, `fact_check_time_budget_seconds`, bounds the network loop (Contract 7) | Q3 |
-| R10 | An unrecognised backend verdict is skipped with a WARNING and never mapped to `mixed` (Contract 8) | Q4 |
+| R10 | An unrecognised backend verdict is skipped with a WARNING and never mapped to `mixed` (Contract 8). **Superseded 2026-11-27:** it is rated `unverifiable`, printed, never reported | Q4 |
 | R11 | `httpx` becomes a declared direct dependency, imported only on the open-gate deep path | D6 |
 
 ### Contract 1: `engine.scan()` keyword (`/src/docsentinel/engine.py`)
@@ -368,6 +368,11 @@ external_off = len(external_active) if gate is not None and not gate.open else 0
   `select_candidates()` never reads it.
 
 ### Contract 8: unrecognised verdict (ruling Q4)
+
+> **Superseded 2026-11-27 (owner ruling R, see
+> [Amendment 2026-11-27](#amendment-2026-11-27-owner-rulings-after-the-first-live-run)).** Every
+> verdict is now kept and printed, and an unrecognised label is rated `unverifiable` instead of
+> raising `FactCheckError`. The text below is the original ruling Q4, kept as history.
 
 - A backend maps only the raw values it recognises into `Verdict`. Anything else makes
   `check_claim` raise `FactCheckError` with fixed text that does not echo the raw value. The Lenz
@@ -763,7 +768,8 @@ this section and the Story 01.0 task specs (marked "Amended 2026-11-23 (threat m
   and checks backend-name membership before it derives the key variable name; the environment
   gate is open only for the exact value `"1"` (M2).
 - **R5 (M8):** the key is read with `os.environ.get(...)`, only in `detectors/fact_check.py`; no
-  `fact_check/` module reads the environment, and nothing reads `LENZ_API_KEY`.
+  `fact_check/` module reads the environment, and nothing reads `LENZ_API_KEY`. **Superseded
+  2026-11-26:** `LENZ_API_KEY` is now the fallback (see the amendment below).
 - **Contract 2 / S10 (M5, HIGH FC-5):** a backend or transport exception no longer propagates
   unchanged. Anything other than `FactCheckError` is re-raised as `RuntimeError` naming only the
   exception type, with no chain (`from None`), because `httpx`/`h11` header errors carry the full
@@ -775,6 +781,33 @@ this section and the Story 01.0 task specs (marked "Amended 2026-11-23 (threat m
   leaves the evaluated count, `pending` and `doctor` say `backend <name> not available` (fixed
   text, never an exception message).
 - **S10 (M5):** a `FactCheckError` from `check_claim` is logged by type name only, never its message.
+
+## Amendment 2026-11-27: owner rulings after the first live run
+
+These rulings are already implemented and win over the text above where they differ. The ADR stays
+`Proposed`.
+
+- **Key fallback (owner ruling of 2026-11-26; reverses threat-model M8 and the R5 ban).**
+  `detectors/fact_check.py::_read_api_key` reads `DOCSENTINEL_FACTCHECK_<NAME>_API_KEY` and, when it is
+  unset or empty, the vendor's standard variable `<NAME>_API_KEY` (`LENZ_API_KEY` for `lenz`). The closed-gate
+  reason reads `set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY`. Residual risk: a key exported for
+  another Lenz tool can now open the key half of the gate. The `--use-external-api` consent half is
+  unchanged, so nothing is sent without the invoker's explicit flag. Still never a configuration key, never logged.
+- **Response parsing (ruling R of 2026-11-27; replaces Q4 and Contract 8).** Every verdict is kept and
+  printed. `VERDICT_LABELS`: true and mostly true map to `true`; false and mostly false to `false`; mixed and
+  half true to `mixed`; unverifiable to `unverifiable`; any other label to `unverifiable` (printed, never a
+  finding). Confidence words `high`, `medium`, `low` map to 0.9, 0.6, 0.3 (`CONFIDENCE_WORDS`); numbers are
+  still accepted. Every item of `claims` is read (Lenz splits a combined fact); the fact takes the most severe
+  verdict (false, mixed, unverifiable, true), with the minimum confidence for `true` and the maximum otherwise.
+  Reason: the live API returned confidence words and labels such as `Mostly True`, which the old client rejected as an unexpected shape.
+- **Tracing (ruling O of 2026-11-27).** At INFO, `DS302` logs one line per selected claim and one per checked
+  fact (verdict, confidence, `reported` or `not reported`); the lenz client logs one line per response claim
+  (raw label capped at 40 characters, mapped verdict, confidence). The first ten words of a claim and of the
+  backend's echo (`log.quote_start`) therefore reach stderr and the log file: an explicit owner exception to
+  "document content is never logged". `FactCheckError` messages, citations and keys are still never logged,
+  except the lenz client's own fixed rejection message at DEBUG.
+- **Log format (ruling O of 2026-11-26).** stderr and the log file both use `[{timestamp}][{severity}]: {message}`
+  (`log.LOG_FORMAT`).
 
 ## Links
 

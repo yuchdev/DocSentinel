@@ -36,6 +36,21 @@ VERDICTS: Final[frozenset[str]] = frozenset({"true", "false", "mixed", "unverifi
 #: The verdicts ``DS302`` reports as findings.
 REPORTABLE_VERDICTS: Final[frozenset[str]] = frozenset({"false", "mixed"})
 
+#: The explicit verdict labels shown to the user, from most to least severe (owner ruling of
+#: 2026-11-27): a report and a log line always name one of these.
+VERDICT_LABELS: Final[tuple[str, ...]] = ("False", "Mostly False", "Mixed", "Unverifiable", "Mostly True", "True")
+
+#: The label of a :data:`Verdict` when the backend gives no finer one.
+VERDICT_DEFAULT_LABELS: Final[Mapping[str, str]] = MappingProxyType(
+    {"true": "True", "false": "False", "mixed": "Mixed", "unverifiable": "Unverifiable"}
+)
+
+#: Most rated claims one result may carry.
+MAX_RESULT_CLAIMS: Final = 64
+
+#: Longest claim text of one rated claim, in characters.
+MAX_RESULT_CLAIM_CHARS: Final = 1000
+
 #: Backend name grammar (plan contract C3). Always applied with ``re.fullmatch`` (threat model
 #: 0010 M7): under ``re.match`` the ``$`` would also match before a final ``\n``.
 BACKEND_NAME_PATTERN: Final[str] = r"^[a-z][a-z0-9]{0,31}$"
@@ -76,6 +91,39 @@ def _is_backend_name(value: object) -> bool:
 
 
 @dataclass(frozen=True)
+class ClaimVerdict:
+    """The backend's rating of one claim inside a checked fact.
+
+    :ivar claim: The claim text as the backend states it (untrusted third-party text), at most
+        :data:`MAX_RESULT_CLAIM_CHARS` characters.
+    :ivar label: One of :data:`VERDICT_LABELS`.
+    :ivar confidence: A finite number in ``[0.0, 1.0]``.
+    """
+
+    claim: str
+    label: str
+    confidence: float
+
+    def __post_init__(self):
+        """Validate every field.
+
+        :raises FactCheckError: When any field breaks the contract described on the class.
+        """
+        if not isinstance(self.claim, str) or len(self.claim) > MAX_RESULT_CLAIM_CHARS:
+            raise FactCheckError("fact-check result: a rated claim text is not a bounded string")
+        if self.label not in VERDICT_LABELS:
+            raise FactCheckError("fact-check result: a rated claim label is not a known label")
+        confidence = self.confidence
+        if (
+            isinstance(confidence, bool)
+            or not isinstance(confidence, (int, float))
+            or not math.isfinite(confidence)
+            or not 0.0 <= confidence <= 1.0
+        ):
+            raise FactCheckError("fact-check result: a rated claim confidence is not a number in [0.0, 1.0]")
+
+
+@dataclass(frozen=True)
 class FactCheckResult:
     """A backend's validated verdict on one claim.
 
@@ -89,12 +137,23 @@ class FactCheckResult:
     :ivar backend: The producing backend's name, fully matching :data:`BACKEND_NAME_PATTERN`.
     :ivar citations: At most :data:`MAX_CITATIONS` source strings of at most
         :data:`MAX_CITATION_CHARS` characters each. ``DS302`` does not use them yet.
+    :ivar label: The explicit label of the verdict, one of :data:`VERDICT_LABELS`, or ``""`` for
+        the default label of ``verdict`` (see :attr:`display`).
+    :ivar claims: The backend's rating of each claim it found in the fact, at most
+        :data:`MAX_RESULT_CLAIMS`; empty when the backend rates the fact as a whole.
     """
 
     verdict: Verdict
     confidence: float
     backend: str
     citations: tuple[str, ...] = ()
+    label: str = ""
+    claims: tuple[ClaimVerdict, ...] = ()
+
+    @property
+    def display(self) -> str:
+        """The explicit verdict label: ``label``, else the default label of ``verdict``."""
+        return self.label or VERDICT_DEFAULT_LABELS[self.verdict]
 
     def __post_init__(self):
         """Validate every field.
@@ -120,6 +179,13 @@ class FactCheckResult:
             raise FactCheckError("fact-check result: too many citations")
         if any(len(entry) > MAX_CITATION_CHARS for entry in citations):
             raise FactCheckError("fact-check result: a citation is too long")
+        if self.label != "" and self.label not in VERDICT_LABELS:
+            raise FactCheckError("fact-check result: label is not a known label")
+        claims = self.claims
+        if not isinstance(claims, tuple) or not all(isinstance(entry, ClaimVerdict) for entry in claims):
+            raise FactCheckError("fact-check result: claims is not a tuple of rated claims")
+        if len(claims) > MAX_RESULT_CLAIMS:
+            raise FactCheckError("fact-check result: too many rated claims")
 
 
 @runtime_checkable

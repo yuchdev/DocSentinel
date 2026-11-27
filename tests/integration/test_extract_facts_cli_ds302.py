@@ -32,7 +32,7 @@ from docsentinel.mining.claims import Claim
 from docsentinel.reporting import render_facts
 from docsentinel.telemetry import engine as template_engine
 from tests.asset_helpers import AssetCase
-from tests.log_helpers import problem_output
+from tests.log_helpers import problem_output, without_timestamps
 
 pytestmark = pytest.mark.skipif(not nlp.deep_ready(), reason="deep dependencies and model not installed")
 
@@ -279,6 +279,46 @@ def test_all_lists_the_trivial_sentence_as_below_floor(root: Path, capsys: pytes
     assert dispositions[TRIVIAL] == "below_floor"
     assert sorted(dispositions[text] for text in NEAR_DUPLICATES) == ["duplicate", "selected"]
     assert list(dispositions.values()).count("selected") == document["summary"]["facts_selected"] == 4
+
+
+def test_fact_combination_all_lists_every_claim_above_the_floor(root: Path, capsys: pytest.CaptureFixture[str]):
+    """
+    [Integration] extract-facts CLI: verifies --fact-combination all lists every above-floor claim, caps ignored.
+
+    Scenario:
+        Given the extract_facts_basic corpus and caps of 1 per document and 2 in total
+        When extract-facts --fact-combination all --max-per-document 1 --max-total 2 --format facts-json runs
+        Then the four canonical above-floor claims are listed in trace order (two selected, two
+            document_cap), the trivial below-floor sentence and the second near duplicate are not,
+            exactly as DS302 sends them under 'all'; without --fact-combination only the two
+            selected claims are listed
+
+    Boundaries:
+        - Focus: owner ruling 2026-11-27 (extract-facts --fact-combination; 'all' ignores the caps)
+        - Fixtures/params: real spaCy pipeline
+        - Scope: cli.main extract-facts -> extract_facts(fact_combination=)
+
+    On failure, first check:
+        - The sent dispositions (ALL_DISPOSITIONS) in engine.extract_facts and cli._fact_overrides
+    """
+    caps = ("--max-per-document", "1", "--max-total", "2", "--format", "facts-json")
+
+    code, out, _ = _run(capsys, "extract-facts", str(root), "--fact-combination", "all", *caps)
+    plain_code, plain_out, _ = _run(capsys, "extract-facts", str(root), *caps)
+
+    document = json.loads(out)
+    plain = json.loads(plain_out)
+    assert (code, plain_code) == (0, 0)
+    dispositions = [fact["disposition"] for fact in document["facts"]]
+    texts = [fact["text"] for fact in document["facts"]]
+    assert sorted(dispositions) == ["document_cap", "document_cap", "selected", "selected"]
+    assert document["summary"]["facts_listed"] == len(texts) == 4
+    assert TRIVIAL not in texts
+    assert sum(text in NEAR_DUPLICATES for text in texts) == 1
+    assert [fact["rank"] for fact in document["facts"]] == [1, 2, 3, 4]
+    assert [fact["text"] for fact in plain["facts"]] == [
+        fact["text"] for fact in document["facts"] if fact["disposition"] == "selected"
+    ]
 
 
 def test_overrides_change_the_settings_and_clear_the_match(root: Path, capsys: pytest.CaptureFixture[str]):
@@ -537,7 +577,7 @@ def test_claim_text_reaches_stdout_only(
     log_text = _log_text(log_dir)
     assert code == 0
     assert SENTINEL_SENTENCE in out
-    assert "docsentinel: config: user settings off, project none" in err
+    assert "[INFO]: config: user settings off, project none" in without_timestamps(err).splitlines()
     assert "extract-facts finished in " in log_text
     assert ("salience: " in err) is bool(flags)
     assert "salience: 6 claim(s) in, 5 cluster(s)" in log_text

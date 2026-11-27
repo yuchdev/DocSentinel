@@ -49,12 +49,12 @@ MAX_NAME_ATTEMPTS: Final[int] = 100
 #: Rotation never deletes a log file modified less than this many seconds ago, so
 #: two concurrent runs cannot delete each other's live file.
 ROTATION_GRACE_SECONDS: Final[int] = 60
+#: The one record format, ``[{timestamp}][{severity}]: {message}``, of stderr and the log file.
+LOG_FORMAT: Final[str] = "[%(asctime)s][%(levelname)s]: %(message)s"
+#: Timestamp format of :data:`LOG_FORMAT` (local time, second precision).
+LOG_DATE_FORMAT: Final[str] = "%Y-%m-%d %H:%M:%S"
 #: Format of the per-run log file.
-FILE_FORMAT: Final[str] = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
-#: Stderr format for ``WARNING`` and above.
-STDERR_PROBLEM_FORMAT: Final[str] = "docsentinel: %(levelname)s: %(message)s"
-#: Stderr format below ``WARNING``.
-STDERR_INFO_FORMAT: Final[str] = "docsentinel: %(message)s"
+FILE_FORMAT: Final[str] = LOG_FORMAT
 #: ``extra=`` mapping for a record that belongs in the log file only, such as the
 #: one-line record of an error the CLI already printed to stderr in its own words.
 FILE_ONLY: Final[Mapping[str, bool]] = {"docsentinel_file_only": True}
@@ -99,6 +99,26 @@ def safe(value: object, limit: int = SAFE_LIMIT) -> str:
     if len(text) > limit or len(shown) > limit:
         return shown[:limit] + TRUNCATION_MARKER
     return shown
+
+
+def quote_start(text: str, words: int = 10) -> str:
+    """Return the beginning of ``text`` as a quote for a log record: its first words, then ``...``.
+
+    The words are split on whitespace and joined by one space; ``...`` follows only when words
+    were left out. The quoted text goes through :func:`safe`.
+
+    :param text: Untrusted text, such as a claim sentence.
+    :param words: How many leading words to keep (at least 1).
+    :returns: ``"<first words> ..."`` in double quotes.
+    :raises ValueError: When ``words`` is below 1.
+    """
+    if words < 1:
+        raise ValueError(f"quote_start() words must be at least 1, got {words}")
+    parts = text.split()
+    shown = " ".join(parts[:words])
+    if len(parts) > words:
+        shown += " ..."
+    return '"' + safe(shown) + '"'
 
 
 def _neutralize_lines(text: str) -> str:
@@ -169,11 +189,15 @@ class _FileFormatter(logging.Formatter):
 
 
 class _StderrFormatter(logging.Formatter):
-    """Format stderr records: ``docsentinel: LEVEL: msg`` for problems, ``docsentinel: msg`` below.
+    """Format stderr records as ``[timestamp][LEVEL]: msg`` (:data:`LOG_FORMAT`), one line each.
 
     Tracebacks are never printed to stderr; ``logger.exception`` sends them to the
     log file only, whose path the CLI prints on failure.
     """
+
+    def __init__(self):
+        """Create the formatter with :data:`LOG_FORMAT` and :data:`LOG_DATE_FORMAT`."""
+        super().__init__(LOG_FORMAT, LOG_DATE_FORMAT)
 
     def format(self, record: logging.LogRecord) -> str:
         """Return the one-line stderr form of ``record``.
@@ -181,10 +205,7 @@ class _StderrFormatter(logging.Formatter):
         :param record: The record to format.
         :returns: The formatted line without a traceback.
         """
-        message = record.getMessage()
-        if record.levelno >= logging.WARNING:
-            return f"docsentinel: {record.levelname}: {message}"
-        return f"docsentinel: {message}"
+        return f"[{self.formatTime(record, self.datefmt)}][{record.levelname}]: {record.getMessage()}"
 
 
 def _not_file_only(record: logging.LogRecord) -> bool:
@@ -384,7 +405,7 @@ def _open_log_file(directory: Path) -> tuple[Path, logging.Handler]:
         raise
     handler = _OwnedStreamHandler(stream)
     handler.setLevel(logging.DEBUG)
-    handler.setFormatter(_FileFormatter(FILE_FORMAT))
+    handler.setFormatter(_FileFormatter(FILE_FORMAT, LOG_DATE_FORMAT))
     return path, handler
 
 

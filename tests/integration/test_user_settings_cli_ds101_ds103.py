@@ -30,7 +30,7 @@ import pytest
 from docsentinel import cli
 from docsentinel.config import _BOOL_OPTIONS, _ENUM_OPTIONS, USER_SETTINGS_ENV, Config, ConfigError, load_config
 from tests.asset_helpers import AssetCase
-from tests.log_helpers import problem_output
+from tests.log_helpers import problem_output, without_timestamps
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _POSIX_ONLY = pytest.mark.skipif(os.name != "posix", reason="POSIX modes, FIFOs and SIGALRM")
@@ -164,11 +164,11 @@ def _config_line(stderr: str) -> str:
     """Return the single INFO ``config:`` line of one CLI run.
 
     :param stderr: The captured stderr.
-    :returns: The text after ``docsentinel: config: ``.
+    :returns: The text after ``[<timestamp>][INFO]: config: ``.
     """
-    lines = [line for line in stderr.splitlines() if line.startswith("docsentinel: config: ")]
+    lines = [line for line in without_timestamps(stderr).splitlines() if line.startswith("[INFO]: config: ")]
     assert len(lines) == 1, stderr
-    return lines[0][len("docsentinel: config: ") :]
+    return lines[0][len("[INFO]: config: ") :]
 
 
 def _log_text(log_dir: Path) -> str:

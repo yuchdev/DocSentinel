@@ -97,12 +97,15 @@ def stubbed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         state.policies.append(policy)
         return state.trace
 
-    def _record(client: object, candidates: tuple[fact_check.CandidateClaim, ...], config: Config) -> tuple[()]:
+    def _record(
+        client: object, candidates: tuple[fact_check.CandidateClaim, ...], config: Config, **kwargs: object
+    ) -> tuple[()]:
         """Record the candidates DS302 would send.
 
         :param client: The backend client.
         :param candidates: The candidates.
         :param config: The effective configuration.
+        :param kwargs: The ``fact_checks`` sink, unused.
         :returns: No findings.
         """
         state.sent.append(candidates)

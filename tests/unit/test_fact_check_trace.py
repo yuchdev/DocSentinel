@@ -212,27 +212,38 @@ def test_trace_candidates_is_the_only_extraction_loop():
 
 
 @pytest.mark.parametrize(
-    "function", [fact_check.collect_candidates, fact_check.detect, engine.scan], ids=lambda f: f.__name__
+    ("function", "expected"),
+    [
+        (fact_check.collect_candidates, {"policy": fact_check.DS302_POLICY}),
+        (fact_check.detect, {"policy": fact_check.DS302_POLICY}),
+        (engine.scan, {"fact_weights": None, "fact_dedup_threshold": None}),
+    ],
+    ids=["collect_candidates", "detect", "scan"],
 )
-def test_ds302_surfaces_take_no_policy(function: object):
+def test_ds302_surfaces_take_the_policy_only_as_a_defaulted_keyword(function: object, expected: dict[str, object]):
     """
-    [Unit] DS302 surfaces: verifies collect_candidates, detect and scan take no policy, weights or dedup parameter.
+    [Unit] DS302 surfaces: verifies the selection policy reaches DS302 only as keyword-only defaults.
 
     Scenario:
         Given the three DS302-reachable callables
         When their signatures are inspected
-        Then no parameter name contains policy, weight or dedup
+        Then the only parameters naming policy, weight or dedup are the expected keyword-only
+        ones, defaulting to DS302_POLICY (collect_candidates, detect) or None (scan)
 
     Boundaries:
-        - Focus: decision X5, threat model E9
+        - Focus: owner ruling 2026-11-27 (invoker --weights/--dedup-threshold on scan and baseline
+          reach DS302; replaces decision X5's "never"); threat model E9 (never a config key, see
+          test_exploration_keys_are_refused_in_every_config_tier)
         - Fixtures/params: one callable per case
         - Scope: signatures only
 
     On failure, first check:
-        - A policy keyword added to a DS302 path
+        - A policy parameter added, renamed or given another default on a DS302 path
     """
-    names = inspect.signature(function).parameters  # type: ignore[arg-type]
-    assert not [n for n in names if "policy" in n or "weight" in n or "dedup" in n]
+    params = inspect.signature(function).parameters  # type: ignore[arg-type]
+    named = {n: p for n, p in params.items() if "policy" in n or "weight" in n or "dedup" in n}
+    assert {n: p.default for n, p in named.items()} == expected
+    assert all(p.kind is inspect.Parameter.KEYWORD_ONLY for p in named.values())
 
 
 @pytest.mark.parametrize("key", _EXPLORATION_KEYS)

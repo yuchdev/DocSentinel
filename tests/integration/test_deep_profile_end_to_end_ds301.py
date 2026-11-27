@@ -188,7 +188,7 @@ def test_consistent_corpus_zero_candidates_but_evaluated_notice(asset_case: Call
     assert result.rules_evaluated == 1
     assert result.pending == (
         "DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); "
-        "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY",
+        "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY",
     )
     assert "1 deep rule(s) evaluated" in result.notice
     assert "not implemented" not in result.notice

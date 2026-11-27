@@ -1,0 +1,97 @@
+{
+  "schema": "docsentinel-facts",
+  "schema_version": 1,
+  "notice": "Heuristic, offline claim extraction; no network call was made and nothing was verified. The selected facts are the claims DS302 would send, at most and in this order, if it ran with both gates open on the same configuration and selection, with DS302 among the active rules; fact_check_time_budget_seconds can stop it earlier.",
+  "matches_ds302": true,
+  "include_rejected": false,
+  "settings": {
+    "min_salience": 0.5,
+    "max_per_document": 3,
+    "max_total": 25,
+    "weights": {
+      "numeric": 0.3,
+      "entity": 0.3,
+      "distinctiveness": 0.4
+    },
+    "dedup_threshold": 0.92
+  },
+  "summary": {
+    "documents": 1,
+    "unreadable": 0,
+    "claims_extracted": 22,
+    "facts_selected": 3,
+    "facts_listed": 3
+  },
+  "facts": [
+    {
+      "rank": 1,
+      "path": "New_MRI_breakthrough_reveals_the_brain_and_eye.md",
+      "paragraph_index": 14,
+      "text": "The team led by Nandita Saha tested the new MRI antenna by imaging the eye and orbit in volunteers using a 7.0 Tesla MRI scanner.",
+      "score": 0.711374,
+      "signals": {
+        "numeric": 0.5,
+        "entity": 1.0,
+        "distinctiveness": 0.653436
+      },
+      "cluster": {
+        "id": 18,
+        "size": 1
+      },
+      "numbers": [
+        "7.0"
+      ],
+      "entities": [
+        "CARDINAL:7.0",
+        "PERSON:nandita saha"
+      ],
+      "disposition": "selected",
+      "hidden_characters": false
+    },
+    {
+      "rank": 2,
+      "path": "New_MRI_breakthrough_reveals_the_brain_and_eye.md",
+      "paragraph_index": 12,
+      "text": "Traditional MRI antennas, known as RF coils, often have trouble collecting enough signal from tissues located deep inside the body or in anatomically complex regions.",
+      "score": 0.653631,
+      "signals": {
+        "numeric": 0.0,
+        "entity": 1.0,
+        "distinctiveness": 0.884078
+      },
+      "cluster": {
+        "id": 13,
+        "size": 1
+      },
+      "numbers": [],
+      "entities": [
+        "ORG:antennas",
+        "ORG:rf"
+      ],
+      "disposition": "selected",
+      "hidden_characters": false
+    },
+    {
+      "rank": 3,
+      "path": "New_MRI_breakthrough_reveals_the_brain_and_eye.md",
+      "paragraph_index": 6,
+      "text": "Even with today's advanced scanners, producing clear images of some areas remains difficult.",
+      "score": 0.631042,
+      "signals": {
+        "numeric": 0.0,
+        "entity": 1.0,
+        "distinctiveness": 0.827605
+      },
+      "cluster": {
+        "id": 2,
+        "size": 1
+      },
+      "numbers": [],
+      "entities": [
+        "DATE:today"
+      ],
+      "disposition": "selected",
+      "hidden_characters": false
+    }
+  ]
+}

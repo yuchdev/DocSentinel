@@ -14,6 +14,7 @@ The tree composes ``ds101/dangling_file_link``, ``ds102/stray_comment_file`` and
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import textwrap
@@ -24,6 +25,7 @@ import pytest
 from docsentinel.mining import nlp
 from docsentinel.telemetry.loader import packaged_template_names
 from tests.asset_helpers import load_asset_case
+from tests.log_helpers import TIMESTAMP_PATTERN, without_timestamps
 
 #: ``scan`` arguments per profile; deep needs the explicit heuristic confirmation.
 _PROFILE_ARGS: dict[str, tuple[str, ...]] = {
@@ -33,10 +35,11 @@ _PROFILE_ARGS: dict[str, tuple[str, ...]] = {
 }
 
 #: The one stderr problem line of a deep scan: ``DS302`` is active but its gate is closed (no
-#: consent, no key), so it is skipped with this fixed WARNING (Milestone 0010 D5).
+#: consent, no key), so it is skipped with this fixed WARNING (Milestone 0010 D5). Shown without the
+#: line's leading ``[timestamp]``, which :func:`_render_all` removes.
 _DS302_GATE_WARNING = (
-    "docsentinel: WARNING: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); "
-    "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY\n"
+    "[WARNING]: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); "
+    "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY\n"
 )
 
 
@@ -80,7 +83,8 @@ def _render_all(root: Path, profile: str, seed: str) -> dict[str, dict[str, obje
     :param root: The scan root.
     :param profile: The profile key of :data:`_PROFILE_ARGS`.
     :param seed: The hash seed for the child interpreter.
-    :returns: ``{template: {"code", "out", "err"}}``.
+    :returns: ``{template: {"code", "out", "err"}}``; ``err`` without its line-leading timestamps,
+        the only part of stderr that legitimately differs between two runs.
     """
     env = {key: value for key, value in os.environ.items() if not key.startswith("DOCSENTINEL_")}
     env["PYTHONHASHSEED"] = seed
@@ -104,7 +108,11 @@ def _render_all(root: Path, profile: str, seed: str) -> dict[str, dict[str, obje
         cwd=root,
         check=True,
     )
-    return json.loads(completed.stdout)
+    reports = json.loads(completed.stdout)
+    for report in reports.values():
+        assert all(re.match(TIMESTAMP_PATTERN + r"\[", line) for line in report["err"].splitlines())
+        report["err"] = without_timestamps(report["err"])
+    return reports
 
 
 @pytest.mark.parametrize("profile", sorted(_PROFILE_ARGS))

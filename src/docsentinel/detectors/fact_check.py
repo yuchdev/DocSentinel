@@ -6,9 +6,11 @@ invoker-only consent gate resolved here is open, which is ``use_external_api`` (
 ``DOCSENTINEL_USE_EXTERNAL_API`` set to exactly ``"1"``) plus a non-empty API-key environment
 variable of the configured backend. Consent is never read from ``Config`` (threat model 0010 M1).
 
-This module is the only one under ``src/docsentinel/`` that reads ``DOCSENTINEL_USE_EXTERNAL_API``
-or a ``DOCSENTINEL_FACTCHECK_*`` variable (threat model 0010 M8). The key is read once, inside the
-backend constructor call, and is never logged, stored on this module or put in a finding.
+This module is the only one under ``src/docsentinel/`` that reads ``DOCSENTINEL_USE_EXTERNAL_API``,
+a ``DOCSENTINEL_FACTCHECK_*`` variable or its fallback, the backend's standard key variable (the
+same name without the ``DOCSENTINEL_FACTCHECK_`` prefix; threat model 0010 M8). The key is read when the gate is resolved
+and again for the backend constructor call, and is never logged, stored on this module or put in a
+finding.
 
 Imports: the standard library, ``docsentinel`` internals, ``docsentinel.mining.nlp`` and
 ``docsentinel.fact_check.protocol`` only. ``docsentinel.mining.claims`` is imported lazily on the
@@ -18,7 +20,8 @@ gate, ``import docsentinel`` and every fast or standard scan import neither.
 Candidate selection is :func:`trace_candidates`, the one extraction loop shared with
 ``engine.extract_facts`` (plan contract C11), over the pure ``mining.salience.trace_salience``
 (Story 02.0 decision T8, Story 05.0 decision X2), imported lazily so a closed gate never imports
-scikit-learn. ``DS302`` uses :func:`collect_candidates`, which takes no policy.
+scikit-learn. ``DS302`` uses :func:`collect_candidates` with :data:`DS302_POLICY`, unless the
+invoker gave ``--weights`` or ``--dedup-threshold`` for the run (owner ruling of 2026-11-27).
 
 The only backend is ``lenz`` (Story 03.0, ``docsentinel.fact_check.lenz``). It registers itself in
 ``FACT_CHECK_BACKENDS`` when imported, and only ``load_backend`` imports it, after egress was
@@ -29,13 +32,14 @@ gate stays closed with the reason ``backend lenz not available`` and no claim le
 from __future__ import annotations
 
 import importlib
+import json
 import logging
 import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Optional
+from typing import TYPE_CHECKING, Final, Optional, Union
 
 from docsentinel import models, rules
 from docsentinel.config import (
@@ -56,7 +60,7 @@ from docsentinel.fact_check.protocol import (
     expected_api_key_env_var,
     load_backend,
 )
-from docsentinel.log import safe
+from docsentinel.log import quote_start, safe
 from docsentinel.mining import nlp
 
 if TYPE_CHECKING:
@@ -113,7 +117,8 @@ class SelectionPolicy:
     ``mining.salience.trace_salience`` raise ``ValueError``), so building a policy never imports
     ``mining.salience``. A policy comes only from :data:`DS302_POLICY` or an invoker's library
     keyword or CLI flag (Story 05.0, decision X5), never from a configuration layer or the
-    environment, and ``DS302`` never receives one (:func:`collect_candidates` has no ``policy``).
+    environment. ``DS302`` uses an invoker policy only for the run the invoker gave it in
+    (``scan``/``baseline`` ``--weights``/``--dedup-threshold``, owner ruling of 2026-11-27).
 
     :ivar weights: The ``(numeric, entity, distinctiveness)`` salience weights.
     :ivar dedup_threshold: The near-duplicate clustering threshold, in ``(0, 1]``.
@@ -194,7 +199,8 @@ class ExternalApiGate:
         if not self.requested:
             missing.append(_NOT_REQUESTED_REASON)
         if not self.key_present:
-            missing.append(f"set {self.key_env_var}")
+            standard = self.key_env_var.removeprefix("DOCSENTINEL_FACTCHECK_")
+            missing.append(f"set {self.key_env_var} or {standard}")
         if not self.backend_available:
             missing.append(f"backend {self.backend} not available")
         return tuple(missing)
@@ -236,7 +242,7 @@ def resolve_external_api_gate(config: Config, *, use_external_api: bool) -> Exte
     requested = external_api_requested(use_external_api)
     backend = _validated_backend(config)
     key_env_var = expected_api_key_env_var(backend)
-    key_present = bool(os.environ.get(key_env_var))
+    key_present = bool(_read_api_key(key_env_var))
     return ExternalApiGate(
         requested=requested,
         backend=backend,
@@ -244,6 +250,21 @@ def resolve_external_api_gate(config: Config, *, use_external_api: bool) -> Exte
         key_present=key_present,
         backend_available=_backend_loadable(backend) if requested and key_present else True,
     )
+
+
+def _read_api_key(key_env_var: str) -> str:
+    """Return the API key: the DocSentinel variable, else the backend's standard variable.
+
+    The fallback is the same name without the ``DOCSENTINEL_FACTCHECK_`` prefix (the vendor's
+    standard variable). A variable that is unset or empty counts as undefined. The value is never logged or echoed.
+
+    :param key_env_var: The ``DOCSENTINEL_FACTCHECK_<NAME>_API_KEY`` variable name.
+    :returns: The key, or an empty string when neither variable is set.
+    """
+    value = os.environ.get(key_env_var)
+    if value:
+        return value
+    return os.environ.get(key_env_var.removeprefix("DOCSENTINEL_FACTCHECK_"), "")
 
 
 def _backend_loadable(backend: str) -> bool:
@@ -386,7 +407,7 @@ def select_candidates(
 
     :param claims: Every extracted claim of the scan.
     :param config: The effective configuration.
-    :param policy: The selection policy; ``DS302`` always uses :data:`DS302_POLICY`.
+    :param policy: The selection policy; :data:`DS302_POLICY` unless the invoker changed it.
     :returns: The selected candidates, in send order.
     :raises ConfigError: When a selection value of ``config`` is invalid.
     :raises ValueError: When ``policy`` holds an invalid weight or threshold.
@@ -438,7 +459,7 @@ def trace_candidates(
     :param root: The scan root.
     :param documents: The readable documents, in scan order.
     :param config: The effective configuration; only the three selection values are read.
-    :param policy: The selection policy; ``DS302`` always uses :data:`DS302_POLICY`.
+    :param policy: The selection policy; :data:`DS302_POLICY` unless the invoker changed it.
     :returns: The trace of every canonical claim plus the document and claim counts.
     :raises ConfigError: When a selection value of ``config`` is invalid.
     :raises ValueError: When ``policy`` holds an invalid weight or threshold.
@@ -466,17 +487,56 @@ def collect_candidates(
     root: Path,
     documents: tuple[models.Document, ...],
     config: Config,
+    *,
+    policy: SelectionPolicy = DS302_POLICY,
 ) -> tuple[CandidateClaim, ...]:
-    """Return the ``DS302`` candidates: ``trace_candidates(root, documents, config).selected``.
+    """Return the ``DS302`` candidates, in send order.
 
-    It takes no ``policy``, so ``DS302`` can never send under an exploration policy.
+    The ``selected`` entries of :func:`trace_candidates`; under ``fact_check_combination = "all"``
+    every claim above the salience floor instead.
 
     :param root: The scan root.
     :param documents: The readable documents of the scan, in scan order.
     :param config: The effective configuration.
+    :param policy: The selection policy; the fixed :data:`DS302_POLICY` unless the invoker gave
+        ``scan --weights`` or ``--dedup-threshold`` for this run.
     :returns: The candidates to send, in send order.
     """
-    return trace_candidates(root, documents, config).selected
+    trace = trace_candidates(root, documents, config, policy=policy)
+    if config.fact_check_combination == FACT_COMBINATION_ALL:
+        # ``all`` joins every claim above the salience floor: the per-document and total caps do
+        # not apply (owner ruling of 2026-11-27). Duplicates and below-floor claims stay out.
+        return tuple(candidate for candidate, disposition in trace.entries if disposition in ALL_DISPOSITIONS)
+    return trace.selected
+
+
+#: The dispositions ``fact_check_combination = "all"`` sends: selected plus the two cap rejections.
+ALL_DISPOSITIONS: Final[frozenset[str]] = frozenset({"selected", "document_cap", "total_cap"})
+
+
+def _pack_all(candidates: tuple[CandidateClaim, ...]) -> tuple[tuple[int, int], ...]:
+    """Split all candidates into consecutive 1-based ranges whose joined text fits one request.
+
+    Whole claims only: a range grows while the joined text stays within
+    :data:`MAX_CANDIDATE_CHARS`, so ``all`` is one fact when it fits and several otherwise.
+
+    :param candidates: The candidates, in send order.
+    :returns: The ``(start, end)`` ranges, in order, covering every candidate.
+    """
+    ranges: list[tuple[int, int]] = []
+    start = 1
+    length = 0
+    for position, candidate in enumerate(candidates, start=1):
+        added = len(candidate.text) + (1 if position > start else 0)
+        if position > start and length + added > MAX_CANDIDATE_CHARS:
+            ranges.append((start, position - 1))
+            start = position
+            added = len(candidate.text)
+            length = 0
+        length += added
+    if candidates:
+        ranges.append((start, len(candidates)))
+    return tuple(ranges)
 
 
 @dataclass(frozen=True)
@@ -502,13 +562,16 @@ class FactGroup:
 
 
 def combine_candidates(candidates: tuple[CandidateClaim, ...], combination: str) -> tuple[FactGroup, ...]:
-    """Group the selected candidates into the facts ``DS302`` sends (``fact_check_combination``).
+    """Group the candidates into the facts ``DS302`` sends (``fact_check_combination``).
 
-    Positions are 1-based in send order. A range is clipped to the candidates there are; a range
-    starting past the last candidate is dropped; a candidate no range names is its own fact. Groups
-    keep send order (by their first position).
+    ``each`` makes one fact per candidate. ``all`` joins every candidate (under ``all``,
+    :func:`collect_candidates` gives every claim above the salience floor, caps ignored), split by
+    :func:`_pack_all` into consecutive facts of whole claims whose joined text stays within
+    :data:`MAX_CANDIDATE_CHARS`. For ranges, positions are 1-based in send order; a range is
+    clipped to the candidates there are, a range starting past the last candidate is dropped and
+    a candidate no range names is its own fact. Groups keep send order (by their first position).
 
-    :param candidates: The selected candidates, in send order.
+    :param candidates: The candidates from :func:`collect_candidates`, in send order.
     :param combination: The ``fact_check_combination`` value.
     :returns: The facts to send, in send order.
     :raises ConfigError: When ``combination`` is invalid.
@@ -518,7 +581,7 @@ def combine_candidates(candidates: tuple[CandidateClaim, ...], combination: str)
     if parsed == FACT_COMBINATION_EACH:
         ranges: tuple[tuple[int, int], ...] = ()
     elif parsed == FACT_COMBINATION_ALL:
-        ranges = ((1, count),) if count else ()
+        ranges = _pack_all(candidates)
     else:
         ranges = tuple((start, min(end, count)) for start, end in parsed if start <= count)
     groups: list[FactGroup] = []
@@ -552,7 +615,7 @@ def _finding(candidate: CandidateClaim, result: FactCheckResult, *, path: Option
         path=candidate.claim.path if path is None else path,
         message=f"external fact-check: '{snippet}' rated {result.verdict} by {result.backend} - review to confirm",
         severity=DS302.severity,
-        value=f"{result.verdict} (confidence {result.confidence:.2f}): {candidate.text}",
+        value=f"{result.display} (confidence {result.confidence:.2f}): {candidate.text}",
         type=FINDING_TYPE,
     )
 
@@ -576,6 +639,7 @@ def _check_candidates(
     config: Config,
     *,
     clock: Callable[[], float] = time.monotonic,
+    fact_checks: Optional[list[models.FactCheck]] = None,
 ) -> tuple[models.Finding, ...]:
     """Send each fact to the backend, in order, within the time budget.
 
@@ -583,16 +647,21 @@ def _check_candidates(
     (:func:`combine_candidates`; ``each``, the default, makes one fact per candidate). A combined
     fact longer than :data:`MAX_CANDIDATE_CHARS` is not sent (one WARNING; it is never truncated),
     and a reportable combined fact gives one finding per document it drew claims from. The counts
-    in the INFO line are facts. A ``FactCheckError`` skips that fact with one WARNING naming the document only. Any other
-    exception from ``check_claim`` stops the loop and is replaced by a type-name-only
-    ``RuntimeError`` with no exception chain (threat model M5). One INFO line with counts only is
-    logged from a ``finally`` block (threat model M10).
+    in the INFO line are facts. A ``FactCheckError`` skips that fact with one WARNING naming the
+    document only. Any other exception from ``check_claim`` stops the loop and is replaced by a
+    type-name-only ``RuntimeError`` with no exception chain (threat model M5). Before sending, one
+    INFO line names each selected claim (its first ten words and document), and one INFO line per
+    checked fact names its verdict, confidence and whether it is reported (owner ruling of
+    2026-11-27). One INFO line with counts only is logged from a ``finally`` block (threat model
+    M10).
 
     :param client: The constructed backend client.
     :param candidates: The candidates, in send order.
     :param config: The effective configuration; the time budget, the confidence floor and the
         backend name are re-validated.
     :param clock: A monotonic clock; a test seam only.
+    :param fact_checks: When given, one :class:`~docsentinel.models.FactCheck` is appended per
+        checked fact, whatever its verdict.
     :returns: The findings, sorted by ``(path, message)``.
     :raises ConfigError: When a re-validated configuration value is invalid.
     :raises RuntimeError: When ``check_claim`` raises anything but ``FactCheckError``.
@@ -613,6 +682,15 @@ def _check_candidates(
             safe(config.fact_check_combination, limit=80),
             len(candidates),
             total,
+        )
+    # The list of selected claims, in send order: the first words of each (owner ruling 2026-11-27).
+    for number, candidate in enumerate(candidates, start=1):
+        logger.info(
+            "DS302: claim %d/%d %s in %s",
+            number,
+            len(candidates),
+            quote_start(candidate.text),
+            safe(candidate.claim.path),
         )
     try:
         deadline = clock() + budget if groups else 0.0
@@ -650,7 +728,34 @@ def _check_candidates(
                     raise
                 escaped = type(exc).__name__
                 break
-            if result.verdict in REPORTABLE_VERDICTS and result.confidence >= min_confidence:
+            reportable = result.verdict in REPORTABLE_VERDICTS and result.confidence >= min_confidence
+            # One trace line per checked fact, with the first words of its text (owner ruling 2026-11-27).
+            logger.info(
+                "DS302: fact %d/%d (%s) %s in %s: verdict %s, confidence %.2f, %s",
+                index + 1,
+                len(groups),
+                group.label,
+                quote_start(text),
+                safe(path),
+                result.display,
+                result.confidence,
+                "reported" if reportable else "not reported",
+            )
+            if fact_checks is not None:
+                fact_checks.append(
+                    models.FactCheck(
+                        path=path,
+                        fact=text,
+                        verdict=result.display,
+                        confidence=result.confidence,
+                        backend=result.backend,
+                        reported=reportable,
+                        claims=tuple(
+                            models.FactCheckClaim(part.claim, part.label, part.confidence) for part in result.claims
+                        ),
+                    )
+                )
+            if reportable:
                 findings.extend(_group_findings(group, result))
         if escaped is not None:
             # Raised outside the handler, so there is no __cause__ and no __context__.
@@ -674,15 +779,111 @@ def _check_candidates(
     return tuple(findings)
 
 
+#: Largest facts file ``--include-facts`` reads, in bytes.
+MAX_FACTS_FILE_BYTES: Final = 1_048_576
+
+#: Most facts one facts file may hold.
+MAX_FACTS_FILE_ENTRIES: Final = 500
+
+#: The ``schema`` and ``schema_version`` of the ``facts-json`` output of ``extract-facts``.
+FACTS_FILE_SCHEMA: Final = ("docsentinel-facts", 1)
+
+
+@dataclass(frozen=True)
+class FileClaim:
+    """The origin of a fact read from a facts file: the two fields ``DS302`` uses of a claim.
+
+    :ivar path: The document path the file names for the fact (untrusted).
+    :ivar paragraph_index: The paragraph index the file names, ``0`` when absent.
+    """
+
+    path: str
+    paragraph_index: int = 0
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Build a JSON object, refusing a duplicate key.
+
+    :param pairs: The decoded key/value pairs of one object.
+    :returns: The object.
+    :raises ValueError: When a key occurs twice.
+    """
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate key")
+        result[key] = value
+    return result
+
+
+def load_facts_file(source: Union[Path, str]) -> tuple[CandidateClaim, ...]:
+    """Read the facts ``DS302`` sends from a ``facts-json`` file (``scan --include-facts``).
+
+    The file is the ``facts-json`` output of ``docsentinel extract-facts`` (schema
+    ``docsentinel-facts`` 1), possibly edited by hand. Every listed fact is taken, in file order,
+    whatever its ``disposition``: the file is the selection. Only ``text`` and ``path`` are
+    required of an entry. The path is a trusted invoker path, relative to the current directory.
+
+    :param source: The facts file.
+    :returns: The candidates, in file order.
+    :raises ConfigError: When the file cannot be read, is over :data:`MAX_FACTS_FILE_BYTES`, is
+        not strict UTF-8 JSON of the expected schema, holds more than
+        :data:`MAX_FACTS_FILE_ENTRIES` facts, or an entry has no usable ``text`` or ``path``.
+    """
+    shown = safe(source)
+    try:
+        with open(source, "rb") as stream:
+            raw = stream.read(MAX_FACTS_FILE_BYTES + 1)
+    except OSError as exc:
+        raise ConfigError(f"facts file {shown}: cannot read it ({type(exc).__name__})") from None
+    if len(raw) > MAX_FACTS_FILE_BYTES:
+        raise ConfigError(f"facts file {shown}: larger than {MAX_FACTS_FILE_BYTES} bytes")
+    try:
+        payload = json.loads(raw.decode("utf-8", "strict"), object_pairs_hook=_unique_json_object)
+    except (ValueError, RecursionError):
+        raise ConfigError(f"facts file {shown}: not valid UTF-8 JSON") from None
+    if not isinstance(payload, dict) or (payload.get("schema"), payload.get("schema_version")) != FACTS_FILE_SCHEMA:
+        raise ConfigError(
+            f"facts file {shown}: not a facts-json file (schema {FACTS_FILE_SCHEMA[0]} {FACTS_FILE_SCHEMA[1]}); "
+            "create one with docsentinel extract-facts --format facts-json"
+        )
+    entries = payload.get("facts")
+    if not isinstance(entries, list):
+        raise ConfigError(f"facts file {shown}: facts must be a list")
+    if len(entries) > MAX_FACTS_FILE_ENTRIES:
+        raise ConfigError(f"facts file {shown}: more than {MAX_FACTS_FILE_ENTRIES} facts")
+    candidates: list[CandidateClaim] = []
+    for number, entry in enumerate(entries, start=1):
+        text = entry.get("text") if isinstance(entry, dict) else None
+        path = entry.get("path") if isinstance(entry, dict) else None
+        if not isinstance(text, str) or not text.strip() or len(text.strip()) > MAX_CANDIDATE_CHARS:
+            raise ConfigError(
+                f"facts file {shown}: fact {number} needs a text of 1 to {MAX_CANDIDATE_CHARS} characters"
+            )
+        if not isinstance(path, str) or not path or len(path) > 1024:
+            raise ConfigError(f"facts file {shown}: fact {number} needs a path")
+        index = entry.get("paragraph_index")
+        score = entry.get("score")
+        candidates.append(
+            CandidateClaim(
+                claim=FileClaim(path, index if type(index) is int else 0),
+                text=text.strip(),
+                score=float(score) if type(score) in (int, float) and 0.0 <= score <= 1.0 else 0.0,
+            )
+        )
+    return tuple(candidates)
+
+
 def _construct_client(client_cls: type[FactCheckClient]) -> Optional[FactCheckClient]:
     """Construct the backend client with the key read inside the constructor call.
 
     :param client_cls: The verified backend class.
     :returns: The client, or ``None`` when the key variable is unset or empty now.
     """
-    if not os.environ.get(client_cls.API_KEY_ENV_VAR):
+    key = _read_api_key(client_cls.API_KEY_ENV_VAR)
+    if not key:
         return None
-    return client_cls(api_key=os.environ.get(client_cls.API_KEY_ENV_VAR, ""))
+    return client_cls(api_key=key)
 
 
 def _close_client(client: FactCheckClient) -> Optional[str]:
@@ -710,6 +911,9 @@ def detect(
     config: Config,
     *,
     use_external_api: bool = False,
+    fact_checks: Optional[list[models.FactCheck]] = None,
+    policy: SelectionPolicy = DS302_POLICY,
+    facts: Optional[tuple[CandidateClaim, ...]] = None,
 ) -> tuple[models.Finding, ...]:
     """Fact-check the selected claims against the configured backend (ADR 0007 Contract 2).
 
@@ -723,6 +927,11 @@ def detect(
     :param documents: The readable documents of the scan, in scan order.
     :param config: The effective configuration.
     :param use_external_api: The invoker's consent; must be a real ``bool``.
+    :param fact_checks: A list the engine passes to collect one record per checked fact.
+    :param policy: The claim-selection policy; :data:`DS302_POLICY` unless the invoker changed it.
+    :param facts: Facts read from a facts file (``scan --include-facts``). When given, no document
+        is read and no claim is extracted or selected: exactly these facts are sent, one request
+        each, and ``policy`` and the selection and combination settings are ignored.
     :returns: The findings, sorted by ``(path, message)``.
     :raises ConfigError: When ``use_external_api`` is not a ``bool`` or a ``fact_check_*`` value of
         an injected ``Config`` is invalid.
@@ -762,8 +971,13 @@ def detect(
         )
         return ()
     try:
-        candidates = collect_candidates(root, documents, config)
-        findings = _check_candidates(client, candidates, config)
+        if facts is not None:
+            candidates = facts
+            config = replace(config, fact_check_combination=FACT_COMBINATION_EACH)
+            logger.info("DS302: %d fact(s) taken from the facts file; no extraction or selection", len(facts))
+        else:
+            candidates = collect_candidates(root, documents, config, policy=validate_selection_policy(policy))
+        findings = _check_candidates(client, candidates, config, fact_checks=fact_checks)
     finally:
         escaped = _close_client(client)
     if escaped is not None:

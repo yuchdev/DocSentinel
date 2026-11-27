@@ -267,6 +267,18 @@ Contracts 6 to 9; where an older story text disagrees, this section and the ADR 
 - **Q4, unrecognised verdict.** A backend raises `FactCheckError` for any raw verdict it does not
   recognise; `DS302` logs the per-claim WARNING and skips it. No unknown value is ever mapped to
   `mixed` (or to `unverifiable`); the Lenz mid-confidence band is dropped.
+  **Superseded 2026-11-27 (owner ruling R):** every verdict is kept and printed; the client maps
+  known labels (`VERDICT_LABELS`) and rates any other label `unverifiable`, which is never a finding;
+  confidence words `high`/`medium`/`low` map to 0.9/0.6/0.3; every item of `claims` is read and the
+  most severe verdict wins. See ADR 0007, Amendment 2026-11-27.
+- **Key fallback (owner ruling of 2026-11-26, amends C3).** When
+  `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY` is unset or empty, `<BACKEND>_API_KEY` (`LENZ_API_KEY`
+  for `lenz`) is used. Residual risk: a key exported for another Lenz tool can open the key half of
+  the gate; the `--use-external-api` half is unchanged.
+- **Tracing and log format (owner rulings O of 2026-11-26/27).** At INFO, `DS302` and the lenz
+  client trace each selected claim and each verdict with the first ten words of the claim
+  (`log.quote_start`), an explicit exception to "document content is never logged". stderr and the
+  log file use `[{timestamp}][{severity}]: {message}`.
 
 ### C11 — One candidate source for DS302 and extract-facts
 

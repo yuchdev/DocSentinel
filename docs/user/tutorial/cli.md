@@ -103,7 +103,9 @@ docsentinel scan --profile deep
 
 1. `--use-external-api` on `scan` or `baseline`, or `DOCSENTINEL_USE_EXTERNAL_API=1` (exactly `1`).
 2. The backend's API key in `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`, for the `lenz` backend
-   `DOCSENTINEL_FACTCHECK_LENZ_API_KEY`.
+   `DOCSENTINEL_FACTCHECK_LENZ_API_KEY`. When that variable is unset or empty, the vendor's standard
+   variable, `LENZ_API_KEY` for `lenz`, is used instead. A key exported for another Lenz tool can
+   therefore open this half of the gate; the `--use-external-api` consent half is unchanged.
 
 Neither is a configuration key: a project or user settings file that names `use_external_api` is
 rejected. Preview what would be sent first with
@@ -130,11 +132,25 @@ Tune it with the `fact_check_*` options in the
 [configuration reference](../reference/configuration.md#external-fact-checking-ds302). Each finding has
 type `unverified claim` and a `value` such as `false (confidence 0.87): <claim>`.
 
+Every verdict the backend returns is kept and printed in the log, but only `false` and `mixed` at or
+above `fact_check_min_confidence` become findings. The client maps `Mostly True` to `true`, `Mostly
+False` to `false`, `Half True` to `mixed`, and any label it does not know to `unverifiable`; the
+confidence words `high`, `medium` and `low` count as 0.9, 0.6 and 0.3. When the backend splits a combined
+fact into several claims, the fact takes the most severe verdict. By default the run traces its work at
+`INFO` (see [Logging](#logging--v--q-and-the-per-run-log-file)), quoting the first ten words of each
+claim, which is document content and reaches stderr and the log file:
+
+```text
+[2026-11-27 10:14:02][INFO]: DS302: claim 1/3 "The Eiffel Tower is 330 metres tall and ..." in docs/a.md
+[2026-11-27 10:14:03][INFO]: lenz /assess: claim 1/1 "The Eiffel Tower is 330 metres tall and ...": verdict Mostly True (true), confidence 0.90
+[2026-11-27 10:14:03][INFO]: DS302: fact 1/3 (1) "The Eiffel Tower is 330 metres tall and ..." in docs/a.md: verdict true, confidence 0.90, not reported
+```
+
 While either opt-in is missing, a deep scan logs one WARNING, lists the reason under
 `Pending:` (and in `pending` in JSON), and does not count `DS302` as evaluated:
 
 ```text
-Pending: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY
+Pending: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY
 ```
 
 `docsentinel doctor` shows the same state as `fact-check gate: on (backend: lenz)`,
@@ -408,7 +424,7 @@ Each scan logs the effective selection at `INFO`, with counts only, and each pat
 (`-v`):
 
 ```text
-docsentinel: selection: include 1 pattern(s) (invoker), exclude 4 pattern(s) (3 configured, 1 invoker)
+[2026-11-16 20:22:24][INFO]: selection: include 1 pattern(s) (invoker), exclude 4 pattern(s) (3 configured, 1 invoker)
 ```
 
 Two `WARNING` lines flag a likely mistake: `include pattern <p> matched no document` for an
@@ -464,15 +480,16 @@ Progress messages go to stderr, never to stdout, so `docsentinel scan --format j
 working. By default you see `INFO` lines: what started, where the report went, and the totals.
 `-v`/`--verbose` adds `DEBUG` detail and `-q`/`--quiet` shows only warnings and errors. Both
 flags work before or after the command, for example `docsentinel -q scan` and `docsentinel scan -q`.
+Every line, on stderr and in the log file, has the form `[YYYY-mm-dd HH:MM:SS][SEVERITY]: message`.
 
 ```text
-docsentinel: scan started: root=docs, profile=fast, format=text, output=reports/docs.txt, reference_scope=links
-docsentinel: config: user settings loaded (profile, reference_scope), project docsentinel.toml
-docsentinel: discovered 301 documents under /repo/docs (0 skipped: symlinks/excluded, 0 unreadable)
-docsentinel: profile=fast: 17 rules selected, 12 evaluated; opt-in off: DS103 (reference_scope = "strict"), DS110 (require_fence_languages), DS112 (navigation_indexes), DS115 (deprecated_references_file), DS118 (documentation_naming)
-docsentinel: report written to /repo/reports/docs.txt (text, 55 lines)
-docsentinel: scan finished in 29.45s: 301 documents, 30 findings (errors 5, warnings 25); by rule DS101=1, DS102=14, DS105=1, DS106=3, DS116=4, DS117=7; blocking 5; exit code 1
-docsentinel: details in log file: /home/you/.local/logs/docsentinel/docsentinel-20261116-202253-5802.log
+[2026-11-16 20:22:24][INFO]: scan started: root=docs, profile=fast, format=text, output=reports/docs.txt, reference_scope=links
+[2026-11-16 20:22:24][INFO]: config: user settings loaded (profile, reference_scope), project docsentinel.toml
+[2026-11-16 20:22:24][INFO]: discovered 301 documents under /repo/docs (0 skipped: symlinks/excluded, 0 unreadable)
+[2026-11-16 20:22:24][INFO]: profile=fast: 17 rules selected, 12 evaluated; opt-in off: DS103 (reference_scope = "strict"), DS110 (require_fence_languages), DS112 (navigation_indexes), DS115 (deprecated_references_file), DS118 (documentation_naming)
+[2026-11-16 20:22:53][INFO]: report written to /repo/reports/docs.txt (text, 55 lines)
+[2026-11-16 20:22:53][INFO]: scan finished in 29.45s: 301 documents, 30 findings (errors 5, warnings 25); by rule DS101=1, DS102=14, DS105=1, DS106=3, DS116=4, DS117=7; blocking 5; exit code 1
+[2026-11-16 20:22:53][INFO]: details in log file: /home/you/.local/logs/docsentinel/docsentinel-20261116-202253-5802.log
 ```
 
 Every run also writes a `DEBUG` log file named `docsentinel-<YYYYmmdd-HHMMSS>-<pid>.log` to
@@ -623,7 +640,7 @@ deep profile: not ready
 fast rules: 18 registered (5 opt-in, off unless configured: DS103, DS110, DS112, DS115, DS118)
 standard rules: 4 registered
 deep rules: 2 registered
-fact-check gate: off (pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY)
+fact-check gate: off (pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY)
 fact templates (packaged): facts-json, facts-text
 user settings: ~/.local/share/docsentinel/settings.json (loaded, 2 options)
 project config: docsentinel.toml (4 options)

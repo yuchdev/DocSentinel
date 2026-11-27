@@ -217,7 +217,7 @@ def test_closed_gate_deep_scan_loads_no_backend_or_mining_module():
     assert report["enabled"] == ["DS302"]
     assert report["pending"] == [
         "DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); "
-        "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY"
+        "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY"
     ]
     assert report["loaded"] == []
 
@@ -287,7 +287,7 @@ def test_full_closed_gate_deep_scan_loads_no_lenz_and_opens_no_socket():
     assert report["enabled"] == ["DS301", "DS302"]
     assert report["pending"] == [
         "DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); "
-        "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY"
+        "set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY"
     ]
     assert report["lenz"] is False
     assert report["opened"] == []

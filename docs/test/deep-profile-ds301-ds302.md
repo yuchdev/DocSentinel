@@ -169,17 +169,13 @@ distinctiveness, with a near-duplicate clustering threshold of `0.92`
 | 6 | `--format facts-json` | `{"schema": "docsentinel-facts", "schema_version": 1, ...}` with `matches_ds302`, `include_rejected`, a `settings` block echoing `min_salience`/`max_per_document`/`max_total`/`weights`/`dedup_threshold`, a `summary` block, and a `facts` array whose entries carry `rank`, `path`, `paragraph_index`, `text`, `score`, `signals`, `cluster`, `numbers` and `entities` (here, for `#1`: `numbers` `["7.0"]` and `entities` `["CARDINAL:7.0", "PERSON:nandita saha"]`, which earned the `numeric 0.5` and `entity 1.0`) |
 | 7 | `-o facts.json` with any format | The report is written to the file instead of stdout. **It contains document text**: keep it out of the scan root and out of version control, as the option's own help text says |
 | 8 | Pass a scan-only option, e.g. `--profile deep` or `--use-external-api` | argparse error, exit `2`: `extract-facts` has no such option by design |
-| 9 | Read the INFO start line with `-v` | `extract-facts started: root=..., format=facts-text, output=stdout, include 1, exclude 0, options <names>` — overrides are logged **by name only**, never by value, and claim text is never logged at any level |
+| 9 | Read the INFO start line with `-v` | `extract-facts started: root=..., format=facts-text, output=stdout, include 1, exclude 0, options <names>` — overrides are logged **by name only**, never by value, and `extract-facts` never logs claim text at any level (the `scan` DS302 trace lines do quote the first ten words of a claim, owner ruling 2026-11-27); each line has the form `[YYYY-mm-dd HH:MM:SS][INFO]: ...` |
 
-### Fact consolidation: what turns 37 fragments into 22 statements
+### Fact consolidation
 
 Before any score is computed, the document's sentences are turned into **statements**:
 single-sentence, self-contained, checkable units. That step decides how many facts there are and
 how they read. Scoring and selection (next section) only decide which of them are sent.
-
-On the MRI article, the old extraction (`mining/claims.py::extract_claims`, one entry per
-subject-verb-object triple) gave 37 entries, 1 selected. The statement extraction
-(`mining/claims.py::extract_statements`) gives 22, 3 selected.
 
 **These parameters are module constants and rules in `src/docsentinel/mining/claims.py`, not
 configuration options.** No `docsentinel.toml` key or CLI flag changes them. Tuning means editing
@@ -325,13 +321,13 @@ timeout, a 64 KiB response cap and a 1,000-character claim cap.
 
 `DS302` self-gates on two things no configuration file can grant: the invoker's
 `--use-external-api` (or `DOCSENTINEL_USE_EXTERNAL_API=1`) **and** a non-empty
-`DOCSENTINEL_FACTCHECK_LENZ_API_KEY`. Choosing the backend in `docsentinel.toml` grants nothing.
+`DOCSENTINEL_FACTCHECK_LENZ_API_KEY` (or, when that is unset, `LENZ_API_KEY`). Choosing the backend in `docsentinel.toml` grants nothing.
 
 | # | Step | Expected |
 |---|------|----------|
-| 1 | `DOCSENTINEL_SETTINGS=off uv run docsentinel scan examples/docs --include New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md --profile deep` (no flag, no key) | Exit `0`; `WARNING: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY`; the report's `Pending:` line repeats it; zero `DS302` findings and **no** network call |
-| 2 | Same, adding `--use-external-api` but still no key | A shorter message, not the identical one: `WARNING: DS302 skipped: set DOCSENTINEL_FACTCHECK_LENZ_API_KEY` — the satisfied half of the gate drops out of the reason list |
-| 3 | `DOCSENTINEL_SETTINGS=off uv run docsentinel doctor` with nothing set | `fact-check gate: off (pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY)` |
+| 1 | `DOCSENTINEL_SETTINGS=off uv run docsentinel scan examples/docs --include New_MRI_breakthrough_reveals_the_brain_and_eye_like_never_before.md --profile deep` (no flag, no key) | Exit `0`; `WARNING: DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY`; the report's `Pending:` line repeats it; zero `DS302` findings and **no** network call |
+| 2 | Same, adding `--use-external-api` but still no key | A shorter message, not the identical one: `WARNING: DS302 skipped: set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY` — the satisfied half of the gate drops out of the reason list |
+| 3 | `DOCSENTINEL_SETTINGS=off uv run docsentinel doctor` with nothing set | `fact-check gate: off (pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY)` |
 | 4 | `doctor` with only the key set | `fact-check gate: off (pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1))` — `doctor` always resolves as if the flag were absent |
 | 5 | `doctor` with the key **and** `DOCSENTINEL_USE_EXTERNAL_API=1` | `fact-check gate: on (backend: lenz)`. `doctor` still makes no request; it only resolves the gate and loads the backend class |
 | 6 | A scan with `--use-external-api` and a malformed key, e.g. `DOCSENTINEL_FACTCHECK_LENZ_API_KEY=short` | `WARNING: DS302 skipped: backend lenz could not be initialised (FactCheckError)`, zero findings, and still **no** request: the key grammar (16–256 printable ASCII characters, no whitespace) is checked in the constructor before any `httpx` object exists, and the message never contains the key |
@@ -404,7 +400,7 @@ for finding in result.findings:
 |---|------|----------|
 | 7 | Run the script as written | `claims sent: N`, where the claims are **the exact facts use case 2 selected** (up to the document cap of 3, in rank order; re-verify `N` for your script and document, the counts changed when DS302 moved to statement-level extraction). This is the contract between the two commands: `extract-facts` predicts the send list, `DS302` sends it |
 | 8 | Read the finding | One `DS302` finding: `external fact-check: '<claim>' rated false by lenz - review to confirm`, with the confidence only in the report-only `value` field: `false (confidence 0.78): <claim>`. Keeping the confidence out of `message` is what makes baseline fingerprints stable when a verdict's confidence wobbles between runs |
-| 9 | Change the scripted verdict to `"mixed"` and re-run | **Zero findings**, plus `WARNING: DS302: fact-check failed for a claim in <path> (FactCheckError)`. The Lenz backend's `_normalize_verdict` recognises **only** `true` and `false`; anything else is an unrecognised verdict and the claim is skipped rather than guessed (owner ruling Q4). So although the protocol lists `mixed` as reportable, **the shipped Lenz backend can only ever produce a `false` finding** |
+| 9 | Change the scripted verdict to `"mixed"` and re-run | A `warning` finding of type `unverified claim` with `value` `mixed (confidence ...): <claim>` when the scripted confidence is at or above `fact_check_min_confidence`. Since the owner ruling R of 2026-11-27 every verdict is kept: `Mostly True` maps to `true`, `Half True` to `mixed`, any unknown label to `unverifiable` (printed in the INFO trace `DS302: fact i/n ... verdict unverifiable, ... not reported`, never a finding). Confidence may also be `high`, `medium` or `low` (0.9, 0.6, 0.3) |
 | 10 | Script `{"error_code": "no_claim"}`, or `{"claims": []}` | `unverifiable` at confidence `0.0`, which is not reportable: zero findings, no warning. This is the "nothing checkable in that sentence" answer |
 | 11 | Add `fact_check_min_confidence=0.79` to the `Config(...)` call, keeping the `false`/`0.78` verdict | Zero findings: the floor is an inclusive `>=`, so `0.78` no longer clears `0.79`. At exactly `0.78` the finding returns |
 | 12 | Script a non-200 status, or a response larger than 64 KiB | A per-claim `FactCheckError` with a fixed message, logged as one WARNING naming the document only. Backend messages never carry request or response data — a header error can contain the `Bearer` value, which is why only the exception *type* name survives |
@@ -413,7 +409,7 @@ for finding in result.findings:
 
 | # | Step | Expected |
 |---|------|----------|
-| 13 | Export a key **you** rotated (never the one in `lenz_fact-checking.md`), then run step 1's scan with `--use-external-api` | Up to `fact_check_max_claims_total` claims are POSTed to `lenz.io`; INFO logs `DS302: sent N claim(s) from M document(s) to backend lenz; <f> failed, <r> reported, <n> not sent (time budget)` — counts only, never claim text |
+| 13 | Export a key **you** rotated (never the one in `lenz_fact-checking.md`), then run step 1's scan with `--use-external-api` | Up to `fact_check_max_claims_total` claims are POSTed to `lenz.io`; INFO logs `DS302: sent N claim(s) from M document(s) to backend lenz; <f> failed, <r> reported, <n> not sent (time budget)` — counts only; the per-claim trace lines before it quote the first ten words of each claim (owner ruling 2026-11-27) |
 | 14 | Compare the sent count against the use case 2 preview | They match for the same configuration and selection, unless the time budget cut the run short |
 | 15 | Set `fact_check_time_budget_seconds=1` against a slow or distant endpoint | Remaining claims are skipped with `DS302: time budget of 1 s exhausted; N of M claim(s) not checked`. This skip is logged **only**: it never reaches `ScanResult.pending` or the report's `Pending:` line, so a budget cutoff is invisible to anyone reading just the rendered report |
 | 16 | Confirm nothing leaked | The key must not appear in stdout, stderr, the per-run log file, any finding field, any rendered report, or the client `repr` (the fixed `LenzFactCheckClient(base_url='https://lenz.io/api/v1')`). `tests/mock/test_fact_check_no_key_logged.py` asserts exactly this with a sentinel key |

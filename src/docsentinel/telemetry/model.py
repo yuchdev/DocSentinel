@@ -143,6 +143,28 @@ RUN_SCHEMA: Final[Mapping[str, Variable]] = _frozen(
     {"generated_at": Variable("str", TRUSTED), "id": Variable("str", TRUSTED)}
 )
 
+#: Members of a ``fact_checks[].claims`` element: one claim the backend rated.
+FACT_CHECK_CLAIM_SCHEMA: Final[Mapping[str, Variable]] = _frozen(
+    {
+        "claim": Variable("str", UNTRUSTED),
+        "verdict": Variable("str", TRUSTED),
+        "confidence": Variable("float", TRUSTED),
+    }
+)
+
+#: Members of a ``fact_checks`` element: one fact ``DS302`` sent, with its explicit verdict.
+FACT_CHECK_SCHEMA: Final[Mapping[str, Variable]] = _frozen(
+    {
+        "path": Variable("str", UNTRUSTED),
+        "fact": Variable("str", UNTRUSTED),
+        "verdict": Variable("str", TRUSTED),
+        "confidence": Variable("float", TRUSTED),
+        "backend": Variable("str", TRUSTED),
+        "reported": Variable("bool", TRUSTED),
+        "claims": Variable("list[object]", None, FACT_CHECK_CLAIM_SCHEMA),
+    }
+)
+
 #: Top-level context schema (spec §6), consumed by the Story 02.0 template loader.
 CONTEXT_SCHEMA: Final[Mapping[str, Variable]] = _frozen(
     {
@@ -160,6 +182,8 @@ CONTEXT_SCHEMA: Final[Mapping[str, Variable]] = _frozen(
         "notice": Variable("str", TRUSTED),
         "advisory": Variable("str|null", TRUSTED),
         "pending": Variable("list[str]", UNTRUSTED),
+        "fact_checks": Variable("list[object]", None, FACT_CHECK_SCHEMA),
+        "fact_checks_count": Variable("int", TRUSTED),
         "severity_counts": Variable("dict[str,int]", TRUSTED),
         "rule_counts": Variable("dict[str,int]", TRUSTED),
         "model": Variable("str|null", TRUSTED),
@@ -362,6 +386,22 @@ class ReportModel:
             "notice": result.notice,
             "advisory": ADVISORY_BANNER if result.profile == "deep" and result.findings else None,
             "pending": list(result.pending),
+            "fact_checks": [
+                {
+                    "path": check.path,
+                    "fact": check.fact,
+                    "verdict": check.verdict,
+                    "confidence": float(check.confidence),
+                    "backend": check.backend,
+                    "reported": check.reported,
+                    "claims": [
+                        {"claim": part.claim, "verdict": part.verdict, "confidence": float(part.confidence)}
+                        for part in check.claims
+                    ],
+                }
+                for check in result.fact_checks
+            ],
+            "fact_checks_count": len(result.fact_checks),
             "severity_counts": _sorted_counts([finding.severity for finding in result.findings]),
             "rule_counts": _sorted_counts([finding.rule for finding in result.findings]),
             "model": model,

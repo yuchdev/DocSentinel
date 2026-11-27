@@ -133,7 +133,7 @@ def corpus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(
         fact_check,
         "collect_candidates",
-        lambda root, documents, config: tuple(
+        lambda root, documents, config, **_: tuple(
             fact_check.CandidateClaim(claim=_Claim(path), text=text, score=0.9)
             for path, text in (("a.md", CLAIMS[0]), ("b.md", CLAIMS[1]))
         ),

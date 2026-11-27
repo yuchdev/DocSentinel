@@ -34,7 +34,7 @@ from tests.fact_check_fakes import (
 CITATION_MARKER = "citation-marker-0010"
 
 #: The gate WARNING and ``pending`` text with neither prerequisite present.
-NEITHER_MESSAGE = f"DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set {FAKE_KEY_ENV}"
+NEITHER_MESSAGE = f"DS302 skipped: pass --use-external-api (or set DOCSENTINEL_USE_EXTERNAL_API=1); set {FAKE_KEY_ENV} or FAKE_API_KEY"
 
 
 def _candidate(path: str, text: str) -> fact_check.CandidateClaim:
@@ -111,7 +111,7 @@ def test_closed_gate_scan_skips_ds302_and_reports_pending(
     monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: True)
     monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: ())
     touched: list[str] = []
-    monkeypatch.setattr(fact_check, "collect_candidates", lambda *a: touched.append("collect") or ())
+    monkeypatch.setattr(fact_check, "collect_candidates", lambda *a, **k: touched.append("collect") or ())
     monkeypatch.setattr(fact_check, "load_backend", lambda name: touched.append("load") or fake_backend)
     monkeypatch.setattr(fact_check.nlp, "load_pipeline", lambda: touched.append("pipeline"))
     caplog.set_level(logging.DEBUG, logger="docsentinel")
@@ -197,13 +197,15 @@ def test_open_gate_checks_every_candidate_and_builds_findings(
     fake_backend: type[FakeBackendBase],
 ):
     """
-    [Unit] DS302 dispatch: verifies the send loop, the finding format and the INFO counts line.
+    [Unit] DS302 dispatch: verifies the send loop, the finding format, the INFO trace and counts lines.
 
     Scenario:
         Given an open gate, three candidates of which one fails with FactCheckError
         When a confirmed deep scan runs
         Then the other two are still checked, only the reportable one is a finding, the confidence is
-        only in value, citations reach nothing, and one INFO counts line is logged.
+        only in value, one INFO trace line names each selected claim and each checked fact (claim text
+        cut to its first words, owner ruling 2026-11-27), the FactCheckError message and citations
+        reach nothing, and one INFO counts line is logged.
 
     Boundaries:
         - Focus: S10, Q2, Q4, M10 and M11
@@ -222,7 +224,7 @@ def test_open_gate_checks_every_candidate_and_builds_findings(
         _candidate("a.md", "Claim two."),
         _candidate("b.md", "Claim three."),
     )
-    monkeypatch.setattr(fact_check, "collect_candidates", lambda *a: candidates)
+    monkeypatch.setattr(fact_check, "collect_candidates", lambda *a, **k: candidates)
     fake_backend.verdicts.update(
         {
             "Claim one.": FactCheckError("fake backend: unrecognised verdict"),
@@ -246,14 +248,25 @@ def test_open_gate_checks_every_candidate_and_builds_findings(
         message="external fact-check: 'Claim two.' rated false by fake - review to confirm",
         severity="warning",
     )
-    assert finding.value == "false (confidence 0.81): Claim two."
+    assert finding.value == "False (confidence 0.81): Claim two."
     assert finding.type == "unverified claim"
     infos = [r for r in _records(caplog, logging.INFO) if r.getMessage().startswith("DS302: sent")]
     assert [r.getMessage() for r in infos] == [
         "DS302: sent 3 claim(s) from 2 document(s) to backend fake; 1 failed, 1 reported, 0 not sent (time budget)"
     ]
+    traces = [r.getMessage() for r in _records(caplog, logging.INFO) if r.getMessage().startswith("DS302: c")]
+    assert traces == [
+        'DS302: claim 1/3 "Claim one." in a.md',
+        'DS302: claim 2/3 "Claim two." in a.md',
+        'DS302: claim 3/3 "Claim three." in b.md',
+    ]
+    facts = [r.getMessage() for r in _records(caplog, logging.INFO) if r.getMessage().startswith("DS302: fact ")]
+    assert facts == [
+        'DS302: fact 2/3 (2) "Claim two." in a.md: verdict False, confidence 0.81, reported',
+        'DS302: fact 3/3 (3) "Claim three." in b.md: verdict Mixed, confidence 0.10, not reported',
+    ]
     text = _all_log_text(caplog)
-    assert "Claim one." not in text
+    assert "unrecognised verdict" not in text
     assert CITATION_MARKER not in text and CITATION_MARKER not in repr(result)
     assert SENTINEL not in text and SENTINEL not in repr(result)
 
@@ -284,7 +297,7 @@ def test_factcheckerror_message_never_reaches_the_log(
     monkeypatch.setattr("docsentinel.engine.deep_ready", lambda: True)
     monkeypatch.setitem(ANALYZERS, "DS301", lambda root, docs: ())
     monkeypatch.setenv(FAKE_KEY_ENV, SENTINEL)
-    monkeypatch.setattr(fact_check, "collect_candidates", lambda *a: (_candidate("a.md", "Claim one."),))
+    monkeypatch.setattr(fact_check, "collect_candidates", lambda *a, **k: (_candidate("a.md", "Claim one."),))
     fake_backend.verdicts.update({"Claim one.": FactCheckError(f"header rejected: Bearer {SENTINEL}")})
     caplog.set_level(logging.DEBUG, logger="docsentinel")
 
@@ -319,7 +332,7 @@ def test_backend_exception_is_contained_without_chain(
         - Whether the RuntimeError is raised inside an except block
     """
     monkeypatch.setenv(FAKE_KEY_ENV, SENTINEL)
-    monkeypatch.setattr(fact_check, "collect_candidates", lambda *a: (_candidate("a.md", "Claim."),))
+    monkeypatch.setattr(fact_check, "collect_candidates", lambda *a, **k: (_candidate("a.md", "Claim."),))
     fake_backend.verdicts["Claim."] = Exception(f"Illegal header value b'Bearer {SENTINEL}'")
     caplog.set_level(logging.DEBUG, logger="docsentinel")
 
@@ -410,7 +423,7 @@ def test_key_vanishing_after_gate_gives_gate_warning(
     caplog.set_level(logging.WARNING, logger="docsentinel")
 
     assert fact_check.detect(tmp_path, (), _deep_config(), use_external_api=True) == ()
-    assert [r.getMessage() for r in _records(caplog, logging.WARNING)] == [f"DS302 skipped: set {FAKE_KEY_ENV}"]
+    assert [r.getMessage() for r in _records(caplog, logging.WARNING)] == [f"DS302 skipped: set {FAKE_KEY_ENV} or FAKE_API_KEY"]
     assert fake_backend.constructed == 0
 
 
@@ -450,12 +463,13 @@ def test_other_tool_key_does_not_open_gate(
     fake_backend: type[FakeBackendBase],
 ):
     """
-    [Unit] DS302 gate: verifies LENZ_API_KEY alone never opens the gate.
+    [Unit] DS302 gate: verifies another backend's standard key (LENZ_API_KEY) never opens this backend's gate.
 
     Scenario:
-        Given only LENZ_API_KEY set and the flag given
+        Given the fake backend chosen, only LENZ_API_KEY set and the flag given
         When detect() runs
-        Then the gate is closed with the per-backend reason and the fake records no call.
+        Then the gate is closed with the per-backend reason naming the fake's two variables
+        (DOCSENTINEL_FACTCHECK_FAKE_API_KEY or FAKE_API_KEY) and the fake records no call.
 
     Boundaries:
         - Focus: threat model M8
@@ -469,7 +483,7 @@ def test_other_tool_key_does_not_open_gate(
     caplog.set_level(logging.WARNING, logger="docsentinel")
 
     assert fact_check.detect(tmp_path, (), _deep_config(), use_external_api=True) == ()
-    assert [r.getMessage() for r in _records(caplog, logging.WARNING)] == [f"DS302 skipped: set {FAKE_KEY_ENV}"]
+    assert [r.getMessage() for r in _records(caplog, logging.WARNING)] == [f"DS302 skipped: set {FAKE_KEY_ENV} or FAKE_API_KEY"]
     assert fake_backend.constructed == 0
 
 
@@ -503,12 +517,16 @@ def test_time_budget_stops_sending(caplog: pytest.LogCaptureFixture, fake_backen
     )
 
     assert fake_backend.calls == ["One."]
-    assert [f.value for f in findings] == ["false (confidence 0.90): One."]
+    assert [f.value for f in findings] == ["False (confidence 0.90): One."]
     assert [r.getMessage() for r in _records(caplog, logging.WARNING)] == [
         "DS302: time budget of 5 s exhausted; 2 of 3 claim(s) not checked"
     ]
     assert [r.getMessage() for r in _records(caplog, logging.INFO)] == [
-        "DS302: sent 1 claim(s) from 1 document(s) to backend fake; 0 failed, 1 reported, 2 not sent (time budget)"
+        'DS302: claim 1/3 "One." in a.md',
+        'DS302: claim 2/3 "Two." in a.md',
+        'DS302: claim 3/3 "Three." in b.md',
+        'DS302: fact 1/3 (1) "One." in a.md: verdict False, confidence 0.90, reported',
+        "DS302: sent 1 claim(s) from 1 document(s) to backend fake; 0 failed, 1 reported, 2 not sent (time budget)",
     ]
 
 
@@ -788,7 +806,7 @@ def test_out_of_vocabulary_verdict_is_skipped_not_mapped(
         - FactCheckResult.__post_init__ verdict check
     """
     _open_gate_scan_setup(tmp_path, monkeypatch)
-    monkeypatch.setattr(fact_check, "collect_candidates", lambda *a: (_candidate("a.md", "Claim."),))
+    monkeypatch.setattr(fact_check, "collect_candidates", lambda *a, **k: (_candidate("a.md", "Claim."),))
     fake_backend.verdicts["Claim."] = (bad_verdict, 0.99)
     caplog.set_level(logging.WARNING, logger="docsentinel")
 
@@ -830,7 +848,7 @@ def test_closed_gate_touches_no_extraction_selection_or_backend(
 
     result = scan(tmp_path, config=_deep_config(), use_external_api=True)
 
-    assert result.pending == (f"DS302 skipped: set {FAKE_KEY_ENV}",)
+    assert result.pending == (f"DS302 skipped: set {FAKE_KEY_ENV} or FAKE_API_KEY",)
     assert touched == []
     assert fake_backend.constructed == 0
     assert fake_backend.calls == []
@@ -884,7 +902,7 @@ def test_open_gate_runs_extraction_through_patched_pipeline_and_selection(
     assert seen == [("pipeline", "# A\n", "a.md"), ("pipeline", "Acme was founded in 1999.\n", "b.md")]
     assert fake_backend.calls == ["Acme was founded in 1999."]
     assert [(f.rule, f.path, f.value) for f in result.findings] == [
-        ("DS302", "b.md", "false (confidence 0.75): Acme was founded in 1999.")
+        ("DS302", "b.md", "False (confidence 0.75): Acme was founded in 1999.")
     ]
     assert fake_backend.closed == 1
     assert result.rules_evaluated == 2
@@ -917,7 +935,7 @@ def test_info_counts_line_has_integer_args_and_no_path_or_claim(
     monkeypatch.setattr(
         fact_check,
         "collect_candidates",
-        lambda *a: (_candidate(path, "First claim text."), _candidate(path, "Second claim text.")),
+        lambda *a, **k: (_candidate(path, "First claim text."), _candidate(path, "Second claim text.")),
     )
     fake_backend.verdicts.update({"First claim text.": "false", "Second claim text.": Exception("boom")})
     caplog.set_level(logging.DEBUG, logger="docsentinel")
@@ -962,7 +980,7 @@ def test_citations_reach_no_finding_log_or_report(
         - _finding in detectors/fact_check.py and the template contexts
     """
     _open_gate_scan_setup(tmp_path, monkeypatch)
-    monkeypatch.setattr(fact_check, "collect_candidates", lambda *a: (_candidate("a.md", "Claim."),))
+    monkeypatch.setattr(fact_check, "collect_candidates", lambda *a, **k: (_candidate("a.md", "Claim."),))
     fake_backend.verdicts["Claim."] = "false"
     caplog.set_level(logging.DEBUG, logger="docsentinel")
 

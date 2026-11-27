@@ -22,16 +22,18 @@ from docsentinel import cli
 from docsentinel.engine import scan
 from docsentinel.reporting import render
 from tests.asset_helpers import AssetCase
+from tests.log_helpers import TIMESTAMP_PATTERN, without_timestamps
 
-#: The engine's stage lines, logged inside ``scan()`` between the CLI's start and report lines.
-_DISCOVERED = re.compile(r"^docsentinel: discovered \d+ documents under .+ \(\d+ skipped: symlinks/excluded, \d+ unreadable\)$")
+#: The engine's stage lines, logged inside ``scan()`` between the CLI's start and report lines. Every
+#: stderr line is ``[timestamp][LEVEL]: message``; the tests compare it after ``without_timestamps``.
+_DISCOVERED = re.compile(r"^\[INFO\]: discovered \d+ documents under .+ \(\d+ skipped: symlinks/excluded, \d+ unreadable\)$")
 _SELECTION = (
-    "docsentinel: selection: include 2 pattern(s) (configured), exclude 3 pattern(s) (3 configured, 0 invoker)"
+    "[INFO]: selection: include 2 pattern(s) (configured), exclude 3 pattern(s) (3 configured, 0 invoker)"
 )
-_RULE_PLAN = re.compile(r"^docsentinel: profile=fast: \d+ rules selected, \d+ evaluated; opt-in off: .+$")
+_RULE_PLAN = re.compile(r"^\[INFO\]: profile=fast: \d+ rules selected, \d+ evaluated; opt-in off: .+$")
 
 _FINISHED = re.compile(
-    r"^docsentinel: scan finished in \d+\.\d\ds: (\d+) documents, 1 findings \(errors 1, warnings 0\); "
+    r"^\[INFO\]: scan finished in \d+\.\d\ds: (\d+) documents, 1 findings \(errors 1, warnings 0\); "
     r"by rule DS101=1; blocking 1; exit code 1$"
 )
 
@@ -69,16 +71,17 @@ def test_scan_output_logs_start_report_written_and_finish(
     captured = capsys.readouterr()
 
     assert code == 1 and captured.out == ""
-    lines = captured.err.splitlines()
-    assert lines[0] == f"docsentinel: scan started: root={root}, profile=fast, format=text, output={target}, reference_scope=links"
-    assert lines[1] == "docsentinel: config: user settings off, project none"
+    assert all(re.match(TIMESTAMP_PATTERN + r"\[(?:INFO|DEBUG|WARNING)\]: ", line) for line in captured.err.splitlines())
+    lines = without_timestamps(captured.err).splitlines()
+    assert lines[0] == f"[INFO]: scan started: root={root}, profile=fast, format=text, output={target}, reference_scope=links"
+    assert lines[1] == "[INFO]: config: user settings off, project none"
     assert lines[2] == _SELECTION
     assert _DISCOVERED.match(lines[3]), lines[3]
     assert _RULE_PLAN.match(lines[4]), lines[4]
     report_lines = len(target.read_text(encoding="utf-8").splitlines())
-    assert lines[5] == f"docsentinel: report written to {target} (text, {report_lines} lines)"
+    assert lines[5] == f"[INFO]: report written to {target} (text, {report_lines} lines)"
     assert _FINISHED.match(lines[6]), lines[6]
-    assert lines[7].startswith(f"docsentinel: details in log file: {_log_dir()}{os.sep}docsentinel-")
+    assert lines[7].startswith(f"[INFO]: details in log file: {_log_dir()}{os.sep}docsentinel-")
     assert len(lines) == 8
 
 
@@ -110,13 +113,13 @@ def test_json_stdout_is_byte_identical_whatever_the_verbosity(
         assert cli.main(["scan", str(root), "--format", "json", *flags]) == 1
         captured = capsys.readouterr()
         outputs.append(captured.out)
-        errors.append(captured.err)
+        errors.append(without_timestamps(captured.err))
 
     assert outputs == [expected] * 3
     json.loads(outputs[0])
     assert errors[0] == ""
-    assert "docsentinel: scan started:" in errors[1] and "docsentinel: command: scan" not in errors[1]
-    assert "docsentinel: command: scan" in errors[2]
+    assert "[INFO]: scan started:" in errors[1] and "[DEBUG]: command: scan" not in errors[1]
+    assert "[DEBUG]: command: scan" in errors[2]
 
 
 @pytest.mark.parametrize(
@@ -149,7 +152,7 @@ def test_verbosity_flags_work_before_and_after_the_subcommand(
 
     assert code == 0
     if "-v" in argv:
-        assert "docsentinel: command: scan" in err
+        assert "[DEBUG]: command: scan\n" in without_timestamps(err)
     else:
         assert err == ""
 
@@ -175,15 +178,15 @@ def test_config_error_is_logged_once_at_warning_in_the_file_only(tmp_path: Path,
     (tmp_path / "docsentinel.toml").write_text("no_such_option = 1\n", encoding="utf-8")
 
     code = cli.main(["scan", str(tmp_path)])
-    lines = capsys.readouterr().err.splitlines()
+    lines = without_timestamps(capsys.readouterr().err).splitlines()
 
     assert code == 2
     assert lines[0].startswith("Scan failed: ")
-    assert len(lines) == 2 and lines[1].startswith("docsentinel: details in log file: ")
+    assert len(lines) == 2 and lines[1].startswith("[INFO]: details in log file: ")
     (log_file,) = _log_dir().glob("docsentinel-*.log")
     text = log_file.read_text(encoding="utf-8")
-    assert text.count("WARNING docsentinel.cli: scan failed: ") == 1
-    assert " ERROR " not in text
+    assert len(re.findall(r"^\[WARNING\]: scan failed: ", without_timestamps(text), re.MULTILINE)) == 1
+    assert "[ERROR]: " not in text
 
 
 def test_unwritable_log_directory_keeps_exit_code_and_stdout(
@@ -217,8 +220,8 @@ def test_unwritable_log_directory_keeps_exit_code_and_stdout(
     captured = capsys.readouterr()
 
     assert code == 1 and captured.out == expected
-    lines = captured.err.splitlines()
-    assert lines[0].startswith("docsentinel: WARNING: log file disabled, logging to stderr only: ")
+    lines = without_timestamps(captured.err).splitlines()
+    assert lines[0].startswith("[WARNING]: log file disabled, logging to stderr only: ")
     assert not any("details in log file" in line for line in lines)
 
 
@@ -249,14 +252,14 @@ def test_baseline_logs_start_and_finish(
     captured = capsys.readouterr()
 
     assert captured.out == f"Saved baseline: {output}\n"
-    lines = captured.err.splitlines()
-    assert lines[0] == f"docsentinel: baseline started: root={root}, profile=fast, output={output}, reference_scope=links"
-    assert lines[1] == "docsentinel: config: user settings off, project none"
+    lines = without_timestamps(captured.err).splitlines()
+    assert lines[0] == f"[INFO]: baseline started: root={root}, profile=fast, output={output}, reference_scope=links"
+    assert lines[1] == "[INFO]: config: user settings off, project none"
     assert lines[2] == _SELECTION
     assert _DISCOVERED.match(lines[3]), lines[3]
     assert _RULE_PLAN.match(lines[4]), lines[4]
     assert re.match(
-        r"^docsentinel: baseline finished in \d+\.\d\ds: \d+ documents, 1 findings recorded "
+        r"^\[INFO\]: baseline finished in \d+\.\d\ds: \d+ documents, 1 findings recorded "
         r"\(errors 1, warnings 0\); by rule DS101=1; written to .+; exit code 0$",
         lines[5],
     )
@@ -341,13 +344,12 @@ def test_non_utf8_document_is_reported_as_ds100_and_blocks(
     captured = capsys.readouterr()
 
     assert code == 1
-    assert [line for line in captured.err.splitlines() if line.startswith("docsentinel: WARNING")] == [
-        "docsentinel: WARNING: skipped b.md: not valid UTF-8"
-    ]
+    err_lines = without_timestamps(captured.err).splitlines()
+    assert [line for line in err_lines if line.startswith("[WARNING]")] == ["[WARNING]: skipped b.md: not valid UTF-8"]
     assert "Scan failed" not in captured.err and "ERROR" not in captured.err
     assert any(
-        line.startswith("docsentinel: discovered 2 documents under ") and line.endswith(", 1 unreadable)")
-        for line in captured.err.splitlines()
+        line.startswith("[INFO]: discovered 2 documents under ") and line.endswith(", 1 unreadable)")
+        for line in err_lines
     )
     payload = json.loads(captured.out)
     assert payload["summary"]["documents"] == 2
@@ -382,7 +384,7 @@ def test_ignoring_ds100_restores_skip_with_warning_only(tmp_path: Path, capsys: 
     captured = capsys.readouterr()
 
     assert code == 0
-    assert "docsentinel: WARNING: skipped b.md: not valid UTF-8" in captured.err.splitlines()
+    assert "[WARNING]: skipped b.md: not valid UTF-8" in without_timestamps(captured.err).splitlines()
     assert "DS100" not in captured.out
 
 
@@ -473,8 +475,8 @@ def test_baseline_records_ds100_for_non_utf8_document(tmp_path: Path, capsys: py
     err = capsys.readouterr().err
 
     assert code == 0
-    assert [line for line in err.splitlines() if line.startswith("docsentinel: WARNING")] == [
-        "docsentinel: WARNING: skipped b.md: not valid UTF-8"
+    assert [line for line in without_timestamps(err).splitlines() if line.startswith("[WARNING]")] == [
+        "[WARNING]: skipped b.md: not valid UTF-8"
     ]
     fingerprints = sorted(json.loads(output.read_text(encoding="utf-8"))["fingerprints"])
     assert [entry.split(":", 2)[:2] for entry in fingerprints] == [["DS100", "b.md"], ["DS101", "a.md"]]

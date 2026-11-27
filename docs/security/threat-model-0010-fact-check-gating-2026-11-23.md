@@ -686,3 +686,21 @@ Story 01.0 change (or a later change touching `DS302`) is a **BLOCK** and must b
 
 ADR 0007 may move to Accepted on this verdict once the owner signs off and A3, A5 and A6 are folded
 into its Contracts 3, 4 and the S10 text.
+
+## Addendum 2026-11-27: owner rulings after the first live run
+
+The findings above are kept as written. These owner rulings change what they describe.
+
+- **FC-8 and M8 (owner ruling of 2026-11-26).** The "never read the other tool's key" position is
+  reversed. `detectors/fact_check.py::_read_api_key` reads `DOCSENTINEL_FACTCHECK_<NAME>_API_KEY` and,
+  when that is unset or empty, the vendor's standard variable `<NAME>_API_KEY` (`LENZ_API_KEY` for `lenz`).
+  The gate reason now reads `set DOCSENTINEL_FACTCHECK_LENZ_API_KEY or LENZ_API_KEY`. The M8 test
+  (`tests/unit/test_fact_check_env_reads.py`) was adjusted with the code. **Residual risk:** a key exported for
+  another Lenz tool now opens the key half of gate 2 without a separate step. The consent half
+  (`--use-external-api` or `DOCSENTINEL_USE_EXTERNAL_API=1`) is unchanged, so no text is sent without it, and
+  the key is still never a configuration key and never logged. FC-14's "nothing reads `LENZ_API_KEY`" no longer holds.
+- **M10 and the "claim text is never logged" convention (owner ruling of 2026-11-27).** At INFO, `DS302`
+  logs the first ten words of each selected claim and of each checked fact (`log.quote_start`, through
+  `safe()`), so document content now reaches stderr and the log file. This is an explicit owner exception. Counts-only
+  M10 line is unchanged. Reviewers should treat a CI log of a deep scan with the gate open as containing sentence
+  fragments of the scanned documents.

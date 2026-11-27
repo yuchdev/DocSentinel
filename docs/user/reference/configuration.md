@@ -1308,7 +1308,9 @@ third-party heuristic output, not ground truth.** Treat a finding as a prompt to
 1. the invoker passes `--use-external-api` (on `scan` and `baseline`), or sets
    `DOCSENTINEL_USE_EXTERNAL_API=1` (exactly `1`), or calls `scan(..., use_external_api=True)`;
 2. the backend's API-key variable is set and not empty: `DOCSENTINEL_FACTCHECK_<BACKEND>_API_KEY`, for
-   the `lenz` backend `DOCSENTINEL_FACTCHECK_LENZ_API_KEY`;
+   the `lenz` backend `DOCSENTINEL_FACTCHECK_LENZ_API_KEY`. When that is unset or empty, the vendor's
+   standard variable (the same name without the `DOCSENTINEL_FACTCHECK_` prefix, `LENZ_API_KEY` for `lenz`)
+   is used, so a key exported for another Lenz tool can open this half of the gate;
 3. the backend loads.
 
 While the gate is closed the scan logs one WARNING (`DS302 skipped: ...` with what is missing), adds the
@@ -1327,8 +1329,11 @@ whole CI job.
 rules on redirects and proxies are fixed in the backend and are not configurable.
 
 **What a finding says.** Its `type` is `unverified claim` and its `value` is
-`<verdict> (confidence 0.87): <claim>`, so the backend confidence is visible. A verdict the backend
-returns that DocSentinel does not recognise is skipped with a WARNING and never reported.
+`<verdict> (confidence 0.87): <claim>`, so the backend confidence is visible. Every verdict is kept and
+printed in the `INFO` trace; only `false` and `mixed` at or above `fact_check_min_confidence` are
+reported. A label DocSentinel does not recognise is rated `unverifiable` (printed, never a finding), and the
+words `high`, `medium` and `low` count as confidence 0.9, 0.6 and 0.3. When the backend splits a combined fact,
+the most severe verdict wins. The trace quotes the first ten words of each claim in stderr and the log file.
 
 The six keys below are allowed in the user settings file as well as the project file.
 

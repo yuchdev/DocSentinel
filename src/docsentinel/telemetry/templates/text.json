@@ -315,6 +315,41 @@
       ]
     },
     {
+      "type": "loop",
+      "over": "fact_checks",
+      "as": "fc",
+      "placement": "block",
+      "body": [
+        {
+          "type": "line",
+          "text": "Fact check: {fc.verdict} (confidence {fc.confidence}) [{fc.path|neutralize}]: {fc.fact|neutralize}",
+          "variables_used": [
+            "fc.verdict",
+            "fc.confidence",
+            "fc.path",
+            "fc.fact"
+          ]
+        },
+        {
+          "type": "loop",
+          "over": "fc.claims",
+          "as": "c",
+          "placement": "block",
+          "body": [
+            {
+              "type": "line",
+              "text": "  {c.verdict} (confidence {c.confidence}): {c.claim|neutralize}",
+              "variables_used": [
+                "c.verdict",
+                "c.confidence",
+                "c.claim"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "type": "line",
       "when": {
         "var": "blocking_count",

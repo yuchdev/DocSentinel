@@ -3,14 +3,17 @@
 Loads ``tests/assets/ds302/per_claim_network_error_skipped/`` (three one-sentence documents, each
 yielding one claim) and runs a confirmed, gate-open deep scan selecting ``DS302``. The case's
 ``verdicts.json`` rates two claims ``false`` and lists the ``alpha.md`` claim under ``fail_on``.
-Covers the scripted ``FactCheckError`` skip, an unrecognised verdict raised as a ``FactCheckError``
-(owner ruling Q4), the time budget with a patched clock (owner ruling Q3, no real sleep) and one
+Covers the scripted ``FactCheckError`` skip, a backend raising ``FactCheckError`` for an answer it
+cannot map (the Lenz client itself rates any unlisted label ``unverifiable`` since the owner ruling of
+2026-11-27, which replaces ruling Q4), the time budget with a patched clock (owner ruling Q3, no real sleep) and one
 network failure through the real ``LenzFactCheckClient`` over an ``httpx.MockTransport`` (plan
 contract C8).
 
 The task names this file ``tests/mock/test_fact_check_per_claim_error_skipped.py``; it lives under
 ``tests/integration/`` with the ``_ds302`` suffix because it loads assets (CLAUDE.md test layout).
-No network is reached: the session guard refuses a real transport, the Lenz client only ever sees a
+Claim text reaches the log only in the DS302 and Lenz trace lines of the owner ruling of 2026-11-27
+(each claim's first ten words; every case claim is shorter, so it is quoted whole); the tests pin
+those lines exactly. No network is reached: the session guard refuses a real transport, the Lenz client only ever sees a
 ``MockTransport`` and the key is the threat model 0010 M12 sentinel. Skipped when
 ``mining.nlp.deep_ready()`` is false.
 """
@@ -64,6 +67,36 @@ def _warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
     return [r.getMessage() for r in caplog.records if r.name.startswith("docsentinel") and r.levelno == logging.WARNING]
 
 
+def _claim_records(caplog: pytest.LogCaptureFixture) -> list[str]:
+    """Return every captured message that contains a case claim, in order.
+
+    :param caplog: Pytest log capture.
+    :returns: The messages.
+    """
+    return [r.getMessage() for r in caplog.records if any(claim in r.getMessage() for claim in SEND_ORDER)]
+
+
+#: The DS302 trace line of each selected claim, in send order (owner ruling 2026-11-27).
+CLAIM_TRACE = [
+    f'DS302: claim 1/3 "{SEND_ORDER[0]}" in gamma.md',
+    f'DS302: claim 2/3 "{SEND_ORDER[1]}" in alpha.md',
+    f'DS302: claim 3/3 "{SEND_ORDER[2]}" in beta.md',
+]
+
+
+def _fact_trace(number: int, path: str) -> str:
+    """Return the DS302 trace line of a checked fact rated false at 0.87 and reported.
+
+    :param number: The 1-based position of the fact in send order.
+    :param path: The document of the fact.
+    :returns: The expected message.
+    """
+    return (
+        f'DS302: fact {number}/3 ({number}) "{SEND_ORDER[number - 1]}" in {path}: '
+        "verdict False, confidence 0.87, reported"
+    )
+
+
 def _log_text(caplog: pytest.LogCaptureFixture) -> str:
     """Return every captured record, formatted, joined.
 
@@ -83,11 +116,11 @@ def test_one_failing_claim_is_skipped_and_the_others_are_still_checked(
         Given the per_claim_network_error_skipped corpus and a fake that raises FactCheckError for the alpha.md claim
         When the gate-open scan runs
         Then all three claims were sent in order, the two others give findings, exactly one WARNING names
-            alpha.md and the exception type only, the INFO counts line reports one failure, and no record
-            contains any claim text
+            alpha.md and the exception type only, the INFO counts line reports one failure, and claim text
+            appears only in the exact DS302 claim and fact trace lines
 
     Boundaries:
-        - Focus: Task 02 step 5; plan contract C8; threat model M5 (no claim text in logs)
+        - Focus: Task 02 step 5; plan contract C8; threat model M5 as amended by the owner ruling of 2026-11-27
         - Fixtures/params: asset ds302/per_claim_network_error_skipped with its verdicts.json
         - Scope: engine.scan and _check_candidates
 
@@ -103,15 +136,15 @@ def test_one_failing_claim_is_skipped_and_the_others_are_still_checked(
 
     assert backend.calls == SEND_ORDER
     assert [(f.path, f.value) for f in result.findings] == [
-        ("beta.md", f"false (confidence 0.87): {SEND_ORDER[2]}"),
-        ("gamma.md", f"false (confidence 0.87): {SEND_ORDER[0]}"),
+        ("beta.md", f"False (confidence 0.87): {SEND_ORDER[2]}"),
+        ("gamma.md", f"False (confidence 0.87): {SEND_ORDER[0]}"),
     ]
     assert _warnings(caplog) == ["DS302: fact-check failed for a claim in alpha.md (FactCheckError)"]
     assert (
         "DS302: sent 3 claim(s) from 3 document(s) to backend fake; 1 failed, 2 reported, 0 not sent (time budget)"
         in _log_text(caplog)
     )
-    assert not any(claim in _log_text(caplog) for claim in SEND_ORDER)
+    assert _claim_records(caplog) == [*CLAIM_TRACE, _fact_trace(1, "gamma.md"), _fact_trace(3, "beta.md")]
     assert (backend.constructed, backend.closed) == (1, 1)
 
 
@@ -166,7 +199,7 @@ def test_unrecognised_verdict_is_a_skip_never_a_mixed_finding(
     asset_case: Callable[[str, str], AssetCase], monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ):
     """
-    [Integration] DS302 unknown verdict: verifies a backend's unrecognised-verdict error skips that claim only.
+    [Integration] DS302 backend error: verifies a backend's unrecognised-verdict error skips that claim only.
 
     Scenario:
         Given the per_claim corpus with no fail_on and a fake that raises FactCheckError("... unrecognised
@@ -176,7 +209,8 @@ def test_unrecognised_verdict_is_a_skip_never_a_mixed_finding(
             findings and one WARNING names gamma.md
 
     Boundaries:
-        - Focus: owner ruling Q4 end to end
+        - Focus: a backend-raised FactCheckError end to end (the Lenz client no longer raises for an
+          unlisted label; owner ruling 2026-11-27)
         - Fixtures/params: asset ds302/per_claim_network_error_skipped; verdicts overridden in the test
         - Scope: engine.scan and _check_candidates
 
@@ -212,7 +246,8 @@ def test_time_budget_stops_after_the_first_claim(
         When the gate-open scan runs
         Then exactly the first claim is in calls, the one budget WARNING is
             "DS302: time budget of 1 s exhausted; 2 of 3 claim(s) not checked" with no path or claim text,
-            the first claim's finding is kept and the client is still closed
+            the first claim's finding is kept, the client is still closed, and claim text appears only in
+            the three claim trace lines and the first fact's trace line
 
     Boundaries:
         - Focus: owner ruling Q3 end to end; no real sleep
@@ -241,9 +276,9 @@ def test_time_budget_stops_after_the_first_claim(
 
     assert backend.calls == SEND_ORDER[:1]
     assert _warnings(caplog) == ["DS302: time budget of 1 s exhausted; 2 of 3 claim(s) not checked"]
-    assert [(f.path, f.value) for f in result.findings] == [("gamma.md", f"false (confidence 0.87): {SEND_ORDER[0]}")]
+    assert [(f.path, f.value) for f in result.findings] == [("gamma.md", f"False (confidence 0.87): {SEND_ORDER[0]}")]
     assert (backend.constructed, backend.closed) == (1, 1)
-    assert not any(claim in _log_text(caplog) for claim in SEND_ORDER)
+    assert _claim_records(caplog) == [*CLAIM_TRACE, _fact_trace(1, "gamma.md")]
 
 
 def test_real_lenz_client_network_failure_skips_one_claim(
@@ -260,7 +295,8 @@ def test_real_lenz_client_network_failure_skips_one_claim(
             httpx.MockTransport answering "False" at 0.87, but raising httpx.ConnectError for the alpha.md claim
         When the gate-open scan runs
         Then three requests reached the mock transport with exactly the three claims, two false findings are
-            reported, one WARNING names alpha.md, and neither the key nor a claim text is logged
+            reported, one WARNING names alpha.md, the key is never logged, and claim text appears only in
+            the exact DS302 trace lines and one Lenz verdict line per answered claim
 
     Boundaries:
         - Focus: plan contract C8 through the real client's error mapping; never a real socket
@@ -308,11 +344,17 @@ def test_real_lenz_client_network_failure_skips_one_claim(
 
     assert sent == SEND_ORDER
     assert [(f.path, f.value) for f in result.findings] == [
-        ("beta.md", f"false (confidence 0.87): {SEND_ORDER[2]}"),
-        ("gamma.md", f"false (confidence 0.87): {SEND_ORDER[0]}"),
+        ("beta.md", f"False (confidence 0.87): {SEND_ORDER[2]}"),
+        ("gamma.md", f"False (confidence 0.87): {SEND_ORDER[0]}"),
     ]
     assert all(f.message.endswith("rated false by fake - review to confirm") for f in result.findings)
     assert _warnings(caplog) == ["DS302: fact-check failed for a claim in alpha.md (FactCheckError)"]
     text = _log_text(caplog)
     assert SENTINEL not in text
-    assert not any(claim in text for claim in SEND_ORDER)
+    assert _claim_records(caplog) == [
+        *CLAIM_TRACE,
+        f'lenz /assess: claim 1/1 "{SEND_ORDER[0]}": verdict False (false), confidence 0.87',
+        _fact_trace(1, "gamma.md"),
+        f'lenz /assess: claim 1/1 "{SEND_ORDER[2]}": verdict False (false), confidence 0.87',
+        _fact_trace(3, "beta.md"),
+    ]

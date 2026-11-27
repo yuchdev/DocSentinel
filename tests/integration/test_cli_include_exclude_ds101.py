@@ -18,7 +18,7 @@ from docsentinel import cli, engine, scan
 from docsentinel.baseline import fingerprint, load_baseline
 from docsentinel.discovery import InvokerSelection
 from tests.asset_helpers import AssetCase
-from tests.log_helpers import problem_output
+from tests.log_helpers import problem_output, without_timestamps
 
 
 def _report(capsys: pytest.CaptureFixture[str]) -> dict:
@@ -223,11 +223,11 @@ def test_zero_hit_include_warning_precedes_empty_selection_error(
     root = asset_case("ds101", "selection_included_directory").root
 
     code = cli.main(["scan", str(root), "--include", "nothing/*.md"])
-    lines = problem_output(capsys.readouterr().err).splitlines()
+    lines = without_timestamps(problem_output(capsys.readouterr().err)).splitlines()
 
     assert code == 2
     assert lines[:2] == [
-        "docsentinel: WARNING: include pattern nothing/*.md matched no document",
+        "[WARNING]: include pattern nothing/*.md matched no document",
         "Scan failed: the selection admitted no document; values are relative to the scan root",
     ]
 
@@ -290,8 +290,8 @@ def test_cli_single_file_target_ignores_selectors_with_warning(
 
     assert code == 1
     assert _ds101_paths(json.loads(captured.out)) == ["README.md"]
-    assert problem_output(captured.err) == (
-        "docsentinel: WARNING: --include/--exclude ignored for a single-file scan target\n"
+    assert without_timestamps(problem_output(captured.err)) == (
+        "[WARNING]: --include/--exclude ignored for a single-file scan target\n"
     )
 
 
@@ -619,13 +619,13 @@ def test_cli_warning_echo_bounded(asset_case: Callable[[str, str], AssetCase], c
     exclude = "docs/::error file=a::pwn/" + "/".join(f"s{index:02d}" + "a" * 40 for index in range(12))
 
     code = cli.main(["scan", str(root), "--include", "docs", "--include", glob, "--exclude", exclude])
-    lines = capsys.readouterr().err.splitlines()
+    lines = without_timestamps(capsys.readouterr().err).splitlines()
 
     assert code == 1
-    warnings = [line for line in lines if line.startswith("docsentinel: WARNING: ")]
+    warnings = [line for line in lines if line.startswith("[WARNING]: ")]
     assert warnings == [
-        f"docsentinel: WARNING: exclude pattern {exclude[:200]}... names nothing under the scan root",
-        f"docsentinel: WARNING: include pattern {glob[:200]}... matched no document",
+        f"[WARNING]: exclude pattern {exclude[:200]}... names nothing under the scan root",
+        f"[WARNING]: include pattern {glob[:200]}... matched no document",
     ]
     assert not any(line.startswith("::") for line in lines)
 
@@ -658,8 +658,8 @@ def test_selection_info_line_has_counts_only(
     err = capsys.readouterr().err
 
     assert code == 0
-    assert [line for line in err.splitlines() if line.startswith("docsentinel: selection:")] == [
-        "docsentinel: selection: include 1 pattern(s) (invoker), exclude 5 pattern(s) (3 configured, 2 invoker)"
+    assert [line for line in without_timestamps(err).splitlines() if line.startswith("[INFO]: selection:")] == [
+        "[INFO]: selection: include 1 pattern(s) (invoker), exclude 5 pattern(s) (3 configured, 2 invoker)"
     ]
     assert "secret-name-xyz" not in err
 

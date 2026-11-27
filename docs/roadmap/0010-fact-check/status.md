@@ -477,3 +477,22 @@ wherever DS302 is described); DS302 rows in `rules.md`, `fault-classes.md`, `fin
   already-resolved statements, and the `MAX_STATEMENT_SENTENCES` joining its Goal cites no longer
   exists. The owner should re-evaluate the story's scope and need (decisions O5-O10 are unchanged
   and still open).
+
+### Owner rulings after the first live run (2026-11-26 / 2026-11-27)
+
+- 2026-11-26: **Key fallback (K).** `DS302` reads `DOCSENTINEL_FACTCHECK_<NAME>_API_KEY` and, when
+  it is unset or empty, `<NAME>_API_KEY` (`LENZ_API_KEY` for `lenz`), in
+  `detectors/fact_check.py::_read_api_key`. This reverses the earlier position (threat model 0010
+  M8 and FC-8 and FC-14: the other tool's key is never read). Residual risk: a key exported for
+  another Lenz tool can open the key half of the gate; the `--use-external-api` half is unchanged.
+- 2026-11-26: **Log format (O).** stderr and the per-run log file use
+  `[{timestamp}][{severity}]: {message}` (`log.LOG_FORMAT`).
+- 2026-11-27: **Lenz response parsing (R) replaces ruling Q4** (ADR 0007 Contract 8, plan C10,
+  Story 03.0 decision U7). Every verdict is kept and printed; labels map through `VERDICT_LABELS`
+  and any other label is `unverifiable` (never a finding); confidence words map to 0.9/0.6/0.3;
+  every item of `claims` is read and the most severe verdict wins. The real API returned words and
+  labels such as `Mostly True`, which the old client rejected.
+- 2026-11-27: **Tracing (O).** At INFO, `DS302` and the lenz client log the first ten words of each
+  claim and its verdict: an explicit owner exception to "document content is never logged"
+  (`log.quote_start`).
+- Docs synced 2026-11-27. The version bump and the `RELEASE_NOTES.json` entry remain the owner's.
