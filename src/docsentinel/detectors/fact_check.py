@@ -842,7 +842,12 @@ def load_facts_file(source: Union[Path, str]) -> tuple[CandidateClaim, ...]:
         payload = json.loads(raw.decode("utf-8", "strict"), object_pairs_hook=_unique_json_object)
     except (ValueError, RecursionError):
         raise ConfigError(f"facts file {shown}: not valid UTF-8 JSON") from None
-    if not isinstance(payload, dict) or (payload.get("schema"), payload.get("schema_version")) != FACTS_FILE_SCHEMA:
+    # ``type(...) is int``: JSON ``true`` and ``1.0`` compare equal to ``1`` but are not version 1.
+    if (
+        not isinstance(payload, dict)
+        or type(payload.get("schema_version")) is not int
+        or (payload.get("schema"), payload.get("schema_version")) != FACTS_FILE_SCHEMA
+    ):
         raise ConfigError(
             f"facts file {shown}: not a facts-json file (schema {FACTS_FILE_SCHEMA[0]} {FACTS_FILE_SCHEMA[1]}); "
             "create one with docsentinel extract-facts --format facts-json"

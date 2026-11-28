@@ -1,6 +1,6 @@
 """Milestone-wide regression check: the Lenz example key never leaves its file (Story 04.0 Task 02 steps 7 and 8).
 
-``examples/docs/lenz_fact-checking.md`` embeds an API key under its ``## API key`` heading. This
+``docs/specs/external-apis/lenz-fact-checking.md`` embeds an API key under its ``## API key`` heading. This
 module reads that key at test time, keeps it only in memory and fails when the key or a 12-character
 prefix of it occurs in any other repository file (plan exit gate 8, threat model 0010 M12). It also
 pins where the backend host name may appear under ``src/`` and ``tests/``, proves the session-wide
@@ -29,7 +29,7 @@ from tests.conftest import NETWORK_GUARD_MESSAGE
 REPO = Path(__file__).resolve().parents[2]
 
 #: The one file allowed to hold the example key.
-EXAMPLE = REPO / "examples" / "docs" / "lenz_fact-checking.md"
+EXAMPLE = REPO / "docs" / "specs" / "external-apis" / "lenz-fact-checking.md"
 
 #: Top-level directories that are not repository content.
 SKIPPED_TOP_LEVEL = frozenset({".git", ".venv", "dist", "build", "reports", ".idea"})
@@ -59,7 +59,7 @@ def _example_key() -> str:
     :returns: The key.
     """
     if not EXAMPLE.is_file():
-        pytest.skip("examples/docs/lenz_fact-checking.md is absent; there is no key to guard")
+        pytest.skip("docs/specs/external-apis/lenz-fact-checking.md is absent; there is no key to guard")
     text = EXAMPLE.read_text(encoding="utf-8")
     match = re.search(r"^## API key\s*\n+```[^\n]*\n([^\n`]+)\n```", text, re.MULTILINE)
     if match is None or not KEY_SHAPE.match(match.group(1).strip()):
@@ -171,7 +171,7 @@ def test_walk_reaches_src_tests_docs_and_this_file():
         "tests/fact_check_fakes.py",
         "CLAUDE.md",
     } <= files
-    assert "examples/docs/lenz_fact-checking.md" not in files
+    assert "docs/specs/external-apis/lenz-fact-checking.md" not in files
     assert not any(name.startswith(".git/") for name in files)
 
 

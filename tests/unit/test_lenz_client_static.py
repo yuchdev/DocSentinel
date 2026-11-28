@@ -3,7 +3,7 @@
 These tests read source files and lock files as text and parse them with ``ast`` or ``tomllib``;
 none sends a request. The signature check imports the client module through the ``lenz_module``
 fixture, which removes it and its registry entry afterwards. A hygiene check also proves that no
-file under ``tests/`` carries the API key embedded in ``examples/docs/lenz_fact-checking.md`` (the
+file under ``tests/`` carries the API key embedded in ``docs/specs/external-apis/lenz-fact-checking.md`` (the
 key is read from that file at test time, never written here).
 """
 
@@ -408,7 +408,7 @@ def _example_key() -> str:
 
     :return: The key (the first fenced block under the ``## API key`` heading).
     """
-    text = (_REPO / "examples" / "docs" / "lenz_fact-checking.md").read_text(encoding="utf-8")
+    text = (_REPO / "docs" / "specs" / "external-apis" / "lenz-fact-checking.md").read_text(encoding="utf-8")
     match = re.search(r"^## API key\s*\n+```[^\n]*\n([^\n`]+)\n```", text, re.MULTILINE)
     assert match is not None, "the example document no longer has an API key block"
     return match.group(1).strip()
@@ -419,7 +419,7 @@ def test_no_test_file_contains_the_example_key():
     [Unit] lenz hygiene: verifies no file under tests/ contains the example document's key or a prefix of it.
 
     Scenario:
-        Given the key embedded in examples/docs/lenz_fact-checking.md, read at test time
+        Given the key embedded in docs/specs/external-apis/lenz-fact-checking.md, read at test time
         When every file under tests/ is searched as bytes
         Then neither the key nor any prefix of 12 or more of its characters occurs.
 

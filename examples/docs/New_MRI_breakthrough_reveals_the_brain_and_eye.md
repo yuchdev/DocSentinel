@@ -2,19 +2,17 @@
 
 ## A breakthrough MRI antenna could make scans faster, sharper, and far more effective at revealing parts of the body that have long been difficult to image.
 
-Date: July 10, 2026
+**Date:** July 10, 2026
 
-Source: Max Delbrück Center for Molecular Medicine in the Helmholtz Association
+**Source:** Max Delbrück Center for Molecular Medicine in the Helmholtz Association
 
-Summary: Scientists have redesigned a key piece of MRI hardware using
+**Summary:** Scientists have redesigned a key piece of MRI hardware using
 metamaterials, allowing existing scanners to produce clearer images of
 difficult-to-see parts of the body in less time. The breakthrough
 could improve diagnoses, make scans more comfortable, and open the
 door to new medical imaging and treatment applications.
 
-Share:
-
-Magnetic resonance imaging (MRI) is one of the most valuable tools
+**Share:** Magnetic resonance imaging (MRI) is one of the most valuable tools
 doctors use to diagnose disease. Yet even with today's advanced
 scanners, producing clear images of some areas remains difficult. Deep
 brain structures and the delicate tissues of the eye and surrounding

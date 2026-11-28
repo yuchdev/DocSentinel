@@ -23,6 +23,7 @@ from docsentinel.config import (
     load_config_with_sources,
     parse_fact_combination,
     user_settings_path,
+    validate_fact_check_option,
 )
 from docsentinel.detectors.fact_check import ExternalApiGate, resolve_external_api_gate
 from docsentinel.detectors.loader import ensure_standard_loaded
@@ -1366,12 +1367,21 @@ _FACT_CONFIG_OPTIONS: tuple[tuple[str, str], ...] = (
 def _fact_config_changes(args: argparse.Namespace) -> dict[str, object]:
     """Return the ``fact_check_*`` configuration values the invoker replaced for this run.
 
+    Each value is validated like the same key in a configuration file, so an out-of-range
+    value is a ``ConfigError`` (exit ``2``) in every profile, also when ``DS302`` does not run.
+    With ``--include-facts`` the options are ignored, so they are not validated either.
+
     :param args: The parsed ``scan`` or ``baseline`` command line.
     :returns: ``Config`` field name -> value, for each selection option that was given.
+    :raises ConfigError: When a given value is out of bounds.
     """
-    return {
+    changes = {
         field_name: getattr(args, dest) for dest, field_name in _FACT_CONFIG_OPTIONS if getattr(args, dest) is not None
     }
+    if args.include_facts is None:
+        for field_name, value in changes.items():
+            validate_fact_check_option(field_name, value)
+    return changes
 
 
 def _run_baseline(args: argparse.Namespace) -> int:
